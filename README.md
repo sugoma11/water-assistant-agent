@@ -32,6 +32,9 @@ The **problem**: one should dig into database to find insights and manually call
 - Measure prompt optimization accuracy gain over model size
 - Analyze performance of open-source models to explain their performance for water management
 - Try to improve any prompt optimization techinque: GEPA / MIPROv2 / TextGrad. For example try to merge the GEPA and MIPROv2 approach.
+- Try unsupervised / bootstrapped GEPA: given dataset X manually setup an LLM-as-judge prompt and use it as a metric. Compare it with the supervised approach with Y. Find some text-to-text datasets.
+- Adding noise to the algorythms (inverting metrics)
+- Mixing / ensembling algorythms: mixing prompt pools?
 
 How we will evaluate: manually create a set of QA pairs with data states of a water-soil system.
 
@@ -46,6 +49,20 @@ Text-2-SQL prompt is shared (or even a ready solution is used), schema descripti
 
 
 ## Literature
+
+
+### Green Roofs
+Green Roofs Classifications, Plant Species, Substrates  
+https://doi.org/10.1016/b978-0-12-812150-4.00006-9
+- Green roofs fundamenthals
+
+Evapotranspiration Measurements and Assessment of Driving Factors: A Comparison of Different Green Roof Systems during Summer in Germany  
+https://www.researchgate.net/publication/356803878_Evapotranspiration_Measurements_and_Assessment_of_Driving_Factors_A_Comparison_of_Different_Green_Roof_Systems_during_Summer_in_Germany
+- Deep comparison of garden, nature, economy and retention roofs. PAI, moisture, temperature, meteorological data, evapotranspiration data could be requested from them.
+
+GR2L: A robust dual-layer green roof water balance model to assess multifunctionality aspects under climate variability  
+https://www.frontiersin.org/journals/climate/articles/10.3389/fclim.2023.1115595/full
+- Our tool.
 
 ### LLM benchmarks for Earth system
 
@@ -121,3 +138,8 @@ https://arxiv.org/pdf/2406.11695
 TextGrad
 https://arxiv.org/pdf/2406.07496
 - Introduces TGD (Textual Gradient Descent): a teacher LLM proposes prompt change given X, student LLM output of X and LLM-as-Judge judgements for y and LLM_student(X)
+
+
+#### TODOs:
+- Check is RFF (Rolling forward forecast) is a common, widely known term
+- Where the sensors are installed - substrate or retention?

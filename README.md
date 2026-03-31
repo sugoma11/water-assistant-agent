@@ -11,7 +11,7 @@ Data:
 - Tools:
   - GR2L model: given a roof and meteorogical parameters returns water stored in substrate/retention layers, the actual evapotranspiration, and runoff leaving the system
 
-Wineyards:
+Wineyards (**to do after green roofs if have time**):
 Data:
   - Soil temperature and moisture timeseries
   - Vegetation indexes from satellites and UAV data (few rasters)
@@ -22,7 +22,7 @@ Data:
 
 It's better to start with the green roofs as we have the GR2L model.
 
-The **problem**: one should dig into database to find insights and manually call the tools, analyse results. No text-to-data interface.  
+The **problem**: one should dig into database to find insights and manually call the tools, analyse results. No text-to-data interface.
 **Solution**: LLM/Agent workflow accessing data. At that point no novelty.
 
 #### Questions and goals
@@ -52,15 +52,25 @@ Text-2-SQL prompt is shared (or even a ready solution is used), schema descripti
 
 
 ### Green Roofs
-Green Roofs Classifications, Plant Species, Substrates  
+
+Research green roof in Leipzig, Germany
+https://www.sciencedirect.com/science/article/pii/S0925857425002198
+- Describes the green roof we operate.
+
+Weather forecast driven irrigation of green roofs improves their thermal and
+hydrological performance
+https://www.sciencedirect.com/science/article/pii/S0048969726003530
+- A smart weather forecast algo for irrigation decreases water usage and minimizes runoff.
+
+Green Roofs Classifications, Plant Species, Substrates
 https://doi.org/10.1016/b978-0-12-812150-4.00006-9
 - Green roofs fundamenthals
 
-Evapotranspiration Measurements and Assessment of Driving Factors: A Comparison of Different Green Roof Systems during Summer in Germany  
+Evapotranspiration Measurements and Assessment of Driving Factors: A Comparison of Different Green Roof Systems during Summer in Germany
 https://www.researchgate.net/publication/356803878_Evapotranspiration_Measurements_and_Assessment_of_Driving_Factors_A_Comparison_of_Different_Green_Roof_Systems_during_Summer_in_Germany
 - Deep comparison of garden, nature, economy and retention roofs. PAI, moisture, temperature, meteorological data, evapotranspiration data could be requested from them.
 
-GR2L: A robust dual-layer green roof water balance model to assess multifunctionality aspects under climate variability  
+GR2L: A robust dual-layer green roof water balance model to assess multifunctionality aspects under climate variability
 https://www.frontiersin.org/journals/climate/articles/10.3389/fclim.2023.1115595/full
 - Our tool.
 

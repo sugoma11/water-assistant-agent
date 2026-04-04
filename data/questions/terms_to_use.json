@@ -9,7 +9,7 @@
   ],
   "hydrological_processes": [
     "water balance components (precipitation, evapotranspiration, storage, runoff)",
-    "evapotranspiration (ETa vs ETp)",
+    "evapotranspiration (actual ET vs potential ET)",
     "interception loss",
     "downward seepage (Qdown)",
     "upward capillary flux (Qup)",

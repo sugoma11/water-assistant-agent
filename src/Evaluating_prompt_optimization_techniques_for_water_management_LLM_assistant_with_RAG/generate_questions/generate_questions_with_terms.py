@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from pathlib import Path
 
 import click
@@ -65,15 +66,20 @@ def build_completion_kwargs(model: str) -> dict:
     return kwargs
 
 
+def strip_thinking_tags(text: str) -> str:
+    """Remove <think>...</think> blocks emitted by reasoning models (e.g. Qwen)."""
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+
 def parse_questions(response_text: str) -> list[str]:
-    lines = response_text.strip().splitlines()
+    text = strip_thinking_tags(response_text)
+    lines = text.strip().splitlines()
     questions = []
     for line in lines:
         line = line.strip()
         if not line:
             continue
-        if line:
-            questions.append(line)
+        questions.append(line)
     return questions
 
 

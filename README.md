@@ -150,6 +150,13 @@ https://arxiv.org/pdf/2406.07496
 - Introduces TGD (Textual Gradient Descent): a teacher LLM proposes prompt change given X, student LLM output of X and LLM-as-Judge judgements for y and LLM_student(X)
 
 
+### Extra
+TabPFN  
+Zeroshot timeseries prediction  
+https://github.com/priorlabs/tabpfn  
+
+---
+
 #### TODOs:
 - Check is RFF (Rolling forward forecast) is a common, widely known term
 - Where the sensors are installed - substrate or retention?

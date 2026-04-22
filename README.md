@@ -150,9 +150,13 @@ https://arxiv.org/pdf/2406.07496
 - Introduces TGD (Textual Gradient Descent): a teacher LLM proposes prompt change given X, student LLM output of X and LLM-as-Judge judgements for y and LLM_student(X)
 
 
-
-
 ### Ideas for prompt tuning enhancements:
 - Force GEPA to maintain some prompts from MIPRPOv2 in a buffer
 - Apply any GD heuristics: add noise, curriculum learning, any analogy of LR scheduling, warm-up, dropouts (for pormpts?)
 - Unsupervised / semisupervised GEPA
+
+### Extra
+TabPFN  
+Zeroshot timeseries prediction  
+https://github.com/priorlabs/tabpfn  
+

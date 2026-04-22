@@ -1,4 +1,4 @@
-import json
+import importlib.util
 import re
 import shutil
 import subprocess
@@ -24,45 +24,39 @@ def resolve_cli_binary(tool: str) -> str:
         f"Install it or add it to PATH."
     )
 
+
 SYSTEM_PROMPT = """\
 You are a domain expert in water management, green roof systems, and urban hydrology.
-Your task is to generate questions that a researcher or practitioner might ask an LLM assistant which has access to timeseries data / system models for a green roof. \
+Your task is to generate questions that a researcher or practitioner might ask an LLM assistant which has access to a database with timeseries data from a green roof monitoring platform. \
 The researcher/practitioner is interested in understanding the performance of the green roof, diagnosing issues, and optimizing its operation NOT in bare fact knowledge. \
 The questions should be ONLY data-driven and do NOT check bare facts knowledge. \
 
 The questions should:
+- Be answerable in ONE SQL query over ONE table (no multi-step reasoning that would require multiple queries or tool calls)
 - Be in natural language, as a real user would ask them
-- Be both answerable and unanswerable with ONE SQL query
-- Cover practical, analytical, and conceptual aspects
+- NOT asking for event detection 
 - Be diverse in complexity (some simple, some requiring deeper analysis)
 - Not reference specific column names or database schemas
 
-Questions taxonomy (not limited to):
-- Spatial (Comparing roofs / segments)
-- Time dimension (which day or month, change dynamics)
-- Correlational (any relations between variables)
-- Computational (deriving quantities with a formula) 
-
-Examples:
-
-- Which roof segment had the highest median nighttime runoff during the whole observation period?
-- Show days when runoff amounted 80% of precipitation? / Find days when soil moisture changed over 60%? / Show runoff over precipitation ratio for this month
-- Compare <varA> with <varB> correlation for section X during April-May and August-September? What is <varA> / <varB> ratio for extensive section? (or <VarA_extensive> / <VarA_intensive> ratio)
-- Calculate {ET / surface T diff with convential roof / peak percipitation -> peak runoff lag time} for dd.mm.yy for roof/segment X?
-
-An example of a BAD question: \
+BAD questions: \
 "What is the relationship between the retention layer capacity and the frequency of overflow events?" - it checks ONLY factual knowledge, no tools are necessary.
+"How often does the wetland roof receive irrigation compared with the extensive green roof?"
+
+An example of a GOOD question: \
+How many days were when runoff accounted for 80% of the precipitation? - requires data quering and terms understanding.
 
 Do NOT include similar questions with only minor wording changes. Each question should be distinct in its intent and focus.
 """
 
 USER_PROMPT_TEMPLATE = """\
-Generate exactly {num_questions} questions related to the category "{category}". You can mix terms from the different categories if relevant.
+Generate exactly {num_questions} questions that a researcher might ask about this green roof monitoring system.
 
-Use the following domain-specific terms (you don't have to use every term, \
-but questions should be relevant to these concepts):
+The database has the following schema:
 
-{terms}
+{schema}
+
+The questions should require querying this data. They can involve single tables or joins across tables. \
+Mix simple lookups with analytical questions (aggregations, comparisons between roof segments, time-series trends, correlations).
 
 Return ONLY the questions, one per line. No other text.
 """
@@ -70,8 +64,7 @@ Return ONLY the questions, one per line. No other text.
 
 def strip_thinking_tags(text: str) -> str:
     """Remove <think>...</think> blocks emitted by reasoning models (e.g. Qwen)."""
-    return re.sub(r"<think>.*?</think>", ""
-    , text, flags=re.DOTALL).strip()
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
 def parse_questions(response_text: str) -> list[str]:
@@ -128,18 +121,35 @@ def run_cli(tool: str, model: str, system_prompt: str, user_prompt: str, timeout
     return result.stdout
 
 
-def generate_for_category(
+def load_schema(schema_path: str) -> list[dict]:
+    spec = importlib.util.spec_from_file_location("schema_module", schema_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.table_schema_dict
+
+
+def format_schema_for_prompt(schema: list[dict]) -> str:
+    parts = []
+    for table in schema:
+        cols = "\n".join(
+            f"  - {c['name']} ({c['type']}): {c['description']}"
+            for c in table["columns"]
+        )
+        parts.append(f"Table: {table['table_name']}\n{table['description']}\nColumns:\n{cols}")
+    return "\n\n".join(parts)
+
+
+def generate_from_schema(
     tool: str,
     model: str,
-    category: str,
-    terms: list[str],
+    schema: list[dict],
     num_questions: int,
     timeout: int,
 ) -> list[str]:
+    schema_text = format_schema_for_prompt(schema)
     user_prompt = USER_PROMPT_TEMPLATE.format(
         num_questions=num_questions,
-        category=category.replace("_", " "),
-        terms="\n".join(f"- {t}" for t in terms),
+        schema=schema_text,
     )
     text = run_cli(tool, model, SYSTEM_PROMPT, user_prompt, timeout)
     return parse_questions(text)
@@ -154,43 +164,29 @@ def generate_for_category(
 )
 @click.option("--model", required=True, help="Model identifier passed to the CLI, e.g. claude-opus-4-6 or gpt-5")
 @click.option("--output-dir", required=True, type=click.Path(), help="Directory to write results")
-@click.option("--terms-path", required=True, type=click.Path(exists=True), help="Path to terms JSON")
+@click.option("--schema-path", required=True, type=click.Path(exists=True), help="Path to Python file containing table_schema_dict")
 @click.option("--num-questions", required=True, type=int, help="Total number of questions to generate")
 @click.option("--timeout", default=600, type=int, help="Per-call CLI timeout in seconds")
 def generate_questions(
     tool: str,
     model: str,
     output_dir: str,
-    terms_path: str,
+    schema_path: str,
     num_questions: int,
     timeout: int,
 ) -> None:
-    """Generate domain-specific questions via a local CLI agent (claude or copilot)."""
-    with open(terms_path) as f:
-        terms_by_category: dict[str, list[str]] = json.load(f)
+    """Generate domain-specific questions via a local CLI agent (claude or copilot), driven by a database schema."""
+    schema = load_schema(schema_path)
+    click.echo(f"Loaded schema with {len(schema)} tables from {schema_path}")
 
-    categories = list(terms_by_category.keys())
-    num_categories = len(categories)
-    base_per_category = num_questions // num_categories
-    remainder = num_questions % num_categories
-
-    all_questions: list[str] = []
-
-    for i, category in enumerate(categories):
-        n = base_per_category + (1 if i < remainder else 0)
-        if n == 0:
-            continue
-
-        click.echo(f"Generating {n} questions for '{category}' via {tool}...")
-        questions = generate_for_category(
-            tool=tool,
-            model=model,
-            category=category,
-            terms=terms_by_category[category],
-            num_questions=n,
-            timeout=timeout,
-        )
-        all_questions.extend(questions)
+    click.echo(f"Generating {num_questions} questions via {tool}...")
+    all_questions = generate_from_schema(
+        tool=tool,
+        model=model,
+        schema=schema,
+        num_questions=num_questions,
+        timeout=timeout,
+    )
 
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)

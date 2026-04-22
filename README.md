@@ -36,12 +36,12 @@ The **problem**: one should dig into database to find insights and manually call
 - Adding noise to the algorythms (inverting metrics)
 - Mixing / ensembling algorythms: mixing prompt pools?
 
-How we will evaluate: manually create a set of QA pairs with data states of a water-soil system.
+How we will evaluate: manually create a set of QA pairs with data states of a water-soil system (in simpler, just text-2-SQL case QA is a natural language query and it's DDL counterpart).
 
 
 #### Solution architecture
 
-Now I see one agent (core agent) with tools: a text-2-sql tool, a model tool,
+Now I see one agent (core agent) with tools: a text-2-sql tool, a model tool, some simple tools for calculations (PM evaporation).
 
 Every site (roof / wineyard) has an own semantic layer with terms definitions and assumptions (initialized with us, probably optimized). Some part of the core agent's prompt should be shared before sites.
 
@@ -150,6 +150,9 @@ https://arxiv.org/pdf/2406.07496
 - Introduces TGD (Textual Gradient Descent): a teacher LLM proposes prompt change given X, student LLM output of X and LLM-as-Judge judgements for y and LLM_student(X)
 
 
-#### TODOs:
-- Check is RFF (Rolling forward forecast) is a common, widely known term
-- Where the sensors are installed - substrate or retention?
+
+
+### Ideas for prompt tuning enhancements:
+- Force GEPA to maintain some prompts from MIPRPOv2 in a buffer
+- Apply any GD heuristics: add noise, curriculum learning, any analogy of LR scheduling, warm-up, dropouts (for pormpts?)
+- Unsupervised / semisupervised GEPA

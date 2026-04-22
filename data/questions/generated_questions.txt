@@ -1,0 +1,20 @@
+Which roof segment produced the most total runoff over the full monitoring period?
+On how many days did runoff account for at least 80% of the day’s precipitation for each roof segment?
+Which vegetated roof segment received the most irrigation per square metre over the monitoring period?
+Which lysimeter had the highest median stored water level during the monitoring period?
+Which vegetated segment maintained the highest average substrate moisture on days without any irrigation?
+Which vegetated roof stayed cooler on average during summer afternoons?
+Which roof segment showed the largest average day-to-night range in net radiation?
+Which month had the lowest runoff share relative to precipitation for each roof segment?
+How strongly does daily precipitation correlates to daily runoff for each roof segment?
+During the driest 10% of days, which vegetated segment still kept the highest average substrate moisture?
+Which lysimeter shows the greatest day-to-day variability in stored water?
+On days with irrigation, how much runoff was generated per litre of water applied on each vegetated roof segment?
+Which roof segment had the highest average albedo around midday?
+How often did each roof segment produce runoff on days with no recorded rainfall?
+Which vegetated segment had the most stable substrate temperature during winter nights?
+Which roof segment emitted the most longwave radiation during summer nights?
+How strongly are substrate moisture and substrate temperature linked within each vegetated roof segment?
+Between the gravel roof and the extensive green roof, which one had the larger average downward heat flux at midday?
+On days with similar rainfall totals, which roof segment tended to produce the least runoff?
+Which lysimeter spent the largest share of time near its maximum observed stored water level?

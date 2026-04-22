@@ -34,13 +34,15 @@ The questions should be ONLY data-driven and do NOT check bare facts knowledge. 
 The questions should:
 - Be answerable in ONE SQL query over ONE table (no multi-step reasoning that would require multiple queries or tool calls)
 - Be in natural language, as a real user would ask them
-- NOT asking for event detection 
+- NOT asking for event detection
 - Be diverse in complexity (some simple, some requiring deeper analysis)
 - Not reference specific column names or database schemas
+- Not involving ambiguity, e.g., "during hot days", "Under high incoming sunlight" - not clear what is "hot" or "high"
 
 BAD questions: \
 "What is the relationship between the retention layer capacity and the frequency of overflow events?" - it checks ONLY factual knowledge, no tools are necessary.
-"How often does the wetland roof receive irrigation compared with the extensive green roof?"
+"How often does the wetland roof receive irrigation compared with the extensive green roof?" - it requires event detection (irrigation) with unclear threshold.
+"What weather conditions coincided with the lowest recorded air pressure?" - weather conditions are not retrievable with SQL
 
 An example of a GOOD question: \
 How many days were when runoff accounted for 80% of the precipitation? - requires data quering and terms understanding.

@@ -1,0 +1,100 @@
+What was the total precipitation in each month of the monitoring period?
+Which calendar day had the highest total precipitation?
+What was the average air temperature for each hour of the day?
+What was the median relative humidity in each month?
+How many hours had no rainfall while relative humidity was above 90%?
+On which day was the daily air temperature range the largest?
+What was the average wind speed for each hour of the day?
+What was the prevailing wind direction in each month?
+What share of total rainfall fell between 00:00 and 06:00?
+How many days recorded at least 10 mm of rainfall?
+How strongly were air temperature and global radiation correlated over the full record?
+How strongly were wind speed and relative humidity correlated over the full record?
+What was the average air pressure during records with rainfall greater than 0 mm?
+Which month had the most variable wind speeds?
+On days with more than 5 mm of rainfall, what was the median hourly rainfall pattern?
+What was the total runoff from each roof segment in each month?
+Which roof segment produced the highest cumulative runoff over the full record?
+What was the median daily runoff volume for each roof segment?
+How many days had no recorded runoff on each roof segment?
+What share of each roof segment’s total runoff occurred between 00:00 and 06:00?
+At what hour of the day was runoff most commonly recorded on each roof segment?
+Which month had the highest runoff total for each roof segment?
+What was the largest single-day runoff total recorded on each roof segment?
+How much of each roof segment’s total runoff came from its 10 highest-runoff days?
+On how many days did all roof segments record runoff?
+Were any runoff records logged with a tip volume other than 100 mL?
+How many days produced more than 5 L of runoff on each roof segment?
+What proportion of runoff records on each roof segment occurred on weekends?
+Which month had the lowest day-to-day variation in runoff for each roof segment?
+How many runoff records were logged for each roof segment in each month?
+What was the total irrigation volume applied to each roof segment in each month?
+Which calendar day had the highest irrigation volume on each irrigated roof segment?
+What share of each roof segment’s irrigation volume was applied between 22:00 and 06:00?
+At what hour of the day was irrigation volume highest on each irrigated roof segment?
+What was the average daily irrigation volume for each irrigated roof segment in each month?
+How many days received more than 50 L of irrigation on each irrigated roof segment?
+What proportion of each roof segment’s irrigation volume was applied on weekends?
+How much of each roof segment’s total irrigation came from its 10 highest-irrigation days?
+What was the median nonzero irrigation amount per logged interval on each roof segment?
+Did any roof segment show a decrease in cumulative irrigation reading, suggesting a reset or logging issue?
+What was the average soil moisture in each month for each roof segment?
+What was the minimum recorded soil moisture for each soil sensor?
+How many days had a daily mean soil moisture below 0.15 on each roof segment?
+Which roof segment had the highest median soil moisture over the full record?
+At what hour of the day was soil temperature highest on each roof segment?
+Which month had the lowest median soil moisture on each roof segment?
+How strongly were soil moisture and soil temperature correlated for each soil sensor?
+Which soil sensor showed the greatest day-to-day variability in soil moisture?
+Was soil moisture more variable between 12:00 and 18:00 or between 00:00 and 06:00 on each roof segment?
+How many measurements recorded soil temperatures below 0°C on each roof segment?
+What proportion of soil moisture measurements were above 0.40 on each roof segment?
+Which roof segment had the largest daily range in soil temperature?
+How closely did soil sensors within the same roof segment agree on moisture readings?
+On which dates was the within-segment spread in soil moisture largest?
+Did the relationship between soil temperature and soil moisture differ across roof segments?
+Which roof segment had the highest average soil temperature in April?
+What proportion of measurements had soil temperatures between 10°C and 20°C on each roof segment?
+On which day did each roof segment reach its highest daily mean soil moisture?
+How often did a soil sensor report exactly the same moisture value in consecutive records?
+Which roof segment had the most stable soil moisture, based on the smallest standard deviation over the full record?
+What was the average daily water storage for each lysimeter?
+Which lysimeter had the highest median water storage over the full record?
+How many days recorded any lysimeter runoff for each lysimeter?
+What was the largest 24-hour drop in water storage for each lysimeter?
+At what hour of the day was water storage highest on average for each lysimeter?
+Which month had the lowest median water storage for each lysimeter?
+How strongly were water storage and runoff volume correlated for each lysimeter?
+How often did each lysimeter report identical weight values in consecutive records?
+What was the average difference between water storage from 00:00-06:00 and from 12:00-18:00 for each lysimeter?
+Which lysimeter showed the greatest short-term noise in weight readings, based on consecutive 2-minute changes?
+How many measurements had water storage above 50 mm for each lysimeter?
+How much of each lysimeter’s total runoff came from its 10 highest-runoff days?
+Which lysimeter had the largest average daily range in water storage?
+On days with lysimeter runoff, what was the median end-of-day water storage for each lysimeter?
+How many days had both positive runoff and a net decline in daily water storage for each lysimeter?
+What was the average overnight change in water storage between 00:00 and 06:00 for each lysimeter?
+Did any lysimeter show a weight jump larger than 5 kg between consecutive measurements?
+Which lysimeter had the highest frequency of records with exactly one runoff tip?
+How often did water storage fall below 20 mm on each lysimeter?
+Which lysimeter had the most stable water storage, based on the smallest standard deviation?
+What was the average daily net radiation for each roof segment?
+Which roof segment had the highest median albedo over the full record?
+How did average albedo change by month on each roof segment?
+Between 08:00 and 18:00, what share of records had negative net radiation on each roof segment?
+How strongly were albedo and net radiation correlated on each roof segment?
+When incoming shortwave radiation exceeded 600 W/m², what was the average reflected shortwave radiation on each roof segment?
+Which roof segment had the widest daily range in net radiation?
+What proportion of records had outgoing longwave radiation greater than incoming longwave radiation on each roof segment?
+What was the median net radiation for each hour of the day on each roof segment?
+On days with daily mean albedo above 0.30, what was the corresponding daily mean net radiation on each roof segment?
+What was the average soil heat flux in each month for each monitored roof segment?
+Which monitored roof segment had upward soil heat flux more often than downward soil heat flux?
+At what hour of the day did each monitored roof segment reach its highest average downward heat flux?
+What proportion of soil heat flux records were upward on each monitored roof segment?
+Which month showed the largest contrast between soil heat flux from 00:00-06:00 and from 12:00-18:00 on each monitored roof segment?
+Were there any duplicate weather records with the same timestamp?
+Which roof segment had the highest share of radiation records with missing albedo values?
+Did any irrigation records contain negative volume values?
+Did any soil moisture records fall outside the valid range from 0 to 1?
+Which lysimeter had the largest gap between consecutive measurements?

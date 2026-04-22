@@ -156,7 +156,11 @@ https://arxiv.org/pdf/2406.07496
 - Unsupervised / semisupervised GEPA
 
 ### Extra
-TabPFN  
-Zeroshot timeseries prediction  
-https://github.com/priorlabs/tabpfn  
+TabPFN
+Zeroshot timeseries prediction
+https://github.com/priorlabs/tabpfn
 
+
+### Stack
+- Argilla for labelling. Two projects with different layout: text-2-SQL and for complex analyzis with fixtures. Open question: how to inject fixtures?
+- MLflow for prompt tuning / experiments

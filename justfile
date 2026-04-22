@@ -8,5 +8,6 @@ generate-questions-cli tool model output-dir terms-path num-questions:
     uv run generate-questions-cli --tool {{tool}} --model {{model}} --output-dir {{output-dir}} --terms-path {{terms-path}} --num-questions {{num-questions}}
 
 # Generate questions via a local CLI agent using a database schema (synthetic data)
+# models: claude-opus-4.6; gpt-5.4
 generate-questions-cli-synth tool model output-dir schema-path num-questions:
     uv run generate-questions-cli-synth --tool {{tool}} --model {{model}} --output-dir {{output-dir}} --schema-path {{schema-path}} --num-questions {{num-questions}}

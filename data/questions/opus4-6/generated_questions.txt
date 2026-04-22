@@ -1,0 +1,100 @@
+1. What is the total runoff volume recorded for each roof segment over the entire monitoring period?
+2. Which month had the highest total precipitation?
+3. What is the average albedo for each roof segment?
+4. How much irrigation water has been delivered to each roof segment in total?
+5. What is the maximum substrate temperature ever recorded on the extensive green roof?
+6. What was the coldest air temperature recorded during the monitoring period?
+7. What is the average net radiation for each roof segment during summer months?
+8. How does the average soil moisture differ between the extensive green roof and the wetland roof?
+9. What is the total number of runoff tips per month for the gravel roof?
+10. On how many days did precipitation exceed 20 mm?
+11. What is the average wind speed by month?
+12. What is the peak water storage recorded in each lysimeter?
+13. What is the average daily range of water storage for each lysimeter?
+14. How does the average soil temperature vary by month for each roof segment?
+15. What is the total irrigation volume delivered per month to the wetland roof?
+16. What is the average relative humidity during nighttime hours?
+17. How many days were there when runoff from the gravel roof accounted for more than 80% of that day's precipitation?
+18. What is the maximum hourly rainfall intensity recorded at the weather station?
+19. What is the 95th percentile of soil moisture readings on the wetland roof?
+20. What is the average air pressure when precipitation is above zero?
+21. What percentage of the monitoring period does soil moisture exceed 0.5 on the wetland roof?
+22. How does the ratio of emitted longwave to incoming longwave radiation differ between roof segments?
+23. What is the average daytime versus nighttime substrate temperature on the extensive green roof?
+24. What is the total runoff volume per unit area for each roof segment?
+25. What is the average soil moisture when air temperature exceeds 25 degrees on the extensive green roof?
+26. What is the minimum water storage recorded in each lysimeter by month?
+27. What is the standard deviation of daily precipitation totals?
+28. What fraction of the monitoring period does the extensive green roof have soil moisture below 0.2?
+29. What is the average daily global radiation by season?
+30. How many hours per year does wind speed exceed 10 m/s?
+31. What is the maximum daily substrate temperature swing on the gravel roof compared to the extensive green roof?
+32. What is the average irrigation volume per day for each irrigated segment?
+33. How does the average water storage differ between the two extensive green roof lysimeters?
+34. What is the average soil heat flux during daytime versus nighttime on the gravel roof?
+35. Which month shows the highest average soil moisture on the extensive green roof?
+36. How many runoff tips were recorded per day on average for each roof segment?
+37. What is the average midday albedo for each roof segment?
+38. What is the total precipitation recorded each year?
+39. What is the average weight of each lysimeter?
+40. What is the average substrate temperature when soil moisture is in its lowest quartile on the extensive green roof?
+41. What is the average net radiation when incoming shortwave radiation is below 100 W/m² on each roof segment?
+42. How many sensors are installed on each roof segment?
+43. What is the ratio of total runoff to total precipitation for each roof segment calculated annually?
+44. What is the average daily amplitude of net radiation on each roof segment?
+45. How does substrate depth relate to average soil moisture across the different roof segments?
+46. What is the average heat flux when substrate temperature exceeds 30 degrees on the gravel roof?
+47. What is the total runoff volume that passed through each lysimeter?
+48. How does the average monthly albedo of the gravel roof compare to the wetland roof?
+49. What is the average air temperature by hour of day for each season?
+50. Which was the driest month in terms of total precipitation?
+51. What is the 90th percentile of daily runoff volume for each roof segment?
+52. How many distinct days had both precipitation and irrigation recorded for the wetland roof?
+53. What is the average daily peak global radiation by month?
+54. What is the total number of lysimeter weight measurements recorded per month?
+55. What is the average difference in net radiation between the extensive green roof and the gravel roof?
+56. What is the average water storage at midnight versus noon for each lysimeter?
+57. How many days per month had zero runoff from the extensive green roof?
+58. What is the total lysimeter surface area deployed on each roof segment?
+59. What is the average soil temperature during winter months for each segment?
+60. What percentage of the monitoring period had wind speeds above 5 m/s?
+61. What is the maximum daily total irrigation volume ever recorded?
+62. What is the average hourly precipitation distribution throughout the day?
+63. What is the average incoming shortwave radiation during each season?
+64. Which lysimeter recorded the heaviest weight and what was it?
+65. What is the average soil moisture across all sensors on each roof segment by month?
+66. What is the average monthly weight change in each lysimeter?
+67. How does total runoff from the extensive green roof compare to the gravel roof during winter months?
+68. What is the average wind direction when wind speed exceeds 5 m/s?
+69. What percentage of total irrigation volume was delivered during each month?
+70. What is the range of water storage observed in each lysimeter over the full monitoring period?
+71. How does the average nighttime longwave radiation balance differ between roof segments?
+72. Which roof segment shows the greatest day-to-day variability in runoff volume?
+73. What is the maximum number of runoff tips in a single day for each roof segment?
+74. How does the average albedo change by month on the extensive green roof?
+75. What is the average precipitation per rainy day?
+76. What is the cumulative monthly runoff for each roof segment by year?
+77. What is the average hourly soil heat flux pattern on the extensive green roof in July?
+78. What is the highest recorded outgoing longwave radiation from each roof surface?
+79. What is the total number of data points recorded by each sensor type?
+80. What is the average irrigation volume delivered per hour to the wetland roof?
+81. What is the average difference in water storage between the two wetland lysimeters?
+82. How does the annual total runoff per unit area compare across all three roof types?
+83. What is the average soil heat flux by month on the extensive green roof?
+84. During which hour of the day is average global radiation highest?
+85. What is the average relative humidity by month?
+86. What is the total number of irrigation pulses recorded for each segment?
+87. What is the average daily water storage in the wetland roof lysimeters?
+88. How does the daily maximum air temperature relate to the daily maximum substrate temperature on the gravel roof?
+89. What percentage of days show higher runoff from the extensive green roof than the wetland roof?
+90. What is the average net shortwave radiation gain for each roof segment?
+91. How much total runoff per square metre did each roof segment produce in the wettest month?
+92. What is the average soil moisture response magnitude within 24 hours following days with heavy precipitation on the extensive green roof?
+93. What is the ratio of irrigation volume to runoff volume for the wetland roof by month?
+94. What is the average nighttime cooling rate of the substrate on each roof segment?
+95. How does the coefficient of variation of daily water storage compare across all lysimeters?
+96. What is the average daily sum of net radiation for each roof segment by season?
+97. What fraction of total annual precipitation falls during the three wettest months?
+98. What is the average reflected shortwave radiation per unit of incoming shortwave radiation by season for each roof segment?
+99. How does the average monthly runoff volume from the wetland roof compare before and after the irrigation season?
+100. What is the average daily water balance residual (precipitation plus irrigation minus runoff minus storage change) for each roof segment by month?

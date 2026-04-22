@@ -158,7 +158,10 @@ https://arxiv.org/pdf/2406.07496
 ### Extra
 TabPFN
 Zeroshot timeseries prediction
-https://github.com/priorlabs/tabpfn
+https://github.com/priorlabs/tabpfn  
+
+Text-2-SQL approaches (internal):
+https://linear.app/finalyst/issue/FIN-7/create-text2sql-evaluation-pipeline
 
 
 ### Stack

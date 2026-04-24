@@ -150,6 +150,14 @@ https://arxiv.org/pdf/2406.07496
 - Introduces TGD (Textual Gradient Descent): a teacher LLM proposes prompt change given X, student LLM output of X and LLM-as-Judge judgements for y and LLM_student(X)
 
 
+p1: Better Prompt Optimization with Fewer Prompts  
+https://arxiv.org/html/2604.08801v1  
+ - Researches how system / user prompt affect GEPA optimization. More examples - worse results. It's coherent with https://decagon.ai/blog/optimizing-gepa-for-production
+
+
+
+
+
 ### Ideas for prompt tuning enhancements:
 - Force GEPA to maintain some prompts from MIPRPOv2 in a buffer
 - Apply any GD heuristics: add noise, curriculum learning, any analogy of LR scheduling, warm-up, dropouts (for pormpts?)

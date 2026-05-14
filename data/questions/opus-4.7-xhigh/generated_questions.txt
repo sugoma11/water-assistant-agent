@@ -1,0 +1,102 @@
+What is the total cumulative outflow from the gravel roof over the monitoring period?
+Which lysimeter recorded the highest single-timestamp outflow value?
+How does total outflow compare between the irrigated and non-irrigated extensive green roofs?
+What is the average outflow rate on the wetland green roof?
+What fraction of records show zero outflow from the non-irrigated extensive green roof?
+What is the standard deviation of outflow for the gravel roof?
+Which calendar month had the highest total outflow from the wetland green roof?
+How do the two wetland lysimeters compare in terms of mean outflow?
+What is the 95th percentile of outflow values from the irrigated extensive green roof?
+What is the yearly total outflow from the gravel roof?
+What is the maximum hourly outflow from the small sensor lysimeter?
+What is the median outflow on the irrigated extensive green roof, considering only non-zero records?
+What is the cumulative outflow from the wetland roof in each meteorological season?
+What is the longest period of consecutive measurements without measurable outflow from the non-irrigated extensive green roof?
+What is the proportion of total outflow contributed by each of the two lysimeters on the wetland roof?
+What is the average outflow during nighttime hours for the gravel roof?
+What is the average outflow during daytime hours for the wetland green roof?
+What is the maximum daily outflow total from the small lysimeter with green roof substrate?
+How does outflow variance differ between the irrigated and non-irrigated extensive green roofs?
+At what hour of the day does the gravel roof show its highest average outflow?
+What is the average albedo (upward divided by downward shortwave) on the gravel roof?
+What is the highest corrected surface temperature recorded on the wetland green roof?
+What is the average net shortwave radiation on the irrigated extensive green roof?
+How does the average corrected surface temperature compare between the gravel roof and the wetland roof?
+What is the maximum simultaneous surface temperature difference between the irrigated and non-irrigated extensive green roofs?
+What is the median downward longwave radiation on the gravel roof?
+What is the difference between the maximum and minimum corrected surface temperatures on the non-irrigated extensive roof?
+What is the average net longwave radiation balance on the wetland green roof?
+What is the seasonal mean corrected surface temperature on the gravel roof?
+What is the standard deviation of corrected surface temperature on the irrigated extensive roof?
+What is the 99th percentile of downward shortwave radiation observed across all roof segments?
+How does the mean albedo differ between the irrigated extensive roof and the gravel roof?
+What is the average diurnal range of corrected surface temperature on the wetland green roof?
+How many records show a corrected surface temperature on the gravel roof exceeding 333 K?
+What is the cumulative downward shortwave radiation per year on the non-irrigated extensive green roof?
+What is the difference between June-August and December-February average corrected surface temperatures on the gravel roof?
+What is the average net all-wave radiation balance on the wetland green roof?
+What is the maximum upward longwave radiation recorded on the non-irrigated extensive green roof?
+What is the average corrected surface temperature on each roof type between 11:00 and 14:00?
+How many measurements show the corrected surface temperature exceeding the uncorrected surface temperature on the irrigated extensive roof?
+What is the average soil moisture in the wetland green roof?
+Which roof type has the highest minimum recorded soil moisture?
+What is the standard deviation of soil moisture on the non-irrigated extensive green roof?
+What was the lowest recorded soil moisture in the irrigated extensive green roof?
+What is the soil moisture range (maximum minus minimum) on the gravel roof?
+What is the average soil moisture on each roof type during June, July, and August?
+What is the median soil moisture on the wetland green roof?
+How many measurements show soil moisture below 10% in the non-irrigated extensive roof?
+What is the 5th percentile of soil moisture in the irrigated extensive green roof?
+What is the average soil moisture by calendar month on the gravel roof?
+What is the seasonal mean soil moisture in the non-irrigated extensive roof?
+What is the maximum simultaneous soil moisture difference between the irrigated and non-irrigated extensive roofs?
+What is the yearly mean soil moisture on the wetland green roof?
+How many measurements show soil moisture above 50% on the wetland roof?
+What is the average soil moisture during nighttime compared to daytime on the gravel roof?
+What is the maximum soil temperature recorded on the gravel roof?
+What is the minimum soil temperature on the wetland green roof?
+How does the average soil temperature compare between the wetland and gravel roofs?
+What is the average diurnal soil temperature range on the non-irrigated extensive roof?
+What is the standard deviation of soil temperature on the irrigated extensive green roof?
+How many records show an average soil temperature on the gravel roof above 30°C?
+What is the average soil temperature on the wetland roof for each calendar month?
+What is the difference between the maximum soil temperatures of the irrigated and non-irrigated extensive roofs?
+What is the annual soil temperature range on the wetland green roof?
+What is the median soil temperature on the gravel roof during December, January, and February?
+What is the average soil temperature by meteorological season on the irrigated extensive green roof?
+What is the maximum simultaneous soil temperature difference between the gravel and wetland roofs?
+What is the yearly mean soil temperature on the non-irrigated extensive green roof?
+How many measurements show a higher soil temperature on the gravel roof than on the wetland roof at the same timestamp?
+What is the average soil temperature during daytime compared to nighttime on the irrigated extensive roof?
+What is the total precipitation recorded over the entire monitoring period?
+What was the maximum recorded daily precipitation?
+What is the long-term average of daily mean air temperature?
+How many days have no rainfall recorded?
+What is the highest maximum daily air temperature recorded?
+What is the average wind speed across the monitoring period?
+What is the maximum wind speed ever recorded?
+How many days received more than 20 mm of rainfall?
+What is the long-term average relative humidity?
+What is the lowest daily mean air temperature recorded?
+Which calendar month receives the most precipitation on average?
+Which calendar year had the highest total annual rainfall?
+What is the average shortwave radiation per calendar month?
+How many days had a maximum air temperature above 30°C?
+What is the standard deviation of relative humidity?
+What is the 99th percentile of daily precipitation?
+What is the total precipitation per calendar year?
+How many days had average wind speed exceeding 5 m/s?
+What is the average maximum daily air temperature by meteorological season?
+How many days had relative humidity below 30%?
+What is the median daily mean air temperature?
+What is the cumulative shortwave radiation received per year?
+How many days had no rainfall combined with a maximum air temperature above 25°C?
+What is the standard deviation of daily precipitation?
+What is the average daily mean air temperature for each meteorological season?
+What is the year-by-year average wind speed?
+What is the maximum monthly precipitation total?
+What is the Pearson correlation between daily precipitation and daily shortwave radiation?
+What is the average maximum daily air temperature observed during the warmest calendar month of each year?
+How many days have a maximum air temperature exceeding the daily mean by more than 10°C?
+What is the average difference between maximum and mean daily air temperature per calendar month?
+What is the average daily relative humidity per calendar year?

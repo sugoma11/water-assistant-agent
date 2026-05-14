@@ -1,0 +1,101 @@
+What was the total precipitation recorded for each calendar month?
+How many measurement days had more than 10 mm of precipitation?
+What was the highest daily precipitation total recorded in the dataset?
+What was the average daily air temperature for each month?
+Which month had the highest average daily maximum air temperature?
+How many days had average air temperature below 0°C?
+What was the average relative humidity for each calendar month?
+What was the median wind speed for each season?
+How many days had precipitation above 20 mm and average air temperature above 15°C?
+What was the average shortwave radiation on days with no recorded precipitation?
+How did monthly precipitation totals vary across the monitoring period?
+What was the 95th percentile of daily precipitation totals?
+What percentage of days had no recorded precipitation?
+What was the average air temperature on days with at least 5 mm of precipitation?
+How many days had relative humidity above 80% and wind speed below 2 m/s?
+What was the monthly average soil moisture in the gravel roof?
+What was the monthly average soil moisture in the irrigated extensive green roof?
+What was the monthly average soil moisture in the non-irrigated extensive green roof?
+What was the monthly average soil moisture in the wetland green roof?
+Which roof type had the highest average soil moisture over the full monitoring period?
+How often did the wetland roof soil moisture exceed 60%?
+How often did the gravel roof soil moisture fall below 20%?
+What was the average difference in soil moisture between the irrigated and non-irrigated extensive green roofs?
+During which month was the soil moisture difference between the irrigated and non-irrigated extensive roofs largest?
+What was the minimum recorded soil moisture for each roof type?
+What was the maximum recorded soil moisture for each roof type?
+What was the monthly range of soil moisture in the wetland roof?
+How many days had average soil moisture above 50% in the wetland roof?
+How many days had average soil moisture below 25% in the non-irrigated extensive roof?
+What was the coefficient of variation of soil moisture for each roof type?
+What was the average soil temperature for each roof type by month?
+Which roof type had the lowest average soil temperature over the full monitoring period?
+What was the highest recorded soil temperature in the gravel roof?
+What was the lowest recorded soil temperature in the wetland roof?
+How often did soil temperature exceed 30°C in the gravel roof?
+How often did soil temperature exceed 30°C in the irrigated extensive roof?
+What was the average daily soil temperature difference between the gravel roof and wetland roof?
+During which month was the average soil temperature difference between the gravel roof and wetland roof greatest?
+What was the average soil temperature in the non-irrigated extensive roof during days with precipitation above 5 mm?
+How many days had soil temperature below 5°C in all monitored roof types?
+What was the monthly average outflow from the gravel roof lysimeter?
+What was the monthly average outflow from the irrigated extensive green roof lysimeter?
+What was the monthly average outflow from the non-irrigated extensive green roof lysimeter?
+What was the monthly average outflow from the wetland green roof lysimeters?
+Which roof type produced the largest total outflow over the full monitoring period?
+What was the maximum daily outflow from the gravel roof lysimeter?
+How many days had zero outflow from the wetland green roof lysimeters?
+How many days had total wetland roof outflow greater than 5 liters?
+What was the average daily outflow difference between the irrigated and non-irrigated extensive green roofs?
+During which month was outflow from the gravel roof highest?
+What percentage of total measured outflow came from the gravel roof?
+What percentage of total measured outflow came from the wetland roof lysimeters?
+How variable was daily outflow for each roof type, measured by standard deviation?
+How many days had greater outflow from the non-irrigated extensive roof than from the irrigated extensive roof?
+What was the median daily outflow for each lysimeter?
+What was the average reflected shortwave radiation for each roof type by month?
+Which roof type had the highest average surface temperature over the full monitoring period?
+What was the maximum corrected surface temperature for each roof type?
+What was the average difference between corrected surface temperature on the gravel roof and wetland roof?
+How often did the gravel roof corrected surface temperature exceed 310 K?
+How often did the wetland roof corrected surface temperature exceed 310 K?
+What was the average incoming shortwave radiation for each roof type by month?
+Which roof type had the highest average ratio of reflected to incoming shortwave radiation?
+How did the reflected-to-incoming shortwave radiation ratio differ between the gravel roof and the wetland roof?
+What was the monthly average longwave radiation emitted from each roof type?
+Which roof type had the lowest average corrected surface temperature during July?
+What was the daily maximum corrected surface temperature difference between the irrigated and non-irrigated extensive roofs?
+How many days had corrected surface temperature above 305 K on the gravel roof and below 300 K on the wetland roof?
+What was the average net shortwave radiation for each roof type?
+What was the average net longwave radiation for each roof type?
+How many days had precipitation above 10 mm and gravel roof outflow above 1 liter?
+What was the daily ratio of gravel roof outflow to precipitation on days with precipitation above 1 mm?
+How many days did gravel roof outflow exceed 80% of precipitation depth?
+How many days did irrigated extensive roof outflow exceed 50% of precipitation depth?
+How many days did non-irrigated extensive roof outflow exceed 50% of precipitation depth?
+How many days did wetland roof outflow exceed 50% of precipitation depth?
+What was the average outflow per millimeter of precipitation for each roof type on days with precipitation above 1 mm?
+Which roof type had the lowest average outflow-to-precipitation ratio on days with precipitation above 5 mm?
+How did monthly precipitation totals compare with monthly total outflow from each roof type?
+What was the correlation between daily precipitation and daily gravel roof outflow?
+What was the correlation between daily precipitation and daily wetland roof outflow?
+What was the correlation between daily precipitation and daily outflow from the irrigated extensive roof?
+What was the correlation between daily precipitation and daily outflow from the non-irrigated extensive roof?
+What was the average soil moisture in each roof type on days with precipitation above 10 mm?
+What was the average soil moisture in each roof type on days with no precipitation?
+How did wetland roof soil moisture differ between days with precipitation above 10 mm and days with no precipitation?
+What was the correlation between daily precipitation and daily soil moisture in the non-irrigated extensive roof?
+What was the correlation between daily air temperature and soil moisture in the irrigated extensive roof?
+What was the correlation between daily air temperature and soil temperature in the gravel roof?
+What was the average soil temperature in each roof type on days with average air temperature above 25°C?
+What was the average soil moisture in the non-irrigated extensive roof on days with average air temperature above 25°C?
+How many days had precipitation above 5 mm and non-irrigated extensive roof soil moisture below 30%?
+What was the correlation between daily shortwave radiation and corrected surface temperature on the gravel roof?
+What was the correlation between daily shortwave radiation and corrected surface temperature on the wetland roof?
+How did corrected surface temperature on the irrigated extensive roof differ between days with precipitation above 5 mm and days with no precipitation?
+What was the average corrected surface temperature of each roof type on days with average air temperature above 25°C?
+How many days had wetland roof soil moisture above 60% and wetland roof outflow above 1 liter?
+How many days had gravel roof soil moisture below 20% and gravel roof corrected surface temperature above 305 K?
+What was the correlation between wetland roof soil moisture and wetland roof corrected surface temperature?
+What was the correlation between non-irrigated extensive roof soil moisture and non-irrigated extensive roof corrected surface temperature?
+What was the monthly water balance proxy for each roof type, calculated as precipitation minus measured outflow?

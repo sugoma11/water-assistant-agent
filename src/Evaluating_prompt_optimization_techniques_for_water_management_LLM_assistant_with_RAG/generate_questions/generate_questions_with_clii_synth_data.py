@@ -43,6 +43,7 @@ BAD questions: \
 "What is the relationship between the retention layer capacity and the frequency of overflow events?" - it checks ONLY factual knowledge, no tools are necessary.
 "How often does the wetland roof receive irrigation compared with the extensive green roof?" - it requires event detection (irrigation) with unclear threshold.
 "What weather conditions coincided with the lowest recorded air pressure?" - weather conditions are not retrievable with SQL
+"... in the last weekend?" - temporal reference like "last weekend" is not appropriate for water management research as we are not building a consumer app, but rather a research assistant.
 
 An example of a GOOD question: \
 How many days were when runoff accounted for 80% of the precipitation? - requires data quering and terms understanding.
@@ -92,6 +93,8 @@ def build_cli_command(tool: str, model: str, prompt: str) -> list[str]:
             model,
             "--output-format",
             "text",
+            "--effort",
+            "xhigh"
         ]
     if tool == "copilot":
         return [

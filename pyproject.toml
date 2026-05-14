@@ -5,8 +5,10 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "argilla>=2.8",
     "click>=8.3.1",
     "litellm>=1.82.6",
+    "pydantic-settings>=2.0",
     "python-dotenv>=1.2.2",
 ]
 
@@ -17,7 +19,11 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"src/Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG/argilla_labeling/static" = "Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG/argilla_labeling/static"
+
 [project.scripts]
 generate-questions = "Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.generate_questions.generate_questions_with_terms:generate_questions"
 generate-questions-cli = "Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.generate_questions.generate_questions_with_cli:generate_questions"
 generate-questions-cli-synth = "Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.generate_questions.generate_questions_with_clii_synth_data:generate_questions"
+argilla-labeling = "Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.argilla_labeling.cli:main"

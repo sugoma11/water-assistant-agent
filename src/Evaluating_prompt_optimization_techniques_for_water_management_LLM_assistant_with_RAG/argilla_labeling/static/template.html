@@ -1,0 +1,27 @@
+<div id="labeler-root">
+  <div id="topbar">
+    <h2>Question / SQL Labeling</h2>
+    <span id="save-status"></span>
+    <button id="btn-save" onclick="saveAll()">Save</button>
+  </div>
+  <div id="body">
+    <div class="form-group">
+      <label class="form-label" for="field-question">Question</label>
+      <textarea id="field-question" class="form-textarea" rows="4"
+        placeholder="Natural-language question…"
+        oninput="state.question=this.value"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="field-sql">SQL Query</label>
+      <textarea id="field-sql" class="form-textarea form-sql" rows="12"
+        placeholder="SELECT …"
+        oninput="state.sql_query=this.value"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="field-notes">Notes</label>
+      <textarea id="field-notes" class="form-textarea" rows="4"
+        placeholder="Optional notes about this record…"
+        oninput="state.notes=this.value"></textarea>
+    </div>
+  </div>
+</div>

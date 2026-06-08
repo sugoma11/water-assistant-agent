@@ -90,3 +90,19 @@ body, #labeler-root { font-family: system-ui, -apple-system, sans-serif; font-si
   white-space: pre;
   overflow-x: auto;
 }
+.form-check { display: flex; align-items: center; gap: 8px; }
+.form-check label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  text-transform: none;
+  letter-spacing: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.form-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #6366f1;
+}

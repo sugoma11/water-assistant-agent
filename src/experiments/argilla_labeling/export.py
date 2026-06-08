@@ -2,18 +2,20 @@
 
 import datetime as dt
 import json
+import duckdb
 import pathlib
 from typing import Any
+import sqlglot
 from urllib.parse import quote
 
 import argilla as rg
 
-from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.argilla_labeling.dataset import (
+from experiments.argilla_labeling.dataset import (
     build_dataset_settings,
     create_dataset,
     load_template,
 )
-from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.argilla_labeling.settings import (
+from experiments.argilla_labeling.settings import (
     ArgillaSettings,
 )
 
@@ -194,6 +196,8 @@ def export_submitted_qa(
         )
     records.sort(key=_record_inserted_at)
 
+    conn = duckdb.connect('data/water.duckdb')
+
     dataset_id = str(dataset.id)
     rows: list[dict[str, str]] = []
     for i, rec in enumerate(records, start=1):
@@ -209,6 +213,24 @@ def export_submitted_qa(
             or fields_content.get("sql_query", "")
             or ""
         )
+
+        sql  = sqlglot.parse_one(
+            sql,
+            read="duckdb"
+        ).sql(
+            dialect="duckdb",
+            pretty=True
+        )
+
+        try:
+            conn.execute(sql)
+        except Exception as e:
+            raise(
+                RuntimeError(
+                    f"Record {rec.get('id')} has invalid SQL: {sql}\nError: {e}"
+                )
+            ) from e
+
         rows.append(
             {
                 "question": question,

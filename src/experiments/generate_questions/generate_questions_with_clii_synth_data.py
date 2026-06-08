@@ -32,21 +32,27 @@ The researcher/practitioner is interested in understanding the performance of th
 The questions should be ONLY data-driven and do NOT check bare facts knowledge. \
 
 The questions should:
+- Not be simply factual lookups like: "What was the total precipitation recorded for each calendar month?"
 - Be answerable in ONE SQL query over ONE table (no multi-step reasoning that would require multiple queries or tool calls)
 - Be in natural language, as a real user would ask them
 - NOT asking for event detection
 - Be diverse in complexity (some simple, some requiring deeper analysis)
 - Not reference specific column names or database schemas
-- Not involving ambiguity, e.g., "during hot days", "Under high incoming sunlight" - not clear what is "hot" or "high"
-
+- Not involving ambiguity, e.g., "during hot days", "Under high incoming sunlight", "rainy days" - not clear what is "hot" or "high" or "rainy". Just specify the conditions: with > 10mm precipitation, with average 30C air temperature, etc.
 BAD questions: \
+"What was the highest daily precipitation total recorded in the dataset?" - too simple SQL query, just a MAX aggregation.
 "What is the relationship between the retention layer capacity and the frequency of overflow events?" - it checks ONLY factual knowledge, no tools are necessary.
 "How often does the wetland roof receive irrigation compared with the extensive green roof?" - it requires event detection (irrigation) with unclear threshold.
-"What weather conditions coincided with the lowest recorded air pressure?" - weather conditions are not retrievable with SQL
-"... in the last weekend?" - temporal reference like "last weekend" is not appropriate for water management research as we are not building a consumer app, but rather a research assistant.
+"What weather conditions coincided with the lowest recorded air pressure?" - vague "weather conditions" are not retrievable with SQL.
+"... in the last weekend?" - temporal reference like "last weekend" is not appropriate as we are not building a consumer app, but rather a research assistant.
+"What was the average shortwave radiation on days with no recorded precipitation?" - almost good but "average shortwave" is ambiguous: there are upward and downward facing shortwave radiation.
+"How did average wind speed vary by calendar month?" - this is not focused on the green roof performance or water management, but rather just a general weather question. Something about precipitation would be more relevant.
 
-An example of a GOOD question: \
+GOOD questions: \
 How many days were when runoff accounted for 80% of the precipitation? - requires data quering and terms understanding.
+What was the maximum corrected surface temperature for each roof type? - requires comparing across roof types not just a simple MAX.
+What is the correlation between daily total precipitation and daily maximum surface temperature on the irrigated extensive green roof? - requires understanding correlation and comparing two variables.
+
 
 Do NOT include similar questions with only minor wording changes. Each question should be distinct in its intent and focus.
 """

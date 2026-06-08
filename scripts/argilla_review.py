@@ -18,10 +18,12 @@ import click
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
-from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.argilla_labeling.settings import (  # noqa: E402
+from experiments.argilla_labeling.settings import (  # noqa: E402
     ArgillaSettings,
 )
-from tenants.green_roof.sensordata import table_schema_dict  # noqa: E402
+from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.tenants.green_roof.sensordata import (  # noqa: E402
+    table_schema_dict,
+)
 
 _REVIEW_MARKER = "[llm-review]"
 _DEFAULT_MODEL = "sonnet"

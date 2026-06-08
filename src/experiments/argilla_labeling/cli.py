@@ -5,23 +5,25 @@ import pathlib
 import argilla as rg
 import click
 
-from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.argilla_labeling.dataset import (
+from experiments.argilla_labeling.dataset import (
     build_dataset_settings,
     create_dataset,
+    get_dataset,
     load_template,
     load_template_from_dir,
     update_dataset_template,
     upload_records,
+    upsert_records,
 )
-from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.argilla_labeling.discovery import (
+from experiments.argilla_labeling.discovery import (
     load_records,
 )
-from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.argilla_labeling.export import (
+from experiments.argilla_labeling.export import (
     dump_dataset,
     export_submitted_qa,
     load_from_dump,
 )
-from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.argilla_labeling.settings import (
+from experiments.argilla_labeling.settings import (
     ArgillaSettings,
 )
 
@@ -66,6 +68,35 @@ def create(dataset_name: str | None, input_path: pathlib.Path) -> None:
     upload_records(dataset, records)
     click.echo(
         f"Uploaded {len(records)} records to '{settings.argilla_dataset_name}' "
+        f"(workspace '{settings.argilla_workspace}')."
+    )
+
+
+@main.command("upsert")
+@_dataset_name_option
+@click.option(
+    "--input",
+    "input_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=pathlib.Path),
+    required=True,
+    help="Path to a .txt (one question per line), .json, or .jsonl file with "
+    "{question, sql?} entries.",
+)
+def upsert(dataset_name: str | None, input_path: pathlib.Path) -> None:
+    """Upsert question records into an existing Argilla dataset.
+
+    Records use stable IDs derived from the question text, so re-uploading the
+    same question updates the existing record instead of creating a duplicate.
+    """
+    settings = ArgillaSettings().with_dataset_name(dataset_name)
+    records = load_records(input_path)
+    if not records:
+        raise click.ClickException(f"No records loaded from {input_path}.")
+    client = settings.make_client()
+    dataset = get_dataset(client, settings)
+    upsert_records(dataset, records)
+    click.echo(
+        f"Upserted {len(records)} records into '{settings.argilla_dataset_name}' "
         f"(workspace '{settings.argilla_workspace}')."
     )
 

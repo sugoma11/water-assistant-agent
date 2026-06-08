@@ -7,6 +7,7 @@ const RECORD_ID   = record.id;
 const state = {
   question: "",
   sql_query: "",
+  sql_valid: false,
   notes: "",
   currentResponseId: null,
 };
@@ -51,6 +52,7 @@ function applyResponseValues(values) {
   if (!values) return;
   if (values.question?.value  != null) state.question  = values.question.value;
   if (values.sql_query?.value != null) state.sql_query = values.sql_query.value;
+  if (values.sql_valid?.value != null) state.sql_valid = values.sql_valid.value === "valid";
   if (values.notes?.value     != null) state.notes     = values.notes.value;
 }
 
@@ -64,6 +66,7 @@ window.saveAll = async function() {
     values: {
       question:  { value: state.question  || "" },
       sql_query: { value: state.sql_query || "" },
+      sql_valid: { value: state.sql_valid ? "valid" : "invalid" },
       notes:     { value: state.notes     || "" },
     }
   };
@@ -141,7 +144,8 @@ function setStatus(msg, cls) {
 
 loadBaseline();
 loadExistingResponse().then(() => {
-  document.getElementById("field-question").value = state.question;
-  document.getElementById("field-sql").value      = state.sql_query;
-  document.getElementById("field-notes").value    = state.notes;
+  document.getElementById("field-question").value    = state.question;
+  document.getElementById("field-sql").value         = state.sql_query;
+  document.getElementById("field-sql-valid").checked = state.sql_valid;
+  document.getElementById("field-notes").value       = state.notes;
 });

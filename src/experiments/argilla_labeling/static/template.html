@@ -17,6 +17,11 @@
         placeholder="SELECT …"
         oninput="state.sql_query=this.value"></textarea>
     </div>
+    <div class="form-group form-check">
+      <input id="field-sql-valid" type="checkbox"
+        onchange="state.sql_valid=this.checked">
+      <label for="field-sql-valid">Is SQL valid now?</label>
+    </div>
     <div class="form-group">
       <label class="form-label" for="field-notes">Notes</label>
       <textarea id="field-notes" class="form-textarea" rows="4"

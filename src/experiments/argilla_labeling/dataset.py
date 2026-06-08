@@ -1,23 +1,21 @@
 """Dataset creation, template loading, and record upload for Argilla."""
 
+import hashlib
 import importlib.resources
 import json
 import pathlib
 
 import argilla as rg
 
-from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.argilla_labeling.discovery import (
+from experiments.argilla_labeling.discovery import (
     QARecord,
 )
-from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.argilla_labeling.settings import (
+from experiments.argilla_labeling.settings import (
     ArgillaSettings,
 )
 
 UTF8 = "utf-8"
-_STATIC_PACKAGE = (
-    "Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG"
-    ".argilla_labeling.static"
-)
+_STATIC_PACKAGE = "experiments.argilla_labeling.static"
 
 
 def _read_static_file(
@@ -70,6 +68,12 @@ def build_dataset_settings(template: str) -> rg.Settings:
         questions=[
             rg.TextQuestion(name="question", required=True),
             rg.TextQuestion(name="sql_query", required=True),
+            rg.LabelQuestion(
+                name="sql_valid",
+                labels=["valid", "invalid"],
+                title="Is SQL valid now?",
+                required=False,
+            ),
             rg.TextQuestion(name="notes", required=False),
         ],
     )
@@ -126,6 +130,45 @@ def upload_records(dataset: rg.Dataset, records: list[QARecord]) -> None:
     """Convert QARecord list to Argilla records and upload."""
     argilla_records = [
         rg.Record(
+            fields={
+                "content": {
+                    "question": rec.question,
+                    "sql_query": rec.sql,
+                },
+            },
+        )
+        for rec in records
+    ]
+    dataset.records.log(argilla_records)
+
+
+def get_dataset(client: rg.Argilla, settings: ArgillaSettings) -> rg.Dataset:
+    """Return an existing dataset, raising if it does not exist."""
+    dataset = client.datasets(
+        name=settings.argilla_dataset_name,
+        workspace=settings.argilla_workspace,
+    )
+    if dataset is None:
+        raise RuntimeError(
+            f"Dataset '{settings.argilla_dataset_name}' not found in "
+            f"workspace '{settings.argilla_workspace}'."
+        )
+    return dataset
+
+
+def _stable_record_id(question: str) -> str:
+    return hashlib.sha256(question.encode(UTF8)).hexdigest()[:32]
+
+
+def upsert_records(dataset: rg.Dataset, records: list[QARecord]) -> None:
+    """Upload records with stable IDs derived from the question text.
+
+    Argilla's ``records.log`` upserts on matching ``id``, so re-uploading the
+    same question updates the existing record instead of inserting a duplicate.
+    """
+    argilla_records = [
+        rg.Record(
+            id=_stable_record_id(rec.question),
             fields={
                 "content": {
                     "question": rec.question,

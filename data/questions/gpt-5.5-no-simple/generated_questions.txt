@@ -1,0 +1,100 @@
+How many days had runoff from the irrigated extensive green roof equal to at least 80% of the recorded precipitation?
+How often did the non-irrigated extensive green roof produce less daily outflow than the irrigated extensive green roof on days with at least 10 mm precipitation?
+Which roof type had the lowest median daily outflow on days with at least 5 mm precipitation?
+How did the daily runoff-to-precipitation ratio differ between the gravel roof and the wetland green roof on days with at least 20 mm precipitation?
+On days with at least 15 mm precipitation, what percentage of precipitation left each roof type as outflow?
+How many days had no measurable outflow from the non-irrigated extensive green roof despite at least 5 mm precipitation?
+Which roof type most frequently had the highest daily outflow among the monitored lysimeters?
+How did monthly runoff retention differ between the irrigated and non-irrigated extensive green roofs?
+What was the average daily outflow from each roof type during months with more than 50 mm total precipitation?
+How variable was daily outflow for each roof type during days with at least 10 mm precipitation?
+Which roof type showed the strongest correlation between daily precipitation and daily outflow?
+How did daily outflow from the two wetland irrigation strategies compare on days with at least 10 mm precipitation?
+How often did the threshold-irrigated wetland roof produce less daily outflow than the timer-irrigated wetland roof?
+What was the median difference in daily outflow between the small threshold-irrigated and timer-irrigated substrate lysimeters?
+On days with at least 10 mm precipitation, which lysimeter had the highest average runoff response?
+How many days had runoff from the gravel roof exceeding precipitation by more than 10%?
+How often did the irrigated extensive roof have daily outflow greater than the non-irrigated extensive roof by at least 5 liters?
+What was the average monthly difference in outflow between the irrigated extensive and non-irrigated extensive green roofs?
+Which calendar month had the greatest difference in total outflow between the gravel roof and the non-irrigated extensive green roof?
+How did daily outflow from each roof type change across calendar months with at least 30 mm precipitation?
+What was the ratio of wetland roof outflow to gravel roof outflow for each calendar month?
+How many days had all vegetated roofs producing less outflow than the gravel roof?
+How many days had the wetland roof outflow lower than both extensive green roofs?
+On days with daily precipitation between 5 and 20 mm, which roof type retained the largest share of precipitation?
+On days with daily precipitation above 30 mm, which roof type retained the smallest share of precipitation?
+What was the average soil moisture for each roof type by calendar month?
+Which roof type had the lowest 10th percentile soil moisture during the monitoring period?
+How often did the non-irrigated extensive roof soil moisture fall below 15%?
+How often did the irrigated extensive roof soil moisture fall below 15%?
+How did median soil moisture differ between the irrigated and non-irrigated extensive roofs?
+What was the average daily soil moisture difference between the wetland roof and the gravel roof?
+Which roof type had the most stable daily soil moisture based on standard deviation?
+How many days did the wetland roof maintain average soil moisture above 40%?
+How many days did the intensive green roof maintain average soil moisture between 20% and 35%?
+What was the monthly frequency of soil moisture below 20% for each vegetated roof?
+Which roof type showed the largest daily range in soil moisture?
+How did average soil moisture on the non-irrigated extensive roof differ between days with no precipitation and days with at least 10 mm precipitation?
+What was the correlation between daily precipitation and daily average soil moisture for each roof type?
+How did soil moisture in the irrigated extensive roof vary with daily maximum air temperature above 30 °C?
+On days with average air temperature above 25 °C and precipitation below 1 mm, which roof type had the highest average soil moisture?
+How often did the irrigated extensive roof maintain at least 5 percentage points higher soil moisture than the non-irrigated extensive roof?
+What was the average soil moisture difference between the two extensive roofs during days with precipitation below 1 mm?
+Which roof type recovered to the highest average soil moisture on days with at least 20 mm precipitation?
+How did monthly average soil moisture compare between the wetland roof and intensive green roof?
+What was the lowest monthly median soil moisture observed for each roof type?
+Which roof type had the strongest negative correlation between daily air temperature and soil moisture?
+What was the average soil temperature for each roof type by calendar month?
+Which roof type had the lowest maximum daily soil temperature during days with maximum air temperature above 30 °C?
+How often did the gravel roof soil temperature exceed 35 °C?
+How often did the wetland roof soil temperature stay below 25 °C when maximum air temperature exceeded 30 °C?
+What was the average daily soil temperature difference between the gravel roof and the wetland roof?
+Which roof type had the smallest daily soil temperature variability?
+How did median soil temperature differ between irrigated and non-irrigated extensive roofs?
+On days with average air temperature above 25 °C, which roof type had the lowest average soil temperature?
+What was the correlation between daily air temperature and daily soil temperature for each roof type?
+How did soil temperature in the non-irrigated extensive roof differ between days with precipitation below 1 mm and days with at least 10 mm precipitation?
+Which roof type showed the greatest monthly cooling relative to air temperature?
+How many days had the wetland roof soil temperature at least 3 °C lower than the gravel roof?
+How often was the irrigated extensive roof soil temperature lower than the non-irrigated extensive roof by at least 2 °C?
+What was the average soil temperature difference between vegetated roofs and the gravel roof during days with maximum air temperature above 30 °C?
+Which roof type had the highest average corrected surface temperature by calendar month?
+How often did the gravel roof have the highest corrected surface temperature among the monitored roof surfaces?
+How often did the wetland roof have the lowest corrected surface temperature among the monitored roof surfaces?
+What was the average corrected surface temperature difference between the irrigated and non-irrigated extensive roofs?
+On days with maximum air temperature above 30 °C, which roof surface had the lowest average corrected surface temperature?
+How did corrected surface temperature vary by roof type on days with precipitation below 1 mm?
+What was the maximum corrected surface temperature for each roof type during days with average air temperature above 25 °C?
+How many days did the non-irrigated extensive roof corrected surface temperature exceed the irrigated extensive roof by at least 5 K?
+What was the monthly average difference in corrected surface temperature between the gravel roof and wetland roof?
+Which roof type had the smallest daily corrected surface temperature range?
+What was the correlation between downward shortwave radiation and corrected surface temperature for each roof type?
+How did upward shortwave radiation compare between the gravel roof and vegetated roofs by calendar month?
+Which roof type had the highest average shortwave reflectance calculated from upward and downward shortwave radiation?
+How did shortwave reflectance differ between irrigated and non-irrigated extensive roofs on days with downward shortwave radiation above 500 W/m²?
+What was the monthly average net shortwave radiation for each roof type?
+Which roof type had the lowest average net radiation calculated from shortwave and longwave components?
+How often did the wetland roof have lower corrected surface temperature than the gravel roof when downward shortwave radiation exceeded 600 W/m²?
+What was the relationship between daily total precipitation and daily maximum corrected surface temperature on the irrigated extensive green roof?
+How did corrected surface temperature on the non-irrigated extensive roof differ between days with soil moisture below 15% and days with soil moisture above 30%?
+What was the correlation between soil moisture and soil temperature for each roof type?
+How did soil moisture and outflow covary for the irrigated extensive green roof at daily resolution?
+Which roof type showed the strongest correlation between daily soil moisture and daily outflow?
+On days with at least 10 mm precipitation, how did average soil moisture compare between roofs with daily outflow above 5 liters and roofs with daily outflow below 5 liters?
+How often did the non-irrigated extensive roof combine soil moisture below 15% with corrected surface temperature above 310 K?
+How often did the wetland roof combine soil moisture above 40% with corrected surface temperature below 300 K?
+What was the average outflow from each roof type when relative humidity exceeded 80% and precipitation was below 1 mm?
+How did daily outflow differ between days with wind speed below 2 m/s and days with wind speed above 5 m/s for each roof type?
+What was the correlation between daily relative humidity and daily soil moisture for each roof type?
+How did soil temperature differ across roof types on days with relative humidity below 40%?
+On days with precipitation above 20 mm and average air temperature above 20 °C, which roof type had the lowest runoff-to-precipitation ratio?
+How did monthly runoff retention compare between the two wetland irrigation strategies?
+Which roof type had the highest number of days with daily outflow above 10 liters?
+What was the 90th percentile daily outflow for each roof type?
+How did the ratio of daily outflow from vegetated roofs to gravel roof outflow change by calendar month?
+Which roof type had the largest reduction in corrected surface temperature relative to the gravel roof during days with downward shortwave radiation above 700 W/m²?
+How often did the irrigated extensive roof have both higher soil moisture and lower corrected surface temperature than the non-irrigated extensive roof?
+What was the average daily cooling benefit of the wetland roof relative to the gravel roof during days with maximum air temperature above 30 °C?
+How did soil moisture below 20% affect the runoff-to-precipitation ratio of the non-irrigated extensive roof on days with at least 5 mm precipitation?
+Which roof type had the strongest association between daily corrected surface temperature and daily soil moisture?
+How did average outflow from the small substrate lysimeters differ between timer-based and threshold-based irrigation during months with precipitation below 30 mm?

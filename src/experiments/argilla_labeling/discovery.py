@@ -29,6 +29,34 @@ def _load_txt(path: pathlib.Path) -> list[QARecord]:
             records.append(QARecord(question=question))
     return records
 
+def _load_jsonl(path: pathlib.Path) -> list[QARecord]:
+    records: list[QARecord] = []
+    for i, line in enumerate(path.read_text(encoding="utf-8").splitlines()):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError as e:
+            raise click.ClickException(
+                f"{path}: line {i} is not valid JSON: {e}"
+            ) from e
+        if not isinstance(obj, dict):
+            raise click.ClickException(
+                f"{path}: line {i} is not a JSON object."
+            )
+        question = obj.get("question")
+        if not isinstance(question, str) or not question.strip():
+            raise click.ClickException(
+                f"{path}: line {i} is missing a non-empty 'question' field."
+            )
+        sql = obj.get("sql", "")
+        if not isinstance(sql, str):
+            raise click.ClickException(
+                f"{path}: line {i} has non-string 'sql'."
+            )
+        records.append(QARecord(question=question.strip(), sql=sql))
+    return records
 
 def _load_json(path: pathlib.Path) -> list[QARecord]:
     raw = json.loads(path.read_text(encoding="utf-8"))
@@ -63,6 +91,8 @@ def load_records(path: pathlib.Path) -> list[QARecord]:
         return _load_txt(path)
     if suffix == ".json":
         return _load_json(path)
+    if suffix == ".jsonl":
+        return _load_jsonl(path)
     raise click.ClickException(
-        f"Unsupported input file extension '{suffix}'. Expected .txt or .json."
+        f"Unsupported input file extension '{suffix}'. Expected .txt, .json, or .jsonl."
     )

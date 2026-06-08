@@ -12,7 +12,7 @@ DB_PATH = ROOT / "data" / "water.duckdb"
 
 SOURCES = [
     # (table, file, time_col, has_dup_timestamps, drop_prefixes)
-    ("outflow",   "Outflow.txt",         "Date", False, ("Zeitlysi_Efflux.y", "Sensorlysi_Efflux.y")),
+    ("outflow",   "Outflow.txt",         "Date", False, ("Zeitlysi_Efflux.y", "Sensorlysi_Efflux.y", "Sumpf1_Efflux")),
     ("radiation", "Radiation.txt",       "time", True,  ("CNR", "CMP", "CGR")),
     ("swc",       "SWC.txt",             "time", True,  ()),
     ("tsoil",     "Tsoil.txt",           "time", True,  ()),

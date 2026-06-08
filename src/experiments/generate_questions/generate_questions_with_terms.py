@@ -44,8 +44,8 @@ Return ONLY the questions, one per line. No other text.
 
 
 def build_completion_kwargs(model: str) -> dict:
-    api_base = os.environ["LLM_API_BASE"]
-    api_key = os.environ["LLM_API_KEY"]
+    api_base = os.environ["LLM_API_BASE_KISSKI"]
+    api_key = os.environ["LLM_API_KEY_KISSKI"]
     temperature = float(os.environ.get("LLM_TEMPERATURE", "0.7"))
     top_p = float(os.environ.get("LLM_TOP_P", "0.9"))
     seed = int(os.environ.get("LLM_SEED", "42"))

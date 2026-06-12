@@ -150,11 +150,15 @@ https://arxiv.org/pdf/2406.07496
 - Introduces TGD (Textual Gradient Descent): a teacher LLM proposes prompt change given X, student LLM output of X and LLM-as-Judge judgements for y and LLM_student(X)
 
 
-p1: Better Prompt Optimization with Fewer Prompts  
+- p1: Better Prompt Optimization with Fewer Prompts  
 https://arxiv.org/html/2604.08801v1  
- - Researches how system / user prompt affect GEPA optimization. More examples - worse results. It's coherent with https://decagon.ai/blog/optimizing-gepa-for-production
 
+- Researches how system / user prompt affect GEPA optimization. More examples - worse results. It's coherent with https://decagon.ai/blog/optimizing-gepa-for-production
 
+- SkillOpt: could beat GEPA
+https://microsoft.github.io/SkillOpt/#idea
+
+### Text to SQL
 
 
 
@@ -163,6 +167,11 @@ https://arxiv.org/html/2604.08801v1
 - Apply any GD heuristics: add noise, curriculum learning, any analogy of LR scheduling, warm-up, dropouts (for pormpts?)
 - Unsupervised / semisupervised GEPA
 
+
+### Things to check:
+- English / German / Broken English question effect
+- 
+
 ### Extra
 TabPFN
 Zeroshot timeseries prediction
@@ -170,6 +179,9 @@ https://github.com/priorlabs/tabpfn
 
 Text-2-SQL approaches (internal):
 https://linear.app/finalyst/issue/FIN-7/create-text2sql-evaluation-pipeline
+
+Temperature for LLM-as-Judge. Set 0.0.
+https://arxiv.org/pdf/2603.28304
 
 
 ### Stack

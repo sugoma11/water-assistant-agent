@@ -177,10 +177,11 @@ def _build_argilla_link(api_url: str, dataset_id: str, page: int) -> str:
     )
 
 
-def export_submitted_qa(
+def export_qa(
     client: rg.Argilla,
     settings: ArgillaSettings,
     output_path: pathlib.Path,
+    include_pending: bool = False,
 ) -> int:
     """Export submitted records as ``[{question, sql, argilla_link}, ...]``.
 
@@ -188,7 +189,7 @@ def export_submitted_qa(
     ``page`` parameter (1-indexed position) deterministically opens the same
     record under the matching sort in the Argilla UI.
     """
-    dataset, records = _fetch_records(client, settings, include_pending=False)
+    dataset, records = _fetch_records(client, settings, include_pending=include_pending)
     if dataset is None:
         raise RuntimeError(
             f"Dataset '{settings.argilla_dataset_name}' not found in "

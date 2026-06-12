@@ -20,6 +20,11 @@ text2sql model schema-path question:
 text2sql-batch model schema-path questions-file output:
     uv run text2sql-cli --model {{model}} --schema-path {{schema-path}} --questions-file {{questions-file}} --output {{output}}
 
+# Evaluate text-2-SQL generation with an LLM-as-Judge and log results to MLflow
+# Experiment name + tracking URI are read from .env (MLFLOW_EXPERIMENT_NAME, MLFLOW_TRACKING_URI)
+text2sql-eval questions-path schema-path db-path model endpoint judge-model judge-endpoint:
+    uv run text2sql-eval --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}}
+
 # Create an Argilla dataset and upload questions from a .txt or .json file
 argilla-create input dataset-name:
     uv run argilla-labeling create --input {{input}} --dataset-name {{dataset-name}}
@@ -42,7 +47,7 @@ argilla-copy source target:
 
 # Export submitted records as JSON [{question, sql, argilla_link}, ...]
 argilla-export output dataset-name:
-    uv run argilla-labeling export --output {{output}} --dataset-name {{dataset-name}}
+    uv run argilla-labeling export --output {{output}} --dataset-name {{dataset-name}} --include-pending
 
 # Update the labeling UI template of an existing dataset (preserves data)
 argilla-update-ui dataset-name:

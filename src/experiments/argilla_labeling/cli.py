@@ -20,7 +20,7 @@ from experiments.argilla_labeling.discovery import (
 )
 from experiments.argilla_labeling.export import (
     dump_dataset,
-    export_submitted_qa,
+    export_qa,
     load_from_dump,
 )
 from experiments.argilla_labeling.settings import (
@@ -193,11 +193,17 @@ def copy(
     required=True,
     help="Path to write the JSON export of submitted records.",
 )
-def export(dataset_name: str | None, output: pathlib.Path) -> None:
+@click.option(
+    "--include-pending",
+    is_flag=True,
+    default=False,
+    help="Include pending records in the export.",
+)
+def export(dataset_name: str | None, output: pathlib.Path, include_pending: bool) -> None:
     """Export submitted records as JSON ``[{question, sql, argilla_link}, ...]``."""
     settings = ArgillaSettings().with_dataset_name(dataset_name)
     client = settings.make_client()
-    count = export_submitted_qa(client, settings, output)
+    count = export_qa(client, settings, output, include_pending=include_pending)
     click.echo(f"Exported {count} submitted records to {output}.")
 
 

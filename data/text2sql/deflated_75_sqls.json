@@ -1,0 +1,377 @@
+[
+  {
+    "question": "How many days had runoff from the smart irrigated extensive green roof equal to at least 80% of the recorded precipitation?",
+    "sql": "WITH daily_out AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Extensiv1_Efflux) AS runoff\n  FROM outflow\n  GROUP BY\n    1\n), daily_rain AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS rain\n  FROM wetter\n  GROUP BY\n    1\n)\nSELECT\n  COUNT(*)\nFROM daily_out AS o\nJOIN daily_rain AS w\n  ON o.day = w.day\nWHERE\n  w.rain > 0 AND o.runoff >= 0.8 * w.rain",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=1&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Which roof type had the lowest median daily outflow on days with at least 15 mm precipitation?",
+    "sql": "WITH daily_rain AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS rain_mm\n  FROM wetter\n  GROUP BY\n    1\n), daily_outflow AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Kies_Efflux) AS Kies,\n    SUM(Extensiv1_Efflux) AS Extensiv1,\n    SUM(Extensiv2_Efflux) AS Extensiv2,\n    SUM(Sumpf2_Efflux) AS Sumpf2,\n    SUM(Zeitlysi_Efflux_x) AS Zeitlysi,\n    SUM(Sensorlysi_Efflux_x) AS Sensorlysi\n  FROM outflow\n  GROUP BY\n    1\n), joined AS (\n  SELECT\n    o.*\n  FROM daily_outflow AS o\n  JOIN daily_rain AS r\n    USING (day)\n  WHERE\n    r.rain_mm >= 15\n), unpivoted AS (\n  SELECT\n    'Kies' AS roof,\n    Kies AS outflow\n  FROM joined\n  UNION ALL\n  SELECT\n    'Extensiv1',\n    Extensiv1\n  FROM joined\n  UNION ALL\n  SELECT\n    'Extensiv2',\n    Extensiv2\n  FROM joined\n  UNION ALL\n  SELECT\n    'Sumpf2',\n    Sumpf2\n  FROM joined\n  UNION ALL\n  SELECT\n    'Zeitlysi',\n    Zeitlysi\n  FROM joined\n  UNION ALL\n  SELECT\n    'Sensorlysi',\n    Sensorlysi\n  FROM joined\n)\nSELECT\n  roof,\n  MEDIAN(outflow) AS median_daily_outflow\nFROM unpivoted\nGROUP BY\n  roof\nORDER BY\n  median_daily_outflow ASC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=3&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How did the daily runoff-to-precipitation ratio differ between the gravel roof and the wetland green roof on days with at least 20 mm precipitation?",
+    "sql": "WITH daily_rain AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS rain_mm\n  FROM wetter\n  GROUP BY\n    1\n  HAVING\n    SUM(Rain) >= 20\n), daily_outflow AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Kies_Efflux) AS gravel_outflow_l,\n    SUM(Sumpf2_Efflux) AS sumpf2_outflow_l\n  FROM outflow\n  GROUP BY\n    1\n)\nSELECT\n  r.day,\n  r.rain_mm,\n  o.gravel_outflow_l,\n  o.sumpf2_outflow_l,\n  o.gravel_outflow_l / NULLIF(r.rain_mm, 0) AS gravel_runoff_ratio,\n  o.sumpf2_outflow_l / NULLIF(r.rain_mm, 0) AS wetland_sumpf2_runoff_ratio,\n  (\n    o.gravel_outflow_l / NULLIF(r.rain_mm, 0)\n  ) - (\n    o.sumpf2_outflow_l / NULLIF(r.rain_mm, 0)\n  ) AS gravel_minus_wetland_ratio\nFROM daily_rain AS r\nJOIN daily_outflow AS o\n  USING (day)\nORDER BY\n  r.day",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=4&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "On days with at least 15 mm precipitation, what percentage of precipitation left each roof type as outflow?",
+    "sql": "WITH daily_rain AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS rain_mm\n  FROM wetter\n  GROUP BY\n    1\n  HAVING\n    SUM(Rain) >= 15\n), daily_outflow AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Kies_Efflux) AS Kies_Efflux,\n    SUM(Extensiv1_Efflux) AS Extensiv1_Efflux,\n    SUM(Extensiv2_Efflux) AS Extensiv2_Efflux,\n    SUM(Sumpf2_Efflux) AS Sumpf2_Efflux,\n    SUM(Zeitlysi_Efflux_x) AS Zeitlysi_Efflux_x,\n    SUM(Sensorlysi_Efflux_x) AS Sensorlysi_Efflux_x\n  FROM outflow\n  GROUP BY\n    1\n)\nSELECT\n  100.0 * SUM(o.Kies_Efflux) / NULLIF(SUM(r.rain_mm), 0) AS gravel_roof_pct,\n  100.0 * SUM(o.Extensiv1_Efflux) / NULLIF(SUM(r.rain_mm), 0) AS extensive_smart_irrigated_pct,\n  100.0 * SUM(o.Extensiv2_Efflux) / NULLIF(SUM(r.rain_mm), 0) AS extensive_non_irrigated_pct,\n  100.0 * SUM(o.Sumpf2_Efflux) / NULLIF(SUM(r.rain_mm), 0) AS wetland,\n  100.0 * SUM(o.Zeitlysi_Efflux_x) / NULLIF(SUM(r.rain_mm), 0) AS extensive_small_lysi_timer_pct,\n  100.0 * SUM(o.Sensorlysi_Efflux_x) / NULLIF(SUM(r.rain_mm), 0) AS extensive_small_lysi_threshold_pct\nFROM daily_rain AS r\nJOIN daily_outflow AS o\n  USING (day)",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=5&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How many days had no measurable outflow from the non-irrigated extensive green roof despite at least 5 mm precipitation?",
+    "sql": "SELECT\n  COUNT(*)\nFROM (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(COALESCE(Extensiv2_Efflux, 0)) AS total_outflow\n  FROM outflow\n  GROUP BY\n    1\n) AS o\nJOIN (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(COALESCE(Rain, 0)) AS total_rain\n  FROM wetter\n  GROUP BY\n    1\n) AS w\n  USING (day)\nWHERE\n  w.total_rain >= 5 AND o.total_outflow = 0",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=6&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How did monthly runoff retention differ between the smart irrigated and non-irrigated extensive green roofs?",
+    "sql": "WITH outflow_monthly AS (\n  SELECT\n    DATE_TRUNC('MONTH', timestamp) AS month,\n    SUM(Extensiv1_Efflux) AS smart_irrigated_outflow_liters,\n    SUM(Extensiv2_Efflux) AS non_irrigated_outflow_liters\n  FROM outflow\n  GROUP BY\n    DATE_TRUNC('MONTH', timestamp)\n), rain_monthly AS (\n  SELECT\n    DATE_TRUNC('MONTH', timestamp) AS month,\n    SUM(Rain) AS rain_liters_per_roof\n  FROM wetter\n  GROUP BY\n    DATE_TRUNC('MONTH', timestamp)\n)\nSELECT\n  o.month,\n  r.rain_liters_per_roof,\n  o.smart_irrigated_outflow_liters,\n  o.non_irrigated_outflow_liters,\n  r.rain_liters_per_roof - o.smart_irrigated_outflow_liters AS rain_minus_smart_irrigated_outflow_liters,\n  r.rain_liters_per_roof - o.non_irrigated_outflow_liters AS rain_minus_non_irrigated_retention_liters,\n  o.non_irrigated_outflow_liters - o.smart_irrigated_outflow_liters AS irrigated_minus_non_irrigated_retention\nFROM outflow_monthly AS o\nLEFT JOIN rain_monthly AS r\n  ON r.month = o.month\nORDER BY\n  o.month",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=8&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "What was standard deviation of daily outflow for each roof type during days with at least 10 mm precipitation?",
+    "sql": "WITH daily_rain AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS total_rain\n  FROM wetter\n  GROUP BY\n    1\n  HAVING\n    SUM(Rain) >= 10\n), daily_outflow AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Kies_Efflux) AS Kies,\n    SUM(Extensiv1_Efflux) AS Extensiv1,\n    SUM(Extensiv2_Efflux) AS Extensiv2,\n    SUM(Sumpf2_Efflux) AS Sumpf2,\n    SUM(Zeitlysi_Efflux_x) AS Zeitlysi,\n    SUM(Sensorlysi_Efflux_x) AS Sensorlysi\n  FROM outflow\n  GROUP BY\n    1\n)\nSELECT\n  STDDEV_SAMP(Kies) AS Kies_stddev,\n  STDDEV_SAMP(Extensiv1) AS Extensiv1_stddev,\n  STDDEV_SAMP(Extensiv2) AS Extensiv2_stddev,\n  STDDEV_SAMP(Sumpf2) AS Sumpf2_stddev,\n  STDDEV_SAMP(Zeitlysi) AS Zeitlysi_stddev,\n  STDDEV_SAMP(Sensorlysi) AS Sensorlysi_stddev\nFROM daily_outflow\nJOIN daily_rain\n  USING (day)",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=10&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Which roof type showed the strongest correlation between daily precipitation and daily outflow?",
+    "sql": "WITH daily_rain AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS rain\n  FROM wetter\n  GROUP BY\n    1\n), daily_outflow AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Kies_Efflux) AS Kies,\n    SUM(Extensiv1_Efflux) AS Extensiv1,\n    SUM(Extensiv2_Efflux) AS Extensiv2,\n    SUM(Sumpf2_Efflux) AS Sumpf2,\n    SUM(Zeitlysi_Efflux_x) AS Zeitlysi,\n    SUM(Sensorlysi_Efflux_x) AS Sensorlysi\n  FROM outflow\n  GROUP BY\n    1\n), joined AS (\n  SELECT\n    r.rain,\n    o.Kies,\n    o.Extensiv1,\n    o.Extensiv2,\n    o.Sumpf2,\n    o.Zeitlysi,\n    o.Sensorlysi\n  FROM daily_rain AS r\n  JOIN daily_outflow AS o\n    USING (day)\n), corrs AS (\n  SELECT\n    'Kies_gravel' AS roof,\n    CORR(rain, Kies) AS corr\n  FROM joined\n  UNION ALL\n  SELECT\n    'Extensiv1_smart_irrigated',\n    CORR(rain, Extensiv1)\n  FROM joined\n  UNION ALL\n  SELECT\n    'Extensiv2_non_irrigated',\n    CORR(rain, Extensiv2)\n  FROM joined\n  UNION ALL\n  SELECT\n    'Sumpf2_wetland',\n    CORR(rain, Sumpf2)\n  FROM joined\n  UNION ALL\n  SELECT\n    'Zeitlysi_small_timer',\n    CORR(rain, Zeitlysi)\n  FROM joined\n  UNION ALL\n  SELECT\n    'Sensorlysi_small_threshold',\n    CORR(rain, Sensorlysi)\n  FROM joined\n)\nSELECT\n  roof,\n  corr\nFROM corrs\nORDER BY\n  ABS(corr) DESC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=11&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How did daily outflow from the wetland roof compare on days with at least 10 mm precipitation?",
+    "sql": "WITH daily_outflow AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Sumpf2_Efflux) AS wetland_outflow_liters\n  FROM outflow\n  GROUP BY\n    1\n), daily_rain AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS daily_precipitation_mm\n  FROM wetter\n  GROUP BY\n    1\n)\nSELECT\n  o.day,\n  o.wetland_outflow_liters,\n  r.daily_precipitation_mm\nFROM daily_outflow AS o\nJOIN daily_rain AS r\n  USING (day)\nWHERE\n  r.daily_precipitation_mm >= 10\nORDER BY\n  o.day",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=12&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How often did the wetland roof produce > 2500 milliliter daily outflow?",
+    "sql": "SELECT\n  COUNT(*) AS days_more_2500_ml\nFROM (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Sumpf2_Efflux) AS wetland\n  FROM outflow\n  GROUP BY\n    DATE_TRUNC('DAY', timestamp)\n) AS t\nWHERE\n  wetland > 2.5",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=13&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "What was the median difference in monthly outflow between the threshold-irrigated and timer-irrigated substrate lysimeters?",
+    "sql": "SELECT\n  MEDIAN(Sensorlysi_monthly - Zeitlysi_monthly) AS median_diff\nFROM (\n  SELECT\n    DATE_TRUNC('MONTH', timestamp) AS month,\n    SUM(Sensorlysi_Efflux_x) AS Sensorlysi_monthly,\n    SUM(Zeitlysi_Efflux_x) AS Zeitlysi_monthly\n  FROM outflow\n  GROUP BY\n    DATE_TRUNC('MONTH', timestamp)\n) AS t",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=14&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "On days with at least 10 mm precipitation, which lysimeter had the highest average runoff response?",
+    "sql": "WITH rainy_days AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day\n  FROM wetter\n  GROUP BY\n    1\n  HAVING\n    SUM(Rain) >= 10\n), daily_outflow AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Kies_Efflux) AS Kies_Efflux,\n    SUM(Extensiv1_Efflux) AS Extensiv1_Efflux,\n    SUM(Extensiv2_Efflux) AS Extensiv2_Efflux,\n    SUM(Sumpf2_Efflux) AS Sumpf2_Efflux,\n    SUM(Zeitlysi_Efflux_x) AS Zeitlysi_Efflux_x,\n    SUM(Sensorlysi_Efflux_x) AS Sensorlysi_Efflux_x\n  FROM outflow\n  GROUP BY\n    1\n), avg_runoff AS (\n  SELECT\n    'Kies_Efflux' AS lysimeter,\n    AVG(Kies_Efflux) AS avg_runoff\n  FROM daily_outflow AS d\n  JOIN rainy_days AS r\n    USING (day)\n  UNION ALL\n  SELECT\n    'Extensiv1_Efflux',\n    AVG(Extensiv1_Efflux)\n  FROM daily_outflow AS d\n  JOIN rainy_days AS r\n    USING (day)\n  UNION ALL\n  SELECT\n    'Extensiv2_Efflux',\n    AVG(Extensiv2_Efflux)\n  FROM daily_outflow AS d\n  JOIN rainy_days AS r\n    USING (day)\n  UNION ALL\n  SELECT\n    'Sumpf2_Efflux',\n    AVG(Sumpf2_Efflux)\n  FROM daily_outflow AS d\n  JOIN rainy_days AS r\n    USING (day)\n  UNION ALL\n  SELECT\n    'Zeitlysi_Efflux_x',\n    AVG(Zeitlysi_Efflux_x)\n  FROM daily_outflow AS d\n  JOIN rainy_days AS r\n    USING (day)\n  UNION ALL\n  SELECT\n    'Sensorlysi_Efflux_x',\n    AVG(Sensorlysi_Efflux_x)\n  FROM daily_outflow AS d\n  JOIN rainy_days AS r\n    USING (day)\n)\nSELECT\n  lysimeter,\n  avg_runoff\nFROM avg_runoff\nORDER BY\n  avg_runoff DESC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=15&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How many days had runoff from the gravel roof exceeding more than 0.8 of precipitation?",
+    "sql": "WITH outflow_daily AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Kies_Efflux) AS runoff\n  FROM outflow\n  GROUP BY\n    1\n), weather_daily AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS rain\n  FROM wetter\n  GROUP BY\n    1\n)\nSELECT\n  COUNT(*)\nFROM (\n  SELECT\n    o.day,\n    o.runoff,\n    w.rain\n  FROM outflow_daily AS o\n  JOIN weather_daily AS w\n    ON o.day = w.day\n  WHERE\n    w.rain > 0 AND o.runoff > 0.8 * w.rain\n) AS t",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=16&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How often did the irrigated extensive roof have daily outflow greater than the non-irrigated extensive roof by at least 5 liters?",
+    "sql": "SELECT\n  COUNT(*)\nFROM (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Extensiv1_Efflux) AS smart_irr_outflow,\n    SUM(Extensiv2_Efflux) AS non_irr_outflow\n  FROM outflow\n  GROUP BY\n    DATE_TRUNC('DAY', timestamp)\n) AS t\nWHERE\n  smart_irr_outflow - non_irr_outflow >= 5",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=17&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "What was the average monthly difference in outflow between the irrigated extensive and non-irrigated extensive green roofs?",
+    "sql": "SELECT\n  DATE_TRUNC('MONTH', timestamp) AS month,\n  AVG(Extensiv1_Efflux - Extensiv2_Efflux) AS avg_diff\nFROM outflow\nGROUP BY\n  DATE_TRUNC('MONTH', timestamp)\nORDER BY\n  month",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=18&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Which calendar month had the greatest difference in total outflow between the gravel roof and the non-irrigated extensive green roof?",
+    "sql": "SELECT\n  DATE_TRUNC('MONTH', timestamp) AS month,\n  SUM(Kies_Efflux) - SUM(Extensiv2_Efflux) AS diff\nFROM outflow\nGROUP BY\n  month\nORDER BY\n  ABS(SUM(Kies_Efflux) - SUM(Extensiv2_Efflux)) DESC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=19&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "What was the ratio of wetland roof outflow to gravel roof outflow for each calendar month?",
+    "sql": "SELECT\n  DATE_TRUNC('MONTH', timestamp) AS month,\n  SUM(COALESCE(Sumpf2_Efflux, 0)) / NULLIF(SUM(Kies_Efflux), 0) AS wetland_to_gravel_ratio\nFROM outflow\nGROUP BY\n  DATE_TRUNC('MONTH', timestamp)\nORDER BY\n  month",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=21&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How many days had all vegetated roofs producing less outflow than the gravel roof?",
+    "sql": "SELECT\n  COUNT(*)\nFROM (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Kies_Efflux) AS kies,\n    SUM(Extensiv1_Efflux) AS ex_smart_irrigated,\n    SUM(Extensiv2_Efflux) AS ex_non_irrigated,\n    SUM(Zeitlysi_Efflux_x) AS ex_timer,\n    SUM(Sensorlysi_Efflux_x) AS ex2_threshold,\n    SUM(Sumpf2_Efflux) AS sumpf\n  FROM outflow\n  GROUP BY\n    DATE_TRUNC('DAY', timestamp)\n) AS t\nWHERE\n  ex_smart_irrigated < kies\n  AND ex_non_irrigated < kies\n  AND sumpf < kies\n  AND ex_timer < kies\n  AND ex2_threshold < kies",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=22&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How many days did the wetland roof produce less outflow than both extensive green roof segments?",
+    "sql": "SELECT\n  COUNT(*) AS days\nFROM (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Sumpf2_Efflux) AS wetland,\n    SUM(Extensiv1_Efflux + Extensiv2_Efflux) AS ex\n  FROM outflow\n  GROUP BY\n    DATE_TRUNC('DAY', timestamp)\n) AS t\nWHERE\n  wetland < ex",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=23&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "On days with daily precipitation between 5 and 20 mm, which roof type retained the largest share of precipitation?",
+    "sql": "WITH daily_rain AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS rain_mm\n  FROM wetter\n  GROUP BY\n    1\n  HAVING\n    SUM(Rain) BETWEEN 5 AND 20\n), daily_out AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Kies_Efflux) AS gravel,\n    SUM(Extensiv1_Efflux) AS extensive_smart_irrigated,\n    SUM(Extensiv2_Efflux) AS extensive_non_irrigated,\n    SUM(Sumpf2_Efflux) AS wetland\n  FROM outflow\n  GROUP BY\n    1\n), j AS (\n  SELECT\n    r.day,\n    r.rain_mm,\n    o.gravel,\n    o.extensive_smart_irrigated,\n    o.extensive_non_irrigated,\n    o.wetland\n  FROM daily_rain AS r\n  JOIN daily_out AS o\n    USING (day)\n), unp AS (\n  SELECT\n    day,\n    rain_mm,\n    'gravel' AS roof,\n    gravel AS efflux_l\n  FROM j\n  UNION ALL\n  SELECT\n    day,\n    rain_mm,\n    'extensive_smart_irrigated',\n    extensive_smart_irrigated\n  FROM j\n  UNION ALL\n  SELECT\n    day,\n    rain_mm,\n    'extensive_non_irrigated',\n    extensive_non_irrigated\n  FROM j\n  UNION ALL\n  SELECT\n    day,\n    rain_mm,\n    'wetland',\n    wetland\n  FROM j\n)\nSELECT\n  roof,\n  SUM(rain_mm) AS total_rain_mm,\n  SUM(efflux_l) AS total_efflux_l,\n  1 - SUM(efflux_l) / NULLIF(SUM(rain_mm), 0) AS relative_retention_score\nFROM unp\nGROUP BY\n  roof\nORDER BY\n  total_efflux_l ASC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=24&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Which roof type had the lowest 10th percentile soil moisture during the monitoring period?",
+    "sql": "SELECT\n  roof_type\nFROM (\n  SELECT\n    'gravel' AS roof_type,\n    QUANTILE_CONT(QGravel, 0.1) AS p10\n  FROM swc\n  UNION ALL\n  SELECT\n    'smart irrigated extensive',\n    QUANTILE_CONT(QEx1, 0.1)\n  FROM swc\n  UNION ALL\n  SELECT\n    'non-irrigated extensive',\n    QUANTILE_CONT(QEx2, 0.1)\n  FROM swc\n  UNION ALL\n  SELECT\n    'intensive',\n    QUANTILE_CONT(QIn, 0.1)\n  FROM swc\n  UNION ALL\n  SELECT\n    'wetland',\n    QUANTILE_CONT(QWetland, 0.1)\n  FROM swc\n)\nORDER BY\n  p10 ASC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=27&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How many days did the non-irrigated extensive roof daily mean soil moisture fall below 15%?",
+    "sql": "SELECT\n  COUNT(*)\nFROM (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    AVG(QEx2) AS moisture\n  FROM swc\n  GROUP BY\n    DATE_TRUNC('DAY', timestamp)\n) AS t\nWHERE\n  moisture < 15",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=28&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How many observations do we have when irrigated extensive roof soil moisture falls below 15% while non-irrigated falls bellow 10%?",
+    "sql": "SELECT\n  COUNT(*)\nFROM swc\nWHERE\n  QEx1 < 15 AND QEx2 < 10",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=29&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How did median soil moisture differ between the irrigated and non-irrigated extensive roofs over the whole observation period?",
+    "sql": "SELECT\n  MEDIAN(QEx1) AS median_swc_smart_irrigated,\n  MEDIAN(QEx2) AS median_swc_non_irrigated,\n  MEDIAN(QEx1) - MEDIAN(QEx2) AS difference\nFROM swc",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=30&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Which roof type had the most stable average daily soil moisture based on standard deviation?",
+    "sql": "WITH daily AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    AVG(QGravel) AS QGravel,\n    AVG(QEx1) AS QEx1,\n    AVG(QEx2) AS QEx2,\n    AVG(QIn) AS QIn,\n    AVG(QWetland) AS QWetland\n  FROM swc\n  GROUP BY\n    1\n), stats AS (\n  SELECT\n    'gravel' AS roof,\n    STDDEV(QGravel) AS sd\n  FROM daily\n  UNION ALL\n  SELECT\n    'smart irrigated extensive',\n    STDDEV(QEx1)\n  FROM daily\n  UNION ALL\n  SELECT\n    'non-irrigated extensive',\n    STDDEV(QEx2)\n  FROM daily\n  UNION ALL\n  SELECT\n    'intensive',\n    STDDEV(QIn)\n  FROM daily\n  UNION ALL\n  SELECT\n    'wetland',\n    STDDEV(QWetland)\n  FROM daily\n)\nSELECT\n  roof,\n  sd\nFROM stats\nORDER BY\n  sd ASC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=32&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How many days did the wetland roof maintain average soil moisture above 40%?",
+    "sql": "SELECT\n  COUNT(*)\nFROM (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    AVG(QWetland) AS avg_moisture\n  FROM swc\n  GROUP BY\n    day\n  HAVING\n    AVG(QWetland) > 40\n)",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=33&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How many days did the intensive green roof maintain average soil moisture between 20% and 35%?",
+    "sql": "SELECT\n  COUNT(*)\nFROM (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    AVG(QIn) AS avg_moisture\n  FROM swc\n  GROUP BY\n    DATE_TRUNC('DAY', timestamp)\n  HAVING\n    AVG(QIn) BETWEEN 20 AND 35\n) AS t",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=34&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "What was the amount of days where average soil moisture was below 20% for each vegetated roof?",
+    "sql": "WITH daily_average AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    AVG(QEx1) AS QEx1,\n    AVG(QEx2) AS QEx2,\n    AVG(QIn) AS QIn,\n    AVG(QWetland) AS QWetland\n  FROM swc\n  GROUP BY\n    DATE_TRUNC('DAY', timestamp)\n)\nSELECT\n  'QEx1' AS column_name,\n  COUNT(*) AS count_below_20\nFROM daily_average\nWHERE\n  QEx1 < 20\nUNION ALL\nSELECT\n  'QEx2',\n  COUNT(*)\nFROM daily_average\nWHERE\n  QEx2 < 20\nUNION ALL\nSELECT\n  'QIn',\n  COUNT(*)\nFROM daily_average\nWHERE\n  QIn < 20\nUNION ALL\nSELECT\n  'QWetland',\n  COUNT(*)\nFROM daily_average\nWHERE\n  QWetland < 20",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=35&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Which roof type showed the largest daily range in soil moisture?",
+    "sql": "WITH daily_ranges AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    MAX(QGravel) - MIN(QGravel) AS gravel_range,\n    MAX(QEx1) - MIN(QEx1) AS ex1_range,\n    MAX(QEx2) - MIN(QEx2) AS ex2_range,\n    MAX(QIn) - MIN(QIn) AS in_range,\n    MAX(QWetland) - MIN(QWetland) AS wetland_range\n  FROM swc\n  GROUP BY\n    DATE_TRUNC('DAY', timestamp)\n), avg_ranges AS (\n  SELECT\n    AVG(gravel_range) AS gravel,\n    AVG(ex1_range) AS smart_irrigated_extensive,\n    AVG(ex2_range) AS non_irrigated_extensive,\n    AVG(in_range) AS intensive,\n    AVG(wetland_range) AS wetland\n  FROM daily_ranges\n), unpivoted AS (\n  SELECT\n    'gravel' AS roof_type,\n    gravel AS avg_daily_range\n  FROM avg_ranges\n  UNION ALL\n  SELECT\n    'smart_irrigated_extensive',\n    smart_irrigated_extensive\n  FROM avg_ranges\n  UNION ALL\n  SELECT\n    'non_irrigated_extensive',\n    non_irrigated_extensive\n  FROM avg_ranges\n  UNION ALL\n  SELECT\n    'intensive',\n    intensive\n  FROM avg_ranges\n  UNION ALL\n  SELECT\n    'wetland',\n    wetland\n  FROM avg_ranges\n)\nSELECT\n  roof_type,\n  avg_daily_range\nFROM unpivoted\nORDER BY\n  avg_daily_range DESC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=36&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How did average soil moisture on the non-irrigated extensive roof differ between days with no precipitation and days with at least 10 mm precipitation?",
+    "sql": "WITH daily_rain AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS total_rain\n  FROM wetter\n  GROUP BY\n    1\n), daily_swc AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    AVG(QEx2) AS avg_qex2\n  FROM swc\n  GROUP BY\n    1\n)\nSELECT\n  CASE\n    WHEN dr.total_rain = 0\n    THEN 'no_precipitation'\n    WHEN dr.total_rain >= 10\n    THEN 'at_least_10mm'\n  END AS rain_category,\n  AVG(ds.avg_qex2) AS avg_soil_moisture_non_irrigated_extensive,\n  COUNT(*) AS day_count\nFROM daily_rain AS dr\nJOIN daily_swc AS ds\n  ON dr.day = ds.day\nWHERE\n  dr.total_rain = 0 OR dr.total_rain >= 10\nGROUP BY\n  rain_category\nORDER BY\n  rain_category",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=37&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "What was the correlation between daily precipitation and daily average soil moisture for each roof type?",
+    "sql": "WITH daily_rain AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS daily_precip\n  FROM wetter\n  GROUP BY\n    1\n), daily_swc AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    AVG(QGravel) AS avg_gravel,\n    AVG(QEx1) AS avg_ex1,\n    AVG(QEx2) AS avg_ex2,\n    AVG(QIn) AS avg_in,\n    AVG(QWetland) AS avg_wetland\n  FROM swc\n  GROUP BY\n    1\n)\nSELECT\n  CORR(r.daily_precip, s.avg_gravel) AS corr_gravel,\n  CORR(r.daily_precip, s.avg_ex1) AS corr_smart_irrigated_extensive,\n  CORR(r.daily_precip, s.avg_ex2) AS corr_non_irrigated_extensive,\n  CORR(r.daily_precip, s.avg_in) AS corr_intensive,\n  CORR(r.daily_precip, s.avg_wetland) AS corr_wetland\nFROM daily_rain AS r\nJOIN daily_swc AS s\n  USING (day)",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=38&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How did soil moisture in the irrigated extensive roof vary with daily maximum air temperature above 30 °C?",
+    "sql": "WITH hot_days AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    MAX(Tmax) AS tmax\n  FROM wetter\n  GROUP BY\n    1\n  HAVING\n    MAX(Tmax) > 30\n), daily_swc AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    AVG(QEx1) AS avg_soil_moisture_smart_irrigated_extensive\n  FROM swc\n  GROUP BY\n    1\n)\nSELECT\n  d.day,\n  h.tmax,\n  d.avg_soil_moisture_smart_irrigated_extensive\nFROM daily_swc AS d\nJOIN hot_days AS h\n  USING (day)\nORDER BY\n  d.day",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=39&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "On days with average air temperature above 25 °C and precipitation below 1 mm, which roof type had the highest average soil moisture?",
+    "sql": "WITH daily_weather AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    AVG(Tmean) AS avg_temp,\n    SUM(Rain) AS total_rain\n  FROM wetter\n  GROUP BY\n    DATE_TRUNC('DAY', timestamp)\n), qualifying_days AS (\n  SELECT\n    day\n  FROM daily_weather\n  WHERE\n    avg_temp > 25 AND total_rain < 1\n), daily_swc AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    AVG(QGravel) AS QGravel,\n    AVG(QEx1) AS QEx1,\n    AVG(QEx2) AS QEx2,\n    AVG(QIn) AS QIn,\n    AVG(QWetland) AS QWetland\n  FROM swc\n  GROUP BY\n    DATE_TRUNC('DAY', timestamp)\n), roof_avgs AS (\n  SELECT\n    AVG(s.QGravel) AS gravel_roof,\n    AVG(s.QEx1) AS smart_irrigated_extensive,\n    AVG(s.QEx2) AS non_irrigated_extensive,\n    AVG(s.QIn) AS intensive,\n    AVG(s.QWetland) AS wetland\n  FROM daily_swc AS s\n  JOIN qualifying_days AS q\n    ON s.day = q.day\n), unpivoted AS (\n  SELECT\n    'gravel_roof' AS roof_type,\n    gravel_roof AS avg_soil_moisture\n  FROM roof_avgs\n  UNION ALL\n  SELECT\n    'smart_irrigated_extensive',\n    smart_irrigated_extensive\n  FROM roof_avgs\n  UNION ALL\n  SELECT\n    'non_irrigated_extensive',\n    non_irrigated_extensive\n  FROM roof_avgs\n  UNION ALL\n  SELECT\n    'intensive',\n    intensive\n  FROM roof_avgs\n  UNION ALL\n  SELECT\n    'wetland',\n    wetland\n  FROM roof_avgs\n)\nSELECT\n  roof_type,\n  avg_soil_moisture\nFROM unpivoted\nORDER BY\n  avg_soil_moisture DESC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=40&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "What was the average soil moisture difference between the two extensive roofs during days with precipitation below 1 mm?",
+    "sql": "SELECT\n  AVG(daily.avg_qex1 - daily.avg_qex2) AS avg_soil_moisture_difference\nFROM (\n  SELECT\n    DATE_TRUNC('DAY', s.timestamp) AS day,\n    AVG(s.QEx1) AS avg_qex1,\n    AVG(s.QEx2) AS avg_qex2\n  FROM swc AS s\n  GROUP BY\n    DATE_TRUNC('DAY', s.timestamp)\n) AS daily\nJOIN (\n  SELECT\n    DATE_TRUNC('DAY', w.timestamp) AS day,\n    SUM(w.Rain) AS daily_rain\n  FROM wetter AS w\n  GROUP BY\n    DATE_TRUNC('DAY', w.timestamp)\n) AS rain\n  ON daily.day = rain.day\nWHERE\n  rain.daily_rain < 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=42&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Which roof type had the highest average soil moisture on days with at least 20 mm precipitation?",
+    "sql": "WITH rainy_days AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day\n  FROM wetter\n  GROUP BY\n    1\n  HAVING\n    SUM(Rain) >= 20\n), daily_swc AS (\n  SELECT\n    DATE_TRUNC('DAY', s.timestamp) AS day,\n    AVG(s.QGravel) AS gravel,\n    AVG(s.QEx1) AS ex1_irrigated,\n    AVG(s.QEx2) AS ex2_non_irrigated,\n    AVG(s.QIn) AS intensive,\n    AVG(s.QWetland) AS wetland\n  FROM swc AS s\n  JOIN rainy_days AS r\n    ON DATE_TRUNC('DAY', s.timestamp) = r.day\n  GROUP BY\n    1\n), avgs AS (\n  SELECT\n    'gravel' AS roof_type,\n    AVG(gravel) AS avg_soil_moisture\n  FROM daily_swc\n  UNION ALL\n  SELECT\n    'smart_irrigated_extensive',\n    AVG(ex1_irrigated)\n  FROM daily_swc\n  UNION ALL\n  SELECT\n    'non_irrigated_extensive',\n    AVG(ex2_non_irrigated)\n  FROM daily_swc\n  UNION ALL\n  SELECT\n    'intensive',\n    AVG(intensive)\n  FROM daily_swc\n  UNION ALL\n  SELECT\n    'wetland',\n    AVG(wetland)\n  FROM daily_swc\n)\nSELECT\n  roof_type,\n  avg_soil_moisture\nFROM avgs\nORDER BY\n  avg_soil_moisture DESC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=43&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Which roof type had the strongest negative correlation between daily air temperature and soil moisture?",
+    "sql": "WITH daily AS (\n  SELECT\n    DATE_TRUNC('DAY', w.timestamp) AS day,\n    AVG(w.Tmean) AS t_air,\n    AVG(s.QGravel) AS q_gravel,\n    AVG(s.QEx1) AS q_ex1,\n    AVG(s.QEx2) AS q_ex2,\n    AVG(s.QIn) AS q_in,\n    AVG(s.QWetland) AS q_wetland\n  FROM wetter AS w\n  JOIN swc AS s\n    ON DATE_TRUNC('DAY', w.timestamp) = DATE_TRUNC('DAY', s.timestamp)\n  GROUP BY\n    1\n), corrs AS (\n  SELECT\n    'gravel' AS roof,\n    CORR(t_air, q_gravel) AS c\n  FROM daily\n  UNION ALL\n  SELECT\n    'smart_irrigated_extensive',\n    CORR(t_air, q_ex1)\n  FROM daily\n  UNION ALL\n  SELECT\n    'non_irrigated_extensive',\n    CORR(t_air, q_ex2)\n  FROM daily\n  UNION ALL\n  SELECT\n    'intensive',\n    CORR(t_air, q_in)\n  FROM daily\n  UNION ALL\n  SELECT\n    'wetland',\n    CORR(t_air, q_wetland)\n  FROM daily\n)\nSELECT\n  roof,\n  c\nFROM corrs\nWHERE\n  NOT c IS NULL\nORDER BY\n  c ASC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=46&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How many observations are there when the gravel roof soil temperature exceed 35 °C?",
+    "sql": "SELECT\n  COUNT(*)\nFROM tsoil\nWHERE\n  TGravel > 35",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=49&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "What was the average daily soil temperature difference between the gravel roof and the wetland roof?",
+    "sql": "SELECT\n  AVG(daily_diff) AS avg_daily_temp_diff\nFROM (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    AVG(TGravel) - AVG(TWetland) AS daily_diff\n  FROM tsoil\n  GROUP BY\n    DATE_TRUNC('DAY', timestamp)\n) AS t",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=51&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How did soil temperature in the non-irrigated extensive roof differ between days with precipitation below 1 mm and days with at least 10 mm precipitation?",
+    "sql": "WITH daily AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS daily_rain\n  FROM wetter\n  GROUP BY\n    1\n), daily_t AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    AVG(TEx2) AS avg_tex2\n  FROM tsoil\n  GROUP BY\n    1\n)\nSELECT\n  CASE\n    WHEN d.daily_rain < 1\n    THEN 'below_1mm'\n    WHEN d.daily_rain >= 10\n    THEN 'at_least_10mm'\n  END AS rain_category,\n  AVG(dt.avg_tex2) AS avg_soil_temp_nonirrigated_extensive,\n  COUNT(*) AS n_days\nFROM daily AS d\nJOIN daily_t AS dt\n  USING (day)\nWHERE\n  d.daily_rain < 1 OR d.daily_rain >= 10\nGROUP BY\n  1\nORDER BY\n  1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=56&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Which roof type showed the greatest monthly cooling relative to air temperature?",
+    "sql": "WITH monthly AS (\n  SELECT\n    DATE_TRUNC('MONTH', r.timestamp) AS month,\n    AVG(w.Tmean - (\n      r.ED1_TSFCkorr - 273.15\n    )) AS cooling_ED1,\n    AVG(w.Tmean - (\n      r.ED2_TSFCkorr - 273.15\n    )) AS cooling_ED2,\n    AVG(w.Tmean - (\n      r.KD_TSFCkorr - 273.15\n    )) AS cooling_KD,\n    AVG(w.Tmean - (\n      r.SD_TSFCkorr - 273.15\n    )) AS cooling_SD\n  FROM radiation AS r\n  JOIN wetter AS w\n    ON r.timestamp = w.timestamp\n  GROUP BY\n    DATE_TRUNC('MONTH', r.timestamp)\n), unpivoted AS (\n  SELECT\n    month,\n    'smart irrigated extensive green roof' AS roof_type,\n    cooling_ED1 AS cooling\n  FROM monthly\n  UNION ALL\n  SELECT\n    month,\n    'non-irrigated extensive green roof',\n    cooling_ED2\n  FROM monthly\n  UNION ALL\n  SELECT\n    month,\n    'gravel roof',\n    cooling_KD\n  FROM monthly\n  UNION ALL\n  SELECT\n    month,\n    'wetland green roof',\n    cooling_SD\n  FROM monthly\n)\nSELECT\n  roof_type,\n  month,\n  cooling\nFROM unpivoted\nORDER BY\n  cooling DESC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=57&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "What was the average soil temperature difference between vegetated roofs and the gravel roof during days with maximum air temperature above 30 °C?",
+    "sql": "WITH hot_days AS (\n  SELECT DISTINCT\n    DATE_TRUNC('DAY', timestamp) AS day\n  FROM wetter\n  WHERE\n    Tmax > 30\n)\nSELECT\n  AVG((\n    (\n      t.TEx1 + t.TEx2 + t.TIn + t.TWetland\n    ) / 4.0\n  ) - t.TGravel) AS avg_soil_temp_diff\nFROM tsoil AS t\nJOIN hot_days AS h\n  ON DATE_TRUNC('DAY', t.timestamp) = h.day\nWHERE\n  NOT t.TGravel IS NULL\n  AND NOT t.TEx1 IS NULL\n  AND NOT t.TEx2 IS NULL\n  AND NOT t.TIn IS NULL\n  AND NOT t.TWetland IS NULL",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=60&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Which roof type had the highest average corrected surface temperature by calendar month?",
+    "sql": "WITH monthly AS (\n  SELECT\n    DATE_TRUNC('MONTH', timestamp) AS month,\n    'smart irrigated extensive' AS roof,\n    AVG(ED1_TSFCkorr) AS avg_tsfc\n  FROM radiation\n  GROUP BY\n    1\n  UNION ALL\n  SELECT\n    DATE_TRUNC('MONTH', timestamp),\n    'non-irrigated extensive',\n    AVG(ED2_TSFCkorr)\n  FROM radiation\n  GROUP BY\n    1\n  UNION ALL\n  SELECT\n    DATE_TRUNC('MONTH', timestamp),\n    'gravel',\n    AVG(KD_TSFCkorr)\n  FROM radiation\n  GROUP BY\n    1\n  UNION ALL\n  SELECT\n    DATE_TRUNC('MONTH', timestamp),\n    'wetland',\n    AVG(SD_TSFCkorr)\n  FROM radiation\n  GROUP BY\n    1\n)\nSELECT\n  month,\n  roof,\n  avg_tsfc\nFROM monthly\nQUALIFY\n  ROW_NUMBER() OVER (PARTITION BY month ORDER BY avg_tsfc DESC) = 1\nORDER BY\n  month",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=61&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "On days with maximum air temperature above 30 °C, which roof surface had the lowest average corrected surface temperature?",
+    "sql": "WITH hot_days AS (\n  SELECT DISTINCT\n    CAST(timestamp AS DATE) AS day\n  FROM wetter\n  WHERE\n    Tmax > 30\n), avg_temps AS (\n  SELECT\n    AVG(ED1_TSFCkorr) AS smart_irrigated_extensive,\n    AVG(ED2_TSFCkorr) AS non_irrigated_extensive,\n    AVG(KD_TSFCkorr) AS gravel,\n    AVG(SD_TSFCkorr) AS wetland\n  FROM radiation\n  WHERE\n    CAST(timestamp AS DATE) IN (\n      SELECT\n        day\n      FROM hot_days\n    )\n), unpivoted AS (\n  SELECT\n    'smart_irrigated_extensive' AS roof,\n    smart_irrigated_extensive AS avg_tsfc\n  FROM avg_temps\n  UNION ALL\n  SELECT\n    'non_irrigated_extensive',\n    non_irrigated_extensive\n  FROM avg_temps\n  UNION ALL\n  SELECT\n    'gravel',\n    gravel\n  FROM avg_temps\n  UNION ALL\n  SELECT\n    'wetland',\n    wetland\n  FROM avg_temps\n)\nSELECT\n  roof,\n  avg_tsfc\nFROM unpivoted\nWHERE\n  NOT avg_tsfc IS NULL\nORDER BY\n  avg_tsfc ASC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=65&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How did average corrected surface temperature vary by roof type on days with precipitation below 1 mm?",
+    "sql": "SELECT\n  DATE_TRUNC('DAY', r.timestamp) AS day,\n  AVG(r.ED1_TSFCkorr) AS avg_smart_irrigated_extensive_tsfc,\n  AVG(r.ED2_TSFCkorr) AS avg_non_irrigated_extensive_tsfc,\n  AVG(r.KD_TSFCkorr) AS avg_gravel_tsfc,\n  AVG(r.SD_TSFCkorr) AS avg_wetland_tsfc\nFROM radiation AS r\nJOIN (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS daily_rain\n  FROM wetter\n  GROUP BY\n    1\n  HAVING\n    SUM(Rain) < 1\n) AS w\n  ON DATE_TRUNC('DAY', r.timestamp) = w.day\nGROUP BY\n  1\nORDER BY\n  1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=66&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Which roof type had the smallest daily corrected surface temperature range?",
+    "sql": "WITH daily_ranges AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    MAX(ED1_TSFCkorr) - MIN(ED1_TSFCkorr) AS smart_irrigated_extensive_range,\n    MAX(ED2_TSFCkorr) - MIN(ED2_TSFCkorr) AS non_irrigated_extensive_range,\n    MAX(KD_TSFCkorr) - MIN(KD_TSFCkorr) AS gravel_range,\n    MAX(SD_TSFCkorr) - MIN(SD_TSFCkorr) AS wetland_range\n  FROM radiation\n  GROUP BY\n    DATE_TRUNC('DAY', timestamp)\n), avg_ranges AS (\n  SELECT\n    AVG(smart_irrigated_extensive_range) AS irrigated_extensive,\n    AVG(non_irrigated_extensive_range) AS non_irrigated_extensive,\n    AVG(gravel_range) AS gravel,\n    AVG(wetland_range) AS wetland\n  FROM daily_ranges\n), unpivoted AS (\n  SELECT\n    'smart irrigated extensive green roof' AS roof_type,\n    irrigated_extensive AS avg_daily_range\n  FROM avg_ranges\n  UNION ALL\n  SELECT\n    'non-irrigated extensive green roof',\n    non_irrigated_extensive\n  FROM avg_ranges\n  UNION ALL\n  SELECT\n    'gravel roof',\n    gravel\n  FROM avg_ranges\n  UNION ALL\n  SELECT\n    'wetland green roof',\n    wetland\n  FROM avg_ranges\n)\nSELECT\n  roof_type,\n  avg_daily_range\nFROM unpivoted\nORDER BY\n  avg_daily_range ASC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=70&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Which roof type had the highest average shortwave reflectance calculated from upward and downward shortwave radiation?",
+    "sql": "SELECT\n  roof_type,\n  avg_reflectance\nFROM (\n  SELECT\n    'smart irrigated extensive green roof' AS roof_type,\n    AVG(ED1_SWup / NULLIF(ED1_SWdown, 0)) AS avg_reflectance\n  FROM radiation\n  WHERE\n    ED1_SWdown > 0\n  UNION ALL\n  SELECT\n    'non-irrigated extensive green roof',\n    AVG(ED2_SWup / NULLIF(ED2_SWdown, 0))\n  FROM radiation\n  WHERE\n    ED2_SWdown > 0\n  UNION ALL\n  SELECT\n    'gravel roof',\n    AVG(KD_SWup / NULLIF(KD_SWdown, 0))\n  FROM radiation\n  WHERE\n    KD_SWdown > 0\n  UNION ALL\n  SELECT\n    'wetland green roof',\n    AVG(SD_SWup / NULLIF(SD_SWdown, 0))\n  FROM radiation\n  WHERE\n    SD_SWdown > 0\n)\nORDER BY\n  avg_reflectance DESC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=73&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How did shortwave reflectance differ between irrigated and non-irrigated extensive roofs on days with downward shortwave radiation above 500 W/m²?",
+    "sql": "SELECT\n  DATE_TRUNC('DAY', timestamp) AS day,\n  AVG(ED1_SWup / NULLIF(ED1_SWdown, 0)) AS smart_irrigated_reflectance,\n  AVG(ED2_SWup / NULLIF(ED2_SWdown, 0)) AS non_irrigated_reflectance,\n  AVG(ED1_SWup / NULLIF(ED1_SWdown, 0)) - AVG(ED2_SWup / NULLIF(ED2_SWdown, 0)) AS reflectance_difference\nFROM radiation\nWHERE\n  ED1_SWdown > 500 OR ED2_SWdown > 500\nGROUP BY\n  DATE_TRUNC('DAY', timestamp)\nORDER BY\n  day",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=74&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Which roof type had the lowest average net radiation calculated from shortwave and longwave components?",
+    "sql": "SELECT\n  roof,\n  AVG(net_rad) AS avg_net_radiation\nFROM (\n  SELECT\n    'smart irrigated extensive' AS roof,\n    (\n      ED1_SWdown - ED1_SWup\n    ) + (\n      ED1_LWdown - ED1_LWup\n    ) AS net_rad\n  FROM radiation\n  UNION ALL\n  SELECT\n    'non-irrigated extensive',\n    (\n      ED2_SWdown - ED2_SWup\n    ) + (\n      ED2_LWdown - ED2_LWup\n    )\n  FROM radiation\n  UNION ALL\n  SELECT\n    'gravel',\n    (\n      KD_SWdown - KD_SWup\n    ) + (\n      KD_LWdown - KD_LWup\n    )\n  FROM radiation\n  UNION ALL\n  SELECT\n    'wetland',\n    (\n      SD_SWdown - SD_SWup\n    ) + (\n      SD_LWdown - SD_LWup\n    )\n  FROM radiation\n)\nGROUP BY\n  roof\nORDER BY\n  avg_net_radiation ASC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=76&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "What was the relationship between daily total precipitation and daily maximum corrected surface temperature on the irrigated extensive green roof?",
+    "sql": "WITH daily_precip AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS total_precipitation\n  FROM wetter\n  GROUP BY\n    1\n), daily_temp AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    MAX(ED1_TSFCkorr) AS max_corrected_surface_temp\n  FROM radiation\n  GROUP BY\n    1\n), daily_combined AS (\n  SELECT\n    p.day,\n    p.total_precipitation,\n    t.max_corrected_surface_temp\n  FROM daily_precip AS p\n  JOIN daily_temp AS t\n    USING (day)\n)\nSELECT\n  CORR(total_precipitation, max_corrected_surface_temp)\nFROM daily_combined",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=78&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How did corrected surface temperature on the non-irrigated extensive roof differ between days with soil moisture below 15% and days with soil moisture above 20%?",
+    "sql": "SELECT\n  moisture_category,\n  AVG(avg_tsfckorr) AS avg_corrected_surface_temp_K,\n  COUNT(*) AS day_count\nFROM (\n  SELECT\n    DATE_TRUNC('DAY', r.timestamp) AS day,\n    AVG(r.ED2_TSFCkorr) AS avg_tsfckorr,\n    CASE\n      WHEN AVG(s.QEx2) < 15\n      THEN 'below_15'\n      WHEN AVG(s.QEx2) > 20\n      THEN 'above_20'\n      ELSE NULL\n    END AS moisture_category\n  FROM radiation AS r\n  JOIN swc AS s\n    ON r.timestamp = s.timestamp\n  GROUP BY\n    DATE_TRUNC('DAY', r.timestamp)\n) AS t\nWHERE\n  NOT moisture_category IS NULL\nGROUP BY\n  moisture_category",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=79&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How did soil moisture and outflow covary for the smart irrigated extensive green roof at daily resolution?",
+    "sql": "WITH daily_swc AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    AVG(QEx1) AS avg_soil_moisture_pct\n  FROM swc\n  GROUP BY\n    1\n), daily_outflow AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Extensiv1_Efflux) AS total_outflow_liters\n  FROM outflow\n  GROUP BY\n    1\n)\nSELECT\n  s.day,\n  s.avg_soil_moisture_pct,\n  o.total_outflow_liters\nFROM daily_swc AS s\nJOIN daily_outflow AS o\n  USING (day)\nORDER BY\n  s.day",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=81&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "On days with at least 10 mm precipitation, how did average soil moisture compare between roofs with daily outflow above 5 liters and roofs with daily outflow below 5 liters?",
+    "sql": "WITH rainy_days AS (\n  SELECT\n    CAST(timestamp AS DATE) AS day\n  FROM wetter\n  GROUP BY\n    CAST(timestamp AS DATE)\n  HAVING\n    SUM(Rain) >= 10\n), daily_outflow AS (\n  SELECT\n    CAST(timestamp AS DATE) AS day,\n    roof,\n    SUM(efflux) AS daily_efflux\n  FROM (\n    SELECT\n      timestamp,\n      'Gravel' AS roof,\n      Kies_Efflux AS efflux\n    FROM outflow\n    UNION ALL\n    SELECT\n      timestamp,\n      'Ex1',\n      Extensiv1_Efflux\n    FROM outflow\n    UNION ALL\n    SELECT\n      timestamp,\n      'Ex2',\n      Extensiv2_Efflux\n    FROM outflow\n    UNION ALL\n    SELECT\n      timestamp,\n      'Wetland',\n      Sumpf2_Efflux\n    FROM outflow\n  )\n  GROUP BY\n    CAST(timestamp AS DATE),\n    roof\n), daily_swc AS (\n  SELECT\n    CAST(timestamp AS DATE) AS day,\n    roof,\n    AVG(moisture) AS avg_swc\n  FROM (\n    SELECT\n      timestamp,\n      'Gravel' AS roof,\n      QGravel AS moisture\n    FROM swc\n    UNION ALL\n    SELECT\n      timestamp,\n      'Ex1',\n      QEx1\n    FROM swc\n    UNION ALL\n    SELECT\n      timestamp,\n      'Ex2',\n      QEx2\n    FROM swc\n    UNION ALL\n    SELECT\n      timestamp,\n      'Wetland',\n      QWetland\n    FROM swc\n  )\n  GROUP BY\n    CAST(timestamp AS DATE),\n    roof\n)\nSELECT\n  CASE\n    WHEN o.daily_efflux > 5\n    THEN 'outflow_above_5L'\n    WHEN o.daily_efflux < 5\n    THEN 'outflow_below_5L'\n  END AS outflow_group,\n  AVG(s.avg_swc) AS avg_soil_moisture,\n  COUNT(*) AS roof_day_count\nFROM daily_outflow AS o\nJOIN daily_swc AS s\n  ON o.day = s.day AND o.roof = s.roof\nJOIN rainy_days AS r\n  ON r.day = o.day\nWHERE\n  o.daily_efflux <> 5\nGROUP BY\n  1\nORDER BY\n  1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=83&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How many observations did the non-irrigated extensive roof combine soil moisture below 15% with corrected surface temperature above 310 K?",
+    "sql": "SELECT\n  COUNT(*) AS occurrences\nFROM swc\nJOIN radiation\n  USING (timestamp)\nWHERE\n  swc.QEx2 < 15 AND radiation.ED2_TSFCkorr > 310",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=84&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How many days did the wetland roof combine soil moisture above 40% with corrected surface temperature below 300 K?",
+    "sql": "WITH daily AS (\n  SELECT DISTINCT\n    DATE_TRUNC('DAY', s.timestamp) AS day\n  FROM swc AS s\n  JOIN radiation AS r\n    ON s.timestamp = r.timestamp\n  WHERE\n    s.QWetland > 40 AND r.SD_TSFCkorr < 300\n)\nSELECT\n  COUNT(*) AS num_days\nFROM daily",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=85&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How did daily outflow differ between days with wind speed below 2 m/s and days with wind speed above 5 m/s for each roof type?",
+    "sql": "WITH daily_wind AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    AVG(windspeed) AS avg_wind\n  FROM wetter\n  GROUP BY\n    1\n), daily_outflow AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Kies_Efflux) AS Kies,\n    SUM(Extensiv1_Efflux) AS Extensiv1,\n    SUM(Extensiv2_Efflux) AS Extensiv2,\n    SUM(Sumpf2_Efflux) AS Sumpf2,\n    SUM(Zeitlysi_Efflux_x) AS Zeitlysi,\n    SUM(Sensorlysi_Efflux_x) AS Sensorlysi\n  FROM outflow\n  GROUP BY\n    1\n), joined AS (\n  SELECT\n    o.*,\n    CASE\n      WHEN w.avg_wind < 2\n      THEN 'wind_below_2'\n      WHEN w.avg_wind > 5\n      THEN 'wind_above_5'\n      ELSE NULL\n    END AS wind_category\n  FROM daily_outflow AS o\n  JOIN daily_wind AS w\n    USING (day)\n  WHERE\n    w.avg_wind < 2 OR w.avg_wind > 5\n)\nSELECT\n  roof_type,\n  wind_category,\n  COUNT(*) AS n_days,\n  AVG(outflow_l) AS avg_daily_outflow_l,\n  SUM(outflow_l) AS total_outflow_l\nFROM joined\nUNPIVOT(outflow_l FOR roof_type IN (Kies, Extensiv1, Extensiv2, Sumpf2, Zeitlysi, Sensorlysi))\nGROUP BY\n  roof_type,\n  wind_category\nORDER BY\n  roof_type,\n  wind_category",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=87&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How did soil temperature differ across roof types on days with relative humidity below 40%?",
+    "sql": "SELECT\n  DATE_TRUNC('DAY', t.timestamp) AS day,\n  AVG(t.TGravel) AS avg_TGravel,\n  AVG(t.TEx1) AS avg_TEx1,\n  AVG(t.TEx2) AS avg_TEx2,\n  AVG(t.TIn) AS avg_TIn,\n  AVG(t.TWetland) AS avg_TWetland\nFROM tsoil AS t\nJOIN wetter AS w\n  ON DATE_TRUNC('DAY', t.timestamp) = DATE_TRUNC('DAY', w.timestamp)\nGROUP BY\n  DATE_TRUNC('DAY', t.timestamp)\nHAVING\n  AVG(w.RH) < 40\nORDER BY\n  day",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=89&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "On days with precipitation above 10 mm and average air temperature above 10 °C, which roof type had the lowest runoff-to-precipitation ratio?",
+    "sql": "WITH daily_weather AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS total_rain,\n    AVG(Tmean) AS avg_temp\n  FROM wetter\n  GROUP BY\n    1\n), daily_outflow AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Kies_Efflux) AS gravel,\n    SUM(Extensiv1_Efflux) AS ext_smart_irrigated,\n    SUM(Extensiv2_Efflux) AS ext_non_irrigated,\n    SUM(Sumpf2_Efflux) AS wetland,\n    SUM(Zeitlysi_Efflux_x) AS small_timer,\n    SUM(Sensorlysi_Efflux_x) AS small_threshold\n  FROM outflow\n  GROUP BY\n    1\n), qualifying_days AS (\n  SELECT\n    w.day,\n    w.total_rain,\n    o.gravel,\n    o.ext_smart_irrigated,\n    o.ext_non_irrigated,\n    o.wetland,\n    o.small_timer,\n    o.small_threshold\n  FROM daily_weather AS w\n  JOIN daily_outflow AS o\n    USING (day)\n  WHERE\n    w.total_rain > 10 AND w.avg_temp > 10\n), ratios AS (\n  SELECT\n    'gravel roof' AS roof_type,\n    SUM(gravel) / NULLIF(SUM(total_rain), 0) AS ratio\n  FROM qualifying_days\n  UNION ALL\n  SELECT\n    'smart irrigated extensive green roof',\n    SUM(ext_smart_irrigated) / NULLIF(SUM(total_rain), 0)\n  FROM qualifying_days\n  UNION ALL\n  SELECT\n    'non-irrigated extensive green roof',\n    SUM(ext_non_irrigated) / NULLIF(SUM(total_rain), 0)\n  FROM qualifying_days\n  UNION ALL\n  SELECT\n    'wetland green roof',\n    SUM(wetland) / NULLIF(SUM(total_rain), 0)\n  FROM qualifying_days\n  UNION ALL\n  SELECT\n    'small lysimeter (timer based irrigation)',\n    SUM(small_timer) / NULLIF(SUM(total_rain), 0)\n  FROM qualifying_days\n  UNION ALL\n  SELECT\n    'small lysimeter (threshold based irrigation)',\n    SUM(small_threshold) / NULLIF(SUM(total_rain), 0)\n  FROM qualifying_days\n)\nSELECT\n  roof_type,\n  ratio\nFROM ratios\nWHERE\n  NOT ratio IS NULL\nORDER BY\n  ratio ASC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=90&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Which roof type had the largest average reduction in corrected surface temperature relative to the gravel roof during days with downward shortwave radiation above 700 W/m²?",
+    "sql": "WITH filtered AS (\n  SELECT\n    KD_TSFCkorr,\n    ED1_TSFCkorr,\n    ED2_TSFCkorr,\n    SD_TSFCkorr\n  FROM radiation\n  WHERE\n    KD_SWdown > 700 AND NOT KD_TSFCkorr IS NULL\n), reductions AS (\n  SELECT\n    'smart irrigated extensive green roof' AS roof_type,\n    AVG(KD_TSFCkorr - ED1_TSFCkorr) AS avg_reduction\n  FROM filtered\n  UNION ALL\n  SELECT\n    'non-irrigated extensive green roof',\n    AVG(KD_TSFCkorr - ED2_TSFCkorr)\n  FROM filtered\n  UNION ALL\n  SELECT\n    'wetland green roof',\n    AVG(KD_TSFCkorr - SD_TSFCkorr)\n  FROM filtered\n)\nSELECT\n  roof_type,\n  avg_reduction\nFROM reductions\nORDER BY\n  avg_reduction DESC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=95&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "What was the average daily cooling benefit of the wetland roof relative to the gravel roof during days with maximum air temperature above 30 °C?",
+    "sql": "WITH daily_surface AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    AVG(KD_TSFCkorr) AS gravel_tsfc,\n    AVG(SD_TSFCkorr) AS wetland_tsfc\n  FROM radiation\n  GROUP BY\n    1\n), hot_days AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day\n  FROM wetter\n  GROUP BY\n    1\n  HAVING\n    MAX(Tmax) > 30\n)\nSELECT\n  AVG(d.gravel_tsfc - d.wetland_tsfc) AS avg_daily_cooling_benefit_K\nFROM daily_surface AS d\nJOIN hot_days AS h\n  ON d.day = h.day",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=97&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How did soil moisture below 20% affect the runoff-to-precipitation ratio of the non-irrigated extensive roof on days with at least 5 mm precipitation?",
+    "sql": "WITH weather_daily AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS rain_mm\n  FROM wetter\n  GROUP BY\n    1\n), outflow_daily AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Extensiv2_Efflux) AS runoff_l\n  FROM outflow\n  GROUP BY\n    1\n), swc_daily AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    AVG(QEx2) AS avg_swc\n  FROM swc\n  GROUP BY\n    1\n), daily AS (\n  SELECT\n    w.day,\n    w.rain_mm,\n    o.runoff_l,\n    s.avg_swc\n  FROM weather_daily AS w\n  LEFT JOIN outflow_daily AS o\n    USING (day)\n  LEFT JOIN swc_daily AS s\n    USING (day)\n)\nSELECT\n  CASE WHEN avg_swc < 20 THEN 'swc_below_20' ELSE 'swc_20_or_above' END AS soil_moisture_group,\n  COUNT(*) AS n_days,\n  AVG(rain_mm) AS avg_rain_mm,\n  AVG(runoff_l) AS avg_runoff_l,\n  AVG(runoff_l / NULLIF(rain_mm, 0)) AS avg_runoff_to_precip_ratio\nFROM daily\nWHERE\n  rain_mm >= 5 AND NOT avg_swc IS NULL\nGROUP BY\n  soil_moisture_group\nORDER BY\n  soil_moisture_group",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=98&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How did average outflow from the small substrate lysimeters differ between timer-based and threshold-based irrigation during months with precipitation below 30 mm?",
+    "sql": "SELECT\n  DATE_TRUNC('MONTH', o.timestamp) AS month,\n  AVG(o.Zeitlysi_Efflux_x) AS avg_timer_outflow,\n  AVG(o.Sensorlysi_Efflux_x) AS avg_threshold_outflow,\n  AVG(o.Zeitlysi_Efflux_x) - AVG(o.Sensorlysi_Efflux_x) AS difference\nFROM outflow AS o\nWHERE\n  DATE_TRUNC('MONTH', o.timestamp) IN (\n    SELECT\n      DATE_TRUNC('MONTH', w.timestamp)\n    FROM wetter AS w\n    GROUP BY\n      DATE_TRUNC('MONTH', w.timestamp)\n    HAVING\n      SUM(w.Rain) < 30\n  )\nGROUP BY\n  DATE_TRUNC('MONTH', o.timestamp)\nORDER BY\n  month",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=100&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "On how many days did daily outflow from the gravel roof at least double compared to the previous day, considering only days where both days had outflow above 0.5 liter?",
+    "sql": "WITH daily AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Kies_Efflux) AS outflow\n  FROM outflow\n  GROUP BY\n    DATE_TRUNC('DAY', timestamp)\n), with_prev AS (\n  SELECT\n    day,\n    outflow,\n    LAG(day) OVER (ORDER BY day) AS prev_day,\n    LAG(outflow) OVER (ORDER BY day) AS prev_outflow\n  FROM daily\n)\nSELECT\n  COUNT(*) AS num_days\nFROM with_prev\nWHERE\n  prev_day = day - INTERVAL '1' DAY\n  AND outflow > 0.5\n  AND prev_outflow > 0.5\n  AND outflow >= 2 * prev_outflow",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=101&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Which individual calendar month showed the largest increase in total wetland roof outflow relative to the immediately preceding month?",
+    "sql": "WITH monthly AS (\n  SELECT\n    DATE_TRUNC('MONTH', timestamp) AS month,\n    SUM(Sumpf2_Efflux) AS total_outflow\n  FROM outflow\n  GROUP BY\n    DATE_TRUNC('MONTH', timestamp)\n)\nSELECT\n  month,\n  total_outflow - LAG(total_outflow) OVER (ORDER BY month) AS increase\nFROM monthly\nQUALIFY\n  NOT increase IS NULL\nORDER BY\n  increase DESC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=103&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Defining a rain event as a run of consecutive days each with at least 1 mm precipitation, what was the average total outflow per event for each roof type, considering only events lasting at least 3 days?",
+    "sql": "WITH daily_rain AS (\n  SELECT\n    CAST(timestamp AS DATE) AS day,\n    SUM(Rain) AS rain\n  FROM wetter\n  GROUP BY\n    1\n), rainy_days AS (\n  SELECT\n    day,\n    day - CAST(ROW_NUMBER() OVER (ORDER BY day) AS INT) AS grp\n  FROM daily_rain\n  WHERE\n    rain >= 1\n), events AS (\n  SELECT\n    grp,\n    MIN(day) AS start_day,\n    MAX(day) AS end_day\n  FROM rainy_days\n  GROUP BY\n    grp\n  HAVING\n    COUNT(*) >= 3\n), event_totals AS (\n  SELECT\n    e.grp,\n    SUM(o.Kies_Efflux) AS gravel_total,\n    SUM(o.Extensiv1_Efflux) AS ext_irrigated_total,\n    SUM(o.Extensiv2_Efflux) AS ext_nonirrigated_total,\n    SUM(o.Sumpf2_Efflux) AS wetland_total,\n    SUM(o.Zeitlysi_Efflux_x) AS timer_lysimeter_total,\n    SUM(o.Sensorlysi_Efflux_x) AS sensor_lysimeter_total\n  FROM events AS e\n  JOIN outflow AS o\n    ON CAST(o.timestamp AS DATE) BETWEEN e.start_day AND e.end_day\n  GROUP BY\n    e.grp\n)\nSELECT\n  AVG(gravel_total) AS avg_event_outflow_gravel,\n  AVG(ext_irrigated_total) AS avg_event_outflow_extensive_irrigated,\n  AVG(ext_nonirrigated_total) AS avg_event_outflow_extensive_nonirrigated,\n  AVG(wetland_total) AS avg_event_outflow_wetland,\n  AVG(timer_lysimeter_total) AS avg_event_outflow_timer_lysimeter,\n  AVG(sensor_lysimeter_total) AS avg_event_outflow_sensor_lysimeter\nFROM event_totals",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=105&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "On what date did the cumulative outflow of the non-irrigated extensive green roof first exceed the cumulative outflow of the smart irrigated extensive green roof?",
+    "sql": "WITH cumulative AS (\n  SELECT\n    timestamp,\n    SUM(Extensiv2_Efflux) OVER (ORDER BY timestamp) AS cum_non_irrigated,\n    SUM(Extensiv1_Efflux) OVER (ORDER BY timestamp) AS cum_irrigated\n  FROM outflow\n)\nSELECT\n  CAST(timestamp AS DATE) AS date\nFROM cumulative\nWHERE\n  cum_non_irrigated > cum_irrigated\nORDER BY\n  timestamp\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=106&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "By what date had the gravel roof accumulated 50% of its total outflow over the entire monitoring period?",
+    "sql": "WITH cum AS (\n  SELECT\n    timestamp,\n    SUM(Kies_Efflux) OVER (ORDER BY timestamp) AS cum_outflow,\n    SUM(Kies_Efflux) OVER () AS total_outflow\n  FROM outflow\n)\nSELECT\n  MIN(CAST(timestamp AS DATE)) AS date_50pct\nFROM cum\nWHERE\n  cum_outflow >= 0.5 * total_outflow",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=107&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Which 7-day window had the highest total precipitation, and what was the total outflow from each roof type during that same window?",
+    "sql": "WITH daily_rain AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS rain\n  FROM wetter\n  GROUP BY\n    1\n), rolling AS (\n  SELECT\n    day - INTERVAL '6' DAY AS window_start,\n    day AS window_end,\n    SUM(rain) OVER (ORDER BY day RANGE BETWEEN INTERVAL '6' DAY PRECEDING AND CURRENT ROW) AS total_rain\n  FROM daily_rain\n), best_window AS (\n  SELECT\n    window_start,\n    window_end,\n    total_rain\n  FROM rolling\n  ORDER BY\n    total_rain DESC\n  LIMIT 1\n)\nSELECT\n  b.window_start,\n  b.window_end,\n  b.total_rain AS total_precipitation_mm,\n  SUM(o.Kies_Efflux) AS gravel_roof_outflow,\n  SUM(o.Extensiv1_Efflux) AS irrigated_extensive_roof_outflow,\n  SUM(o.Extensiv2_Efflux) AS non_irrigated_extensive_roof_outflow,\n  SUM(o.Sumpf2_Efflux) AS wetland_roof_outflow,\n  SUM(o.Zeitlysi_Efflux_x) AS timer_irrigated_small_lysimeter_outflow,\n  SUM(o.Sensorlysi_Efflux_x) AS threshold_irrigated_small_lysimeter_outflow\nFROM best_window AS b\nJOIN outflow AS o\n  ON o.timestamp >= b.window_start AND o.timestamp < b.window_end + INTERVAL '1' DAY\nGROUP BY\n  b.window_start,\n  b.window_end,\n  b.total_rain",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=108&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "What share of the gravel roof's total outflow over the monitoring period occurred on its ten highest-outflow days?",
+    "sql": "WITH daily AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Kies_Efflux) AS daily_outflow\n  FROM outflow\n  GROUP BY\n    DATE_TRUNC('DAY', timestamp)\n), top10 AS (\n  SELECT\n    SUM(daily_outflow) AS top10_outflow\n  FROM (\n    SELECT\n      daily_outflow\n    FROM daily\n    ORDER BY\n      daily_outflow DESC\n    LIMIT 10\n  )\n)\nSELECT\n  top10.top10_outflow / SUM(daily.daily_outflow) AS share_top10_days\nFROM daily, top10\nGROUP BY\n  top10.top10_outflow",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=109&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "For each individual calendar month, on which three dates did the wetland green roof record its highest daily outflow?",
+    "sql": "SELECT\n  DATE_TRUNC('MONTH', timestamp) AS month,\n  CAST(timestamp AS DATE) AS date,\n  SUM(Sumpf2_Efflux) AS daily_outflow\nFROM outflow\nGROUP BY\n  DATE_TRUNC('MONTH', timestamp),\n  CAST(timestamp AS DATE)\nQUALIFY\n  ROW_NUMBER() OVER (PARTITION BY DATE_TRUNC('MONTH', timestamp) ORDER BY SUM(Sumpf2_Efflux) DESC) <= 3\nORDER BY\n  month,\n  daily_outflow DESC",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=110&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "On which date did each roof type record its highest daily mean soil temperature, and how many days separate the earliest and latest of those dates?",
+    "sql": "WITH daily AS (\n  SELECT\n    CAST(DATE_TRUNC('DAY', timestamp) AS DATE) AS day,\n    roof,\n    AVG(temp) AS mean_temp\n  FROM (\n    UNPIVOT tsoil\n    ON TGravel, TEx1, TEx2, TIn, TWetland\n    INTO NAME roof VALUE temp\n  )\n  GROUP BY\n    day,\n    roof\n), best AS (\n  SELECT\n    roof,\n    day,\n    mean_temp\n  FROM daily\n  QUALIFY\n    ROW_NUMBER() OVER (PARTITION BY roof ORDER BY mean_temp DESC) = 1\n)\nSELECT\n  roof,\n  day AS max_daily_mean_date,\n  mean_temp AS max_daily_mean_temp,\n  DATE_DIFF('DAY', MIN(day) OVER (), MAX(day) OVER ()) AS days_between_earliest_and_latest\nFROM best\nORDER BY\n  max_daily_mean_date",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=111&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "On average, how many hours after the time of the daily peak in downward shortwave radiation did the daily peak in corrected surface temperature occur on the gravel roof?",
+    "sql": "SELECT\n  AVG(EPOCH(peak_temp_time - peak_rad_time) / 3600.0) AS avg_hours_lag\nFROM (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    ARG_MAX(timestamp, KD_SWdown) AS peak_rad_time,\n    ARG_MAX(timestamp, KD_TSFCkorr) AS peak_temp_time\n  FROM radiation\n  WHERE\n    NOT KD_SWdown IS NULL AND NOT KD_TSFCkorr IS NULL\n  GROUP BY\n    DATE_TRUNC('DAY', timestamp)\n) AS daily_peaks",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=112&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Grouping days into precipitation bins of 0-5, 5-10, 10-20, and above 20 mm, what was the average runoff-to-precipitation ratio of the gravel roof in each bin?",
+    "sql": "WITH daily_precip AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Rain) AS precip\n  FROM wetter\n  GROUP BY\n    1\n), daily_runoff AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Kies_Efflux) AS runoff\n  FROM outflow\n  GROUP BY\n    1\n)\nSELECT\n  CASE\n    WHEN p.precip > 20\n    THEN '>20'\n    WHEN p.precip >= 10\n    THEN '10-20'\n    WHEN p.precip >= 5\n    THEN '5-10'\n    ELSE '0-5'\n  END AS precip_bin,\n  AVG(r.runoff / p.precip) AS avg_runoff_to_precip_ratio\nFROM daily_precip AS p\nJOIN daily_runoff AS r\n  USING (day)\nWHERE\n  p.precip > 0\nGROUP BY\n  1\nORDER BY\n  MIN(p.precip)",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=113&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How did the average corrected surface temperature difference between the gravel roof and the wetland green roof compare between the hours 00:00-06:00 and 12:00-18:00?",
+    "sql": "SELECT\n  CASE\n    WHEN EXTRACT(HOUR FROM timestamp) >= 0 AND EXTRACT(HOUR FROM timestamp) < 6\n    THEN '00:00-06:00'\n    ELSE '12:00-18:00'\n  END AS time_window,\n  AVG(KD_TSFCkorr - SD_TSFCkorr) AS avg_corrected_surface_temp_difference\nFROM radiation\nWHERE\n  (\n    EXTRACT(HOUR FROM timestamp) >= 0 AND EXTRACT(HOUR FROM timestamp) < 6\n  )\n  OR (\n    EXTRACT(HOUR FROM timestamp) >= 12 AND EXTRACT(HOUR FROM timestamp) < 18\n  )\nGROUP BY\n  time_window\nORDER BY\n  time_window",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=114&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "How did average daily outflow for each roof type differ between the first and second halves of the monitoring period, splitting at the midpoint date between the first and last measurement?",
+    "sql": "WITH bounds AS (\n  SELECT\n    MIN(timestamp) AS t_first,\n    MAX(timestamp) AS t_last,\n    MIN(timestamp) + (\n      MAX(timestamp) - MIN(timestamp)\n    ) / 2 AS t_mid\n  FROM outflow\n), daily AS (\n  SELECT\n    DATE_TRUNC('DAY', timestamp) AS day,\n    SUM(Kies_Efflux) AS gravel_daily,\n    SUM(Extensiv1_Efflux) AS extensive_irrigated_daily,\n    SUM(Extensiv2_Efflux) AS extensive_non_irrigated_daily,\n    SUM(Sumpf2_Efflux) AS wetland_daily,\n    SUM(Zeitlysi_Efflux_x) AS timer_lysimeter_daily,\n    SUM(Sensorlysi_Efflux_x) AS sensor_lysimeter_daily\n  FROM outflow\n  GROUP BY\n    DATE_TRUNC('DAY', timestamp)\n)\nSELECT\n  CASE WHEN d.day < b.t_mid THEN 'first half' ELSE 'second half' END AS period,\n  MIN(d.day) AS period_start,\n  MAX(d.day) AS period_end,\n  AVG(d.gravel_daily) AS avg_daily_gravel_outflow,\n  AVG(d.extensive_irrigated_daily) AS avg_daily_extensive_irrigated_outflow,\n  AVG(d.extensive_non_irrigated_daily) AS avg_daily_extensive_non_irrigated_outflow,\n  AVG(d.wetland_daily) AS avg_daily_wetland_outflow,\n  AVG(d.timer_lysimeter_daily) AS avg_daily_timer_lysimeter_outflow,\n  AVG(d.sensor_lysimeter_daily) AS avg_daily_sensor_lysimeter_outflow\nFROM daily AS d\nCROSS JOIN bounds AS b\nGROUP BY\n  CASE WHEN d.day < b.t_mid THEN 'first half' ELSE 'second half' END\nORDER BY\n  period",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=115&status=submitted&sort=record.inserted_at.asc"
+  },
+  {
+    "question": "Which individual calendar month had the largest share of missing soil moisture measurements for the intensive green roof?",
+    "sql": "SELECT\n  DATE_TRUNC('MONTH', timestamp) AS month,\n  COUNT(*) FILTER(WHERE\n    QIn IS NULL) * 1.0 / COUNT(*) AS missing_share\nFROM swc\nGROUP BY\n  month\nORDER BY\n  missing_share DESC\nLIMIT 1",
+    "argilla_link": "http://localhost:6900/dataset/533f77de-d512-40c5-98dd-3f2529937c0d/annotation-mode?page=116&status=submitted&sort=record.inserted_at.asc"
+  }
+]

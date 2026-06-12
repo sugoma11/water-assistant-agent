@@ -1,0 +1,17 @@
+On how many days did daily outflow from the gravel roof at least double compared to the previous day, considering only days where both days had outflow above 0.5 liter?
+What was the average daily outflow from each roof type on the day immediately following days with at least 15 mm precipitation?
+Which individual calendar month showed the largest increase in total wetland roof outflow relative to the immediately preceding month?
+What was the longest run of consecutive days on which the non-irrigated extensive green roof produced less than 0.5 liter of daily outflow?
+Defining a rain event as a run of consecutive days each with at least 1 mm precipitation, what was the average total outflow per event for each roof type, considering only events lasting at least 3 days?
+On what date did the cumulative outflow of the non-irrigated extensive green roof first exceed the cumulative outflow of the smart irrigated extensive green roof?
+By what date had the gravel roof accumulated 50% of its total outflow over the entire monitoring period?
+Which 7-day window had the highest total precipitation, and what was the total outflow from each roof type during that same window?
+What share of the gravel roof's total outflow over the monitoring period occurred on its ten highest-outflow days?
+For each individual calendar month, on which three dates did the wetland green roof record its highest daily outflow?
+On which date did each roof type record its highest daily mean soil temperature, and how many days separate the earliest and latest of those dates?
+On average, how many hours after the time of the daily peak in downward shortwave radiation did the daily peak in corrected surface temperature occur on the gravel roof?
+Grouping days into precipitation bins of 0-5, 5-10, 10-20, and above 20 mm, what was the average runoff-to-precipitation ratio of the gravel roof in each bin?
+How did the average corrected surface temperature difference between the gravel roof and the wetland green roof compare between the hours 00:00-06:00 and 12:00-18:00?
+How did average daily outflow for each roof type differ between the first and second halves of the monitoring period, splitting at the midpoint date between the first and last measurement?
+Which individual calendar month had the largest share of missing soil moisture measurements for the intensive green roof?
+After each day with at least 20 mm precipitation, how many days on average did it take for the non-irrigated extensive green roof's daily outflow to fall below 0.5 liter?

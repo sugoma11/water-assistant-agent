@@ -13,8 +13,8 @@ services:
     environment:
       <<: *argilla-common
       USERNAME: argilla
-      PASSWORD: 12345678
-      API_KEY: argilla.apikey
+      PASSWORD: ${ARGILLA_PWD}
+      API_KEY: ${ARGILLA_API_KEY}
       WORKSPACE: default
     networks:
       - argilla

@@ -7,18 +7,18 @@ import click
 from experiments.text2sql.text2sql_with_cli import build_cli_command
 
 TO_GERMAN_PROMPT = """\
-Übersetze die folgende Frage ins Deutsche.
+Translate the following question into German.
 
-Schreib sie so, wie ein echter Mensch sie in leichter Eile in ein Chatfenster tippen würde:
-- umgangssprachliche Wortwahl, kurze Formulierung
-- leicht schlampig: ruhig mal kleingeschrieben anfangen, ein fehlendes Komma oder ein lockeres "u." statt "und" ist okay
-- KEIN polierter, LLM-artiger Stil, keine perfekte Schriftsprache
-- Fachbegriffe und Eigennamen (z.B. Extensiv, Kies, Sumpf, Lysimeter, mm) unverändert lassen
-- die Bedeutung der Frage muss exakt erhalten bleiben
+Write it the way a real person would type it into a chat window in a slight hurry:
+- Colloquial vocabulary, short sentences
+- Slightly sloppy: feel Free to start with lowercase letters; a missing comma or a casual “u.” instead of “und” is okay
+- NO polished, LLM-style language, no perfect written language
+- Leave technical terms and proper nouns (e.g., Extensiv, Kies, Sumpf, Lysimeter, mm) unchanged
+- The meaning of the question must be preserved exactly
 
-Gib NUR die deutsche Frage zurück, ohne Anführungszeichen, ohne Erklärung.
+Return ONLY the German question, without quotation marks, without explanation.
 
-Frage:
+Question:
 {question}
 """
 

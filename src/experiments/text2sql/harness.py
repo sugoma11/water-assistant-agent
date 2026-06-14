@@ -213,6 +213,54 @@ def build_completion_kwargs(
     }
 
 
+def validate_teacher_model(model: str) -> str:
+    """Fail fast on a teacher model whose provider prefix isn't ``openai``.
+
+    GEPA calls the reflection model via litellm's openai-provider env fallback
+    (see ``configure_teacher_env``), so only ``openai/<name>`` (or the converted
+    ``openai:/<name>``) can work here. Anything else — including provider typos
+    like ``openain/<name>`` — would otherwise surface only mid-run, as a swallowed
+    per-iteration reflection error, after the budget is already being spent.
+    """
+    provider = model.partition(":/" if ":/" in model else "/")[0]
+    if provider != "openai":
+        raise click.BadParameter(
+            f"teacher model {model!r} has provider prefix {provider!r}, but the "
+            "GEPA reflection call only supports 'openai/<name>' (the teacher "
+            "endpoint is wired through the OPENAI_API_BASE/OPENAI_API_KEY "
+            "fallback). Did you mistype the prefix?"
+        )
+    return model
+
+
+def configure_teacher_env(endpoint: str) -> None:
+    """Point litellm's openai-provider fallback at the teacher endpoint.
+
+    GEPA calls the reflection model as ``litellm.completion(model="openai/<x>")``
+    without ``api_base``/``api_key`` (gepa/api.py), so litellm falls back to the
+    ``OPENAI_API_BASE``/``OPENAI_API_KEY`` env vars. Student and judge calls pass
+    explicit kwargs which take precedence, so this never affects them.
+    """
+    api_base_var, api_key_var = ENDPOINTS[endpoint]
+    os.environ["OPENAI_API_BASE"] = os.environ[api_base_var]
+    os.environ["OPENAI_API_KEY"] = os.environ[api_key_var]
+
+
+def to_mlflow_model_uri(model: str) -> str:
+    """Convert a litellm-style model id (``openai/x``) to the MLflow model URI
+    format (``openai:/x``) expected by ``GepaPromptOptimizer``.
+
+    Idempotent: an already-converted ``openai:/x`` is returned unchanged.
+    (Double-converting would yield ``openai::/x``, which MLflow's
+    ``_parse_model_uri`` splits on ``:/`` into provider ``openai:`` — handing
+    litellm the provider-less ``openai:/x`` and crashing the reflection call.)
+    """
+    if ":/" in model:
+        return model
+    provider, _, name = model.partition("/")
+    return f"{provider}:/{name}"
+
+
 def extract_usage(resp: Any, prefix: str) -> dict[str, str]:
     """Flatten litellm response usage into ``{prefix}_*_tokens`` string entries
     (Feedback metadata values must be strings). Missing usage -> empty dict."""
@@ -249,18 +297,31 @@ def load_dataset(questions_path: str) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Generation (shared by eval and train)
 # ---------------------------------------------------------------------------
-def create_predict_fn(
-    model: str, endpoint: str, schema_text: str
+def render_system_prompt(template: str, schema_text: str) -> str:
+    """Substitute the schema into a system prompt template.
+
+    Uses str.replace instead of str.format: GEPA-mutated templates may contain
+    literal braces (e.g. SQL examples) that would crash str.format. If a mutated
+    candidate lost the ``{schema}`` placeholder, append the schema so the student
+    model never flies blind.
+    """
+    if "{schema}" in template:
+        return template.replace("{schema}", schema_text)
+    return f"{template}\n\nSchema:\n\n{schema_text}"
+
+
+def _make_predict_fn(
+    completion_kwargs: dict[str, Any], get_system_prompt: Callable[[], str]
 ) -> Callable[[str], dict[str, str]]:
-    """Build a predict_fn that generates DuckDB SQL for a question via litellm."""
-    completion_kwargs = build_completion_kwargs(model, endpoint)
-    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(schema=schema_text)
+    """Shared litellm-call body for the static and optimizable predict_fns.
+    ``get_system_prompt`` is called per prediction so dynamic sources (the
+    PromptVersion template patched by ``optimize_prompts``) are picked up."""
 
     def predict_fn(question: str) -> dict[str, str]:
         user_prompt = USER_PROMPT_TEMPLATE.format(question=question)
         resp = litellm.completion(
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": get_system_prompt()},
                 {"role": "user", "content": user_prompt},
             ],
             **completion_kwargs,
@@ -269,6 +330,33 @@ def create_predict_fn(
         return {"sql": sql, **extract_usage(resp, "generation")}
 
     return predict_fn
+
+
+def create_predict_fn(
+    model: str,
+    endpoint: str,
+    schema_text: str,
+    system_prompt_template: str = SYSTEM_PROMPT_TEMPLATE,
+) -> Callable[[str], dict[str, str]]:
+    """Build a predict_fn that generates DuckDB SQL for a question via litellm."""
+    completion_kwargs = build_completion_kwargs(model, endpoint)
+    system_prompt = render_system_prompt(system_prompt_template, schema_text)
+    return _make_predict_fn(completion_kwargs, lambda: system_prompt)
+
+
+def create_optimizable_predict_fn(
+    model: str, endpoint: str, schema_text: str, prompt_version: PromptVersion
+) -> Callable[[str], dict[str, str]]:
+    """Build a predict_fn whose system prompt is read from ``prompt_version`` on
+    EVERY call. ``mlflow.genai.optimize_prompts`` injects candidate prompts by
+    patching ``PromptVersion.template``, so the template must be accessed at call
+    time — a closure-baked prompt would never see GEPA's mutations (and MLflow
+    would warn that the prompt was not used during evaluation)."""
+    completion_kwargs = build_completion_kwargs(model, endpoint)
+    return _make_predict_fn(
+        completion_kwargs,
+        lambda: render_system_prompt(prompt_version.template, schema_text),
+    )
 
 
 # ---------------------------------------------------------------------------

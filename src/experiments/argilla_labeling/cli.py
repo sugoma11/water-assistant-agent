@@ -26,6 +26,11 @@ from experiments.argilla_labeling.export import (
 from experiments.argilla_labeling.settings import (
     ArgillaSettings,
 )
+from experiments.argilla_labeling.ui import (
+    UI_VARIANTS,
+    UIVariant,
+    get_variant,
+)
 
 _dataset_name_option = click.option(
     "--dataset-name",
@@ -34,12 +39,24 @@ _dataset_name_option = click.option(
     help="Argilla dataset name (overrides ARGILLA_DATASET_NAME env var).",
 )
 
+_ui_option = click.option(
+    "--ui",
+    "ui_name",
+    type=click.Choice(sorted(UI_VARIANTS)),
+    default="v1",
+    show_default=True,
+    help="Labeling UI variant: 'v1' (question/SQL) or 'v2' (adds a required "
+    "German/Denglish prod_question field).",
+)
 
-def _prepare_dataset(settings: ArgillaSettings) -> rg.Dataset:
+
+def _prepare_dataset(settings: ArgillaSettings, variant: UIVariant) -> rg.Dataset:
     """Create Argilla client, load template, and create the dataset."""
     client = settings.make_client()
     return create_dataset(
-        client, settings, build_dataset_settings(load_template(settings))
+        client,
+        settings,
+        build_dataset_settings(load_template(settings, variant), variant),
     )
 
 
@@ -56,16 +73,18 @@ def main() -> None:
     type=click.Path(exists=True, dir_okay=False, path_type=pathlib.Path),
     required=True,
     help="Path to a .txt (one question per line) or .json (list of "
-    "{question, sql?}) file.",
+    "{question, sql?, prod_question?}) file.",
 )
-def create(dataset_name: str | None, input_path: pathlib.Path) -> None:
+@_ui_option
+def create(dataset_name: str | None, input_path: pathlib.Path, ui_name: str) -> None:
     """Create the Argilla dataset and upload question records."""
     settings = ArgillaSettings().with_dataset_name(dataset_name)
+    variant = get_variant(ui_name)
     records = load_records(input_path)
     if not records:
         raise click.ClickException(f"No records loaded from {input_path}.")
-    dataset = _prepare_dataset(settings)
-    upload_records(dataset, records)
+    dataset = _prepare_dataset(settings, variant)
+    upload_records(dataset, records, variant)
     click.echo(
         f"Uploaded {len(records)} records to '{settings.argilla_dataset_name}' "
         f"(workspace '{settings.argilla_workspace}')."
@@ -80,21 +99,23 @@ def create(dataset_name: str | None, input_path: pathlib.Path) -> None:
     type=click.Path(exists=True, dir_okay=False, path_type=pathlib.Path),
     required=True,
     help="Path to a .txt (one question per line), .json, or .jsonl file with "
-    "{question, sql?} entries.",
+    "{question, sql?, prod_question?} entries.",
 )
-def upsert(dataset_name: str | None, input_path: pathlib.Path) -> None:
+@_ui_option
+def upsert(dataset_name: str | None, input_path: pathlib.Path, ui_name: str) -> None:
     """Upsert question records into an existing Argilla dataset.
 
     Records use stable IDs derived from the question text, so re-uploading the
     same question updates the existing record instead of creating a duplicate.
     """
     settings = ArgillaSettings().with_dataset_name(dataset_name)
+    variant = get_variant(ui_name)
     records = load_records(input_path)
     if not records:
         raise click.ClickException(f"No records loaded from {input_path}.")
     client = settings.make_client()
     dataset = get_dataset(client, settings)
-    upsert_records(dataset, records)
+    upsert_records(dataset, records, variant)
     click.echo(
         f"Upserted {len(records)} records into '{settings.argilla_dataset_name}' "
         f"(workspace '{settings.argilla_workspace}')."
@@ -126,11 +147,13 @@ def dump(dataset_name: str | None, output: pathlib.Path) -> None:
     required=True,
     help="Path to a dump JSON file produced by `dump`.",
 )
-def load_dump(dataset_name: str | None, input_path: pathlib.Path) -> None:
+@_ui_option
+def load_dump(dataset_name: str | None, input_path: pathlib.Path, ui_name: str) -> None:
     """Create a new dataset from a dump file (records + responses preserved)."""
     settings = ArgillaSettings().with_dataset_name(dataset_name)
+    variant = get_variant(ui_name)
     client = settings.make_client()
-    count = load_from_dump(client, settings, input_path)
+    count = load_from_dump(client, settings, input_path, variant)
     click.echo(
         f"Loaded {count} records into '{settings.argilla_dataset_name}' "
         f"from {input_path}."
@@ -155,13 +178,16 @@ def load_dump(dataset_name: str | None, input_path: pathlib.Path) -> None:
     show_default=False,
     help="Where to keep the intermediate dump JSON. Defaults to a temp file.",
 )
+@_ui_option
 def copy(
     source_dataset: str,
     target_dataset: str,
     dump_path: pathlib.Path | None,
+    ui_name: str,
 ) -> None:
     """Copy a dataset by dumping the source and recreating it under a new name."""
     base = ArgillaSettings()
+    variant = get_variant(ui_name)
     client = base.make_client()
 
     if dump_path is None:
@@ -177,7 +203,7 @@ def copy(
 
     dumped = dump_dataset(client, base.with_dataset_name(source_dataset), dump_path)
     loaded = load_from_dump(
-        client, base.with_dataset_name(target_dataset), dump_path
+        client, base.with_dataset_name(target_dataset), dump_path, variant
     )
     click.echo(
         f"Copied {dumped} records from '{source_dataset}' to "
@@ -199,11 +225,20 @@ def copy(
     default=False,
     help="Include pending records in the export.",
 )
-def export(dataset_name: str | None, output: pathlib.Path, include_pending: bool) -> None:
-    """Export submitted records as JSON ``[{question, sql, argilla_link}, ...]``."""
+@_ui_option
+def export(
+    dataset_name: str | None,
+    output: pathlib.Path,
+    include_pending: bool,
+    ui_name: str,
+) -> None:
+    """Export submitted records as JSON ``[{question, sql, argilla_link, ...}, ...]``."""
     settings = ArgillaSettings().with_dataset_name(dataset_name)
+    variant = get_variant(ui_name)
     client = settings.make_client()
-    count = export_qa(client, settings, output, include_pending=include_pending)
+    count = export_qa(
+        client, settings, output, variant, include_pending=include_pending
+    )
     click.echo(f"Exported {count} submitted records to {output}.")
 
 
@@ -215,15 +250,19 @@ def export(dataset_name: str | None, output: pathlib.Path, include_pending: bool
     default=None,
     show_default=False,
     help="Directory with template.html/template.css/template.js. "
-    "Defaults to the bundled static/ directory.",
+    "Defaults to the bundled static/<ui>/ directory.",
 )
-def update_ui(dataset_name: str | None, static_dir: pathlib.Path | None) -> None:
+@_ui_option
+def update_ui(
+    dataset_name: str | None, static_dir: pathlib.Path | None, ui_name: str
+) -> None:
     """Update the labeling UI of an existing dataset (preserves data)."""
     settings = ArgillaSettings().with_dataset_name(dataset_name)
+    variant = get_variant(ui_name)
     template = (
         load_template_from_dir(static_dir, settings)
         if static_dir is not None
-        else load_template(settings)
+        else load_template(settings, variant)
     )
     client = settings.make_client()
     update_dataset_template(client, settings, template)

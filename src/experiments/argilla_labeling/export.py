@@ -18,6 +18,9 @@ from experiments.argilla_labeling.dataset import (
 from experiments.argilla_labeling.settings import (
     ArgillaSettings,
 )
+from experiments.argilla_labeling.ui import (
+    UIVariant,
+)
 
 _UPLOAD_BATCH_SIZE = 64
 
@@ -129,11 +132,12 @@ def load_from_dump(
     client: rg.Argilla,
     target_settings: ArgillaSettings,
     dump_path: pathlib.Path,
+    variant: UIVariant,
 ) -> int:
     """Create a dataset from *target_settings* and re-upload records from a dump file.
 
     The labeling UI template is freshly assembled from the bundled static/
-    directory rather than restored from the dump.
+    directory for *variant* rather than restored from the dump.
     """
     payload = json.loads(dump_path.read_text(encoding="utf-8"))
     if isinstance(payload, list):
@@ -144,7 +148,7 @@ def load_from_dump(
     dataset = create_dataset(
         client,
         target_settings,
-        build_dataset_settings(load_template(target_settings)),
+        build_dataset_settings(load_template(target_settings, variant), variant),
     )
     argilla_records = _build_argilla_records(raw_records, user_id=str(client.me.id))
     dataset.records.log(argilla_records, batch_size=_UPLOAD_BATCH_SIZE)
@@ -181,10 +185,12 @@ def export_qa(
     client: rg.Argilla,
     settings: ArgillaSettings,
     output_path: pathlib.Path,
+    variant: UIVariant,
     include_pending: bool = False,
 ) -> int:
-    """Export submitted records as ``[{question, sql, argilla_link}, ...]``.
+    """Export submitted records as ``[{question, sql, argilla_link, ...}, ...]``.
 
+    The exported keys follow *variant* (e.g. v2 also emits ``prod_question``).
     Records are sorted by ``inserted_at`` ascending so each ``argilla_link``'s
     ``page`` parameter (1-indexed position) deterministically opens the same
     record under the matching sort in the Argilla UI.
@@ -204,19 +210,19 @@ def export_qa(
     for i, rec in enumerate(records, start=1):
         responses = rec.get("responses", {}) or {}
         fields_content = (rec.get("fields", {}) or {}).get("content", {}) or {}
-        question = (
-            _latest_submitted_value(responses, "question")
-            or fields_content.get("question", "")
-            or ""
-        )
-        sql = (
-            _latest_submitted_value(responses, "sql_query")
-            or fields_content.get("sql_query", "")
-            or ""
-        )
 
-        sql  = sqlglot.parse_one(
-            sql,
+        # export_key -> value, pulled from the latest submitted response or baseline.
+        values = {
+            f.export_key: (
+                _latest_submitted_value(responses, f.name)
+                or fields_content.get(f.name, "")
+                or ""
+            )
+            for f in variant.fields
+        }
+
+        sql = sqlglot.parse_one(
+            values["sql"],
             read="duckdb"
         ).sql(
             dialect="duckdb",
@@ -231,16 +237,20 @@ def export_qa(
                     f"Record {rec.get('id')} has invalid SQL: {sql}\nError: {e}"
                 )
             ) from e
+        values["sql"] = sql
 
-        rows.append(
-            {
-                "question": question,
-                "sql": sql,
-                "argilla_link": _build_argilla_link(
-                    settings.argilla_api_url, dataset_id, i
-                ),
-            }
-        )
+        # Order keys as: question, sql, argilla_link, then any extras (e.g. prod_question).
+        row = {
+            "question": values.get("question", ""),
+            "sql": values["sql"],
+            "argilla_link": _build_argilla_link(
+                settings.argilla_api_url, dataset_id, i
+            ),
+        }
+        for key, value in values.items():
+            if key not in row:
+                row[key] = value
+        rows.append(row)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(

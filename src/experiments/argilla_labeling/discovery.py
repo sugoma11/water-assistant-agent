@@ -16,6 +16,7 @@ class QARecord:
 
     question: str
     sql: str = ""
+    prod_question: str = ""
 
 
 def _load_txt(path: pathlib.Path) -> list[QARecord]:
@@ -55,7 +56,14 @@ def _load_jsonl(path: pathlib.Path) -> list[QARecord]:
             raise click.ClickException(
                 f"{path}: line {i} has non-string 'sql'."
             )
-        records.append(QARecord(question=question.strip(), sql=sql))
+        prod_question = obj.get("prod_question", "")
+        if not isinstance(prod_question, str):
+            raise click.ClickException(
+                f"{path}: line {i} has non-string 'prod_question'."
+            )
+        records.append(
+            QARecord(question=question.strip(), sql=sql, prod_question=prod_question)
+        )
     return records
 
 def _load_json(path: pathlib.Path) -> list[QARecord]:
@@ -80,7 +88,14 @@ def _load_json(path: pathlib.Path) -> list[QARecord]:
             raise click.ClickException(
                 f"{path}: entry {i} has non-string 'sql'."
             )
-        records.append(QARecord(question=question.strip(), sql=sql))
+        prod_question = entry.get("prod_question", "")
+        if not isinstance(prod_question, str):
+            raise click.ClickException(
+                f"{path}: entry {i} has non-string 'prod_question'."
+            )
+        records.append(
+            QARecord(question=question.strip(), sql=sql, prod_question=prod_question)
+        )
     return records
 
 

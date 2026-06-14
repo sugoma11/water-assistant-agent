@@ -1,5 +1,6 @@
 """Argilla-specific settings loaded from environment variables."""
 
+import os
 import argilla as rg
 import pydantic_settings
 
@@ -8,7 +9,7 @@ class ArgillaSettings(pydantic_settings.BaseSettings):
     """Connection settings for the Argilla labeling server."""
 
     argilla_api_url: str = "http://localhost:6900"
-    argilla_api_key: str = "argilla.apikey"
+    argilla_api_key: str = os.getenv("ARGILLA_API_KEY", "argilla.apikey")
     argilla_dataset_name: str = "water_qa"
     argilla_workspace: str = "default"
 

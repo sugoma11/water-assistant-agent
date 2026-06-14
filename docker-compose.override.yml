@@ -1,0 +1,30 @@
+services:
+  ngrok:
+    image: ngrok/ngrok:latest
+    command:
+      - "start"
+      - "--all"
+      - "--config"
+      - "/etc/ngrok.yml"
+      - "--log"
+      - "stdout"
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    configs:
+      - source: ngrok_config
+        target: /etc/ngrok.yml
+    ports:
+      - "0.0.0.0:4040:4040"
+    networks:
+      - argilla
+    depends_on:
+      - argilla
+
+configs:
+  ngrok_config:
+    content: |
+      version: "2"
+      tunnels:
+        argilla:
+          proto: http
+          addr: argilla:6900

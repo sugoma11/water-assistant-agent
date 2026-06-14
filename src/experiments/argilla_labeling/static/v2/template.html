@@ -1,0 +1,38 @@
+<div id="labeler-root">
+  <div id="topbar">
+    <h2>Question / SQL Labeling (DE)</h2>
+    <span id="save-status"></span>
+    <button id="btn-save" onclick="saveAll()">Save</button>
+  </div>
+  <div id="body">
+    <div class="form-group">
+      <label class="form-label" for="field-question">Question (English)</label>
+      <textarea id="field-question" class="form-textarea" rows="4"
+        placeholder="Natural-language question…"
+        oninput="state.question=this.value"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="field-prod-question">Question (DE / Denglish)</label>
+      <textarea id="field-prod-question" class="form-textarea" rows="4"
+        placeholder="German / Denglish question…"
+        oninput="state.prod_question=this.value"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="field-sql">SQL Query</label>
+      <textarea id="field-sql" class="form-textarea form-sql" rows="12"
+        placeholder="SELECT …"
+        oninput="state.sql_query=this.value"></textarea>
+    </div>
+    <div class="form-group form-check">
+      <input id="field-sql-valid" type="checkbox"
+        onchange="state.sql_valid=this.checked">
+      <label for="field-sql-valid">Is SQL valid now?</label>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="field-notes">Notes</label>
+      <textarea id="field-notes" class="form-textarea" rows="4"
+        placeholder="Optional notes about this record…"
+        oninput="state.notes=this.value"></textarea>
+    </div>
+  </div>
+</div>

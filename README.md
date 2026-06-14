@@ -1,5 +1,16 @@
 ## Evaluating prompt optimization techniques for water management analysis assistant with RAG
 
+### Run
+
+```
+docker compose -f docker-compose.yml up -d
+```
+
+With ngrok:
+```
+docker compose up -d
+```
+
 #### Given
 Green roofs:
 Four green roofs in Leipzig: near the Opera House, MDR, UFZ, Tarosser strasse.

@@ -13,6 +13,9 @@ from experiments.argilla_labeling.discovery import (
 from experiments.argilla_labeling.settings import (
     ArgillaSettings,
 )
+from experiments.argilla_labeling.ui import (
+    UIVariant,
+)
 
 UTF8 = "utf-8"
 _STATIC_PACKAGE = "experiments.argilla_labeling.static"
@@ -42,9 +45,9 @@ def _inject_settings(js: str, settings: ArgillaSettings) -> str:
     return js.replace("__ARGILLA_KEY__", json.dumps(str(settings.argilla_api_key)))
 
 
-def load_template(settings: ArgillaSettings) -> str:
-    """Assemble template.html, template.css, and template.js into HTML string."""
-    static = importlib.resources.files(_STATIC_PACKAGE)
+def load_template(settings: ArgillaSettings, variant: UIVariant) -> str:
+    """Assemble template.html/.css/.js for *variant* into a single HTML string."""
+    static = importlib.resources.files(_STATIC_PACKAGE) / variant.subdir
     return _assemble_template(
         css=_read_static_file(static, "template.css"),
         html=_read_static_file(static, "template.html"),
@@ -61,13 +64,16 @@ def load_template_from_dir(static_dir: pathlib.Path, settings: ArgillaSettings) 
     )
 
 
-def build_dataset_settings(template: str) -> rg.Settings:
+def build_dataset_settings(template: str, variant: UIVariant) -> rg.Settings:
     """Build Argilla dataset settings with a custom HTML field and text questions."""
+    text_questions = [
+        rg.TextQuestion(name=f.name, title=f.title, required=True)
+        for f in variant.fields
+    ]
     return rg.Settings(
         fields=[rg.CustomField(name="content", template=template, advanced_mode=True)],
         questions=[
-            rg.TextQuestion(name="question", required=True),
-            rg.TextQuestion(name="sql_query", required=True),
+            *text_questions,
             rg.LabelQuestion(
                 name="sql_valid",
                 labels=["valid", "invalid"],
@@ -126,17 +132,12 @@ def update_dataset_template(
     return dataset
 
 
-def upload_records(dataset: rg.Dataset, records: list[QARecord]) -> None:
+def upload_records(
+    dataset: rg.Dataset, records: list[QARecord], variant: UIVariant
+) -> None:
     """Convert QARecord list to Argilla records and upload."""
     argilla_records = [
-        rg.Record(
-            fields={
-                "content": {
-                    "question": rec.question,
-                    "sql_query": rec.sql,
-                },
-            },
-        )
+        rg.Record(fields={"content": variant.content_for(rec)})
         for rec in records
     ]
     dataset.records.log(argilla_records)
@@ -160,7 +161,9 @@ def _stable_record_id(question: str) -> str:
     return hashlib.sha256(question.encode(UTF8)).hexdigest()[:32]
 
 
-def upsert_records(dataset: rg.Dataset, records: list[QARecord]) -> None:
+def upsert_records(
+    dataset: rg.Dataset, records: list[QARecord], variant: UIVariant
+) -> None:
     """Upload records with stable IDs derived from the question text.
 
     Argilla's ``records.log`` upserts on matching ``id``, so re-uploading the
@@ -169,12 +172,7 @@ def upsert_records(dataset: rg.Dataset, records: list[QARecord]) -> None:
     argilla_records = [
         rg.Record(
             id=_stable_record_id(rec.question),
-            fields={
-                "content": {
-                    "question": rec.question,
-                    "sql_query": rec.sql,
-                },
-            },
+            fields={"content": variant.content_for(rec)},
         )
         for rec in records
     ]

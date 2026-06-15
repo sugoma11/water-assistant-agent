@@ -17,6 +17,8 @@ dependencies = [
     "pydantic-settings>=2.0",
     "python-dotenv>=1.2.2",
     "sqlglot>=30.9.0",
+    "tenacity>=9.1.4",
+    "textgrad>=0.1.8",
 ]
 
 [build-system]

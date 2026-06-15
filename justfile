@@ -1,4 +1,12 @@
-import "evals.just"
+import "models.just"
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+schema_path    := "src/Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG/tenants/green_roof/sensordata.py"
+questions_path := "data/text2sql/deflated_75_sqls_prod.json"
+db_path        := "data/water.duckdb"
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+blablador := "blablador"
+kisski    := "kisski"
 
 # Generate domain-specific questions for a water management LLM assistant
 # openai/qwen3-235b-a22b looks the best from GAIA
@@ -21,11 +29,6 @@ text2sql model schema-path question:
 # Generate DuckDB SQL queries for a file of questions (one per line) via claude -p; writes JSON
 text2sql-batch model schema-path questions-file output:
     uv run text2sql-cli --model {{model}} --schema-path {{schema-path}} --questions-file {{questions-file}} --output {{output}}
-
-# Evaluate text-2-SQL generation with an LLM-as-Judge and log results to MLflow
-# Experiment name + tracking URI are read from .env (MLFLOW_EXPERIMENT_NAME, MLFLOW_TRACKING_URI)
-text2sql-eval questions-path schema-path db-path model endpoint judge-model judge-endpoint:
-    uv run text2sql-eval --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}}
 
 # Create an Argilla dataset and upload questions from a .txt or .json file
 # ui: v1 (question/SQL) or v2 (adds required German/Denglish prod_question)
@@ -67,13 +70,18 @@ build-db:
     uv run python scripts/build_db.py
 
 
+# Evaluate text-2-SQL generation with an LLM-as-Judge and log results to MLflow
+# Experiment name + tracking URI are read from .env (MLFLOW_EVAL_EXPERIMENT_NAME, MLFLOW_TRACKING_URI)
+text2sql-eval model endpoint judge-model judge-endpoint use-prod-questions="false" questions-path=questions_path schema-path=schema_path db-path=db_path:
+    uv run text2sql-eval --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
+
 # GEPA-train the text2sql system prompt; before/after val+test evals logged to MLflow
-# Experiment name + tracking URI are read from .env (MLFLOW_EXPERIMENT_NAME, MLFLOW_TRACKING_URI)
-text2sql-train questions-path schema-path db-path model endpoint judge-model judge-endpoint teacher-model teacher-endpoint sampler-seed="42":
-    uv run text2sql-train --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --teacher-model {{teacher-model}} --teacher-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}}
+# Experiment name + tracking URI are read from .env (MLFLOW_TRAIN_EXPERIMENT_NAME, MLFLOW_TRACKING_URI)
+text2sql-train model=qwen36-35b-blablador endpoint=blablador judge-model=qwen-397b-kisski judge-endpoint=kisski teacher-model=qwen36-35b-blablador teacher-endpoint=blablador sampler-seed="42" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path:
+    uv run text2sql-train --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --teacher-model {{teacher-model}} --teacher-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
 
 # Group-aware train/val/test split (near-duplicate groups never straddle splits)
-text2sql-sample questions-path seed="42":
+text2sql-sample questions-path=questions_path seed="42":
     uv run text2sql-sample --questions-path {{questions-path}} --seed {{seed}}
 
 # Paraphrase questions into Denglish / hurried German and write a new JSON with prod_question added

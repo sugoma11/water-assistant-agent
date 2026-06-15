@@ -7,14 +7,15 @@ litellm predict_fn and the FLEX-style LLM-as-Judge scorer (its boolean Feedback 
 auto-converted to 1.0/0.0 by MLflow's metric aggregation).
 
 The dataset is split train/val/test with a seeded sampler: GEPA reflects on
-minibatches from the train split and Pareto-scores candidates on the val split,
-while the baseline and the optimized prompt are each evaluated on val AND test
-(``{val,test}_quality_{before,after}`` metrics on the parent run). There is no
-explicit val-before eval phase: GEPA itself fully evaluates the seed prompt on the
-valset at iteration 0 (gepa/core/engine.py), and that score comes back as
-``result.initial_eval_score``. The budget passed to GEPA is therefore
-``MAX_METRIC_CALLS + 2 * len(val)`` so the seed and best-candidate full valset
-passes don't eat into the optimization budget proper.
+minibatches from the train split and Pareto-scores candidates on the val split.
+There are no explicit val eval phases: GEPA fully evaluates the seed prompt (and
+every accepted candidate) on the valset (gepa/core/engine.py), so the baseline and
+best-candidate val scores come straight back as ``result.initial_eval_score`` /
+``result.final_eval_score``, which optimize_prompts already logs on this run as
+``{initial,final}_eval_score`` (no need to re-log them). Only the test split is
+evaluated by hand (``test_quality_{before,after}``), since GEPA never sees it. The
+budget passed to GEPA is ``MAX_METRIC_CALLS + 2 * len(val)`` so the seed and
+best-candidate full valset passes don't eat into the optimization budget proper.
 
 Teacher (reflection) model note: GEPA calls litellm WITHOUT api_base/api_key, so
 ``configure_teacher_env`` points the ``OPENAI_API_BASE``/``OPENAI_API_KEY`` fallback
@@ -54,13 +55,14 @@ from experiments.text2sql.harness import (
 )
 from experiments.text2sql.sampler import split_dataset
 
-MAX_METRIC_CALLS = 3
+MAX_METRIC_CALLS = 100
 
 PROMPT_NAME = "text2sql_system"
 
 
 def run_eval_phase(
     name: str,
+    model: str,
     data: list[dict[str, Any]],
     predict_fn: Callable[..., dict[str, str]],
     judge_scorer: Callable[..., Any],
@@ -69,7 +71,7 @@ def run_eval_phase(
     name collisions between the before/after eval phases) and return the
     judge quality in [0, 1]."""
     click.echo(f"Evaluating phase {name!r} on {len(data)} samples...")
-    with mlflow.start_run(run_name=name, nested=True):
+    with mlflow.start_run(run_name=make_run_name(f"{name}-{model}"), nested=True):
         results = evaluate(data=data, predict_fn=predict_fn, scorers=[judge_scorer])
     quality = results.metrics.get("sql_is_correct/mean", 0.0)
     click.echo(f"{name}: {quality:.2%}")
@@ -130,6 +132,13 @@ def run_eval_phase(
     type=int,
     help="Seed for the train/val/test sampler (also passed to GEPA).",
 )
+@click.option(
+    "--use-prod-questions",
+    is_flag=True,
+    default=False,
+    help="Feed the production-style 'prod_question' phrasing to the model "
+    "instead of the clean 'question'.",
+)
 def train(
     questions_path: str,
     schema_path: str,
@@ -141,21 +150,22 @@ def train(
     teacher_model: str,
     teacher_endpoint: str,
     sampler_seed: int,
+    use_prod_questions: bool,
 ) -> None:
     """Train the text-2-SQL system prompt with GEPA and log results to MLflow."""
     validate_teacher_model(teacher_model)
     load_dotenv()
 
-    experiment_name = os.environ.get("MLFLOW_EXPERIMENT_NAME")
+    experiment_name = os.environ.get("MLFLOW_TRAIN_EXPERIMENT_NAME")
     if not experiment_name:
-        raise click.ClickException("MLFLOW_EXPERIMENT_NAME is not set in the environment.")
+        raise click.ClickException("MLFLOW_TRAIN_EXPERIMENT_NAME is not set in the environment.")
     tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
 
     setup_mlflow(tracking_uri, experiment_name)
     configure_teacher_env(teacher_endpoint)
 
     schema_text = format_schema_for_prompt(load_schema(schema_path))
-    data = load_dataset(questions_path)
+    data = load_dataset(questions_path, use_prod_questions)
     train_set, val_set, test_set = split_dataset(
         data, sampler_seed, cache_path=Path(questions_path).with_name("question_embeddings.npz")
     )
@@ -208,7 +218,9 @@ def train(
         )
         mlflow.log_text(reflection_prompt_template, "reflection_prompt_template.txt")
 
-        test_before = run_eval_phase("test-before", test_set, baseline_predict_fn, judge_scorer)
+        test_before = run_eval_phase(
+            "test-before", model, test_set, baseline_predict_fn, judge_scorer
+        )
         mlflow.log_metric("test_quality_before", test_before)
 
         click.echo(
@@ -233,19 +245,21 @@ def train(
         optimized = result.optimized_prompts[0]
         click.echo(f"Optimized prompt registered as {optimized.uri}")
 
-        # GEPA's iteration-0 full valset eval of the seed prompt doubles as the
-        # baseline val measurement (no separate val-before phase needed).
+        # GEPA fully evaluates the seed (iteration 0) and every accepted candidate
+        # on the valset, so its own initial/final scores ARE the before/after val
+        # measurements -- no separate val eval phase needed. optimize_prompts already
+        # logs these on this run as initial_eval_score/final_eval_score, so we don't
+        # re-log them; we only keep the values for the summary echo below.
         val_before = result.initial_eval_score or 0.0
-        mlflow.log_metric("val_quality_before", val_before)
+        val_after = result.final_eval_score or 0.0
 
         optimized_predict_fn = create_predict_fn(
             model, endpoint, schema_text, system_prompt_template=optimized.template
         )
-        val_after = run_eval_phase("val-after", val_set, optimized_predict_fn, judge_scorer)
-        test_after = run_eval_phase("test-after", test_set, optimized_predict_fn, judge_scorer)
-        mlflow.log_metrics(
-            {"val_quality_after": val_after, "test_quality_after": test_after}
+        test_after = run_eval_phase(
+            "test-after", model, test_set, optimized_predict_fn, judge_scorer
         )
+        mlflow.log_metric("test_quality_after", test_after)
 
     click.echo(
         f"val:  {val_before:.2%} -> {val_after:.2%}\n"

@@ -73,6 +73,13 @@ from experiments.text2sql.harness import (
     type=click.Choice(sorted(ENDPOINTS)),
     help="Inference endpoint for the LLM-as-Judge.",
 )
+@click.option(
+    "--use-prod-questions",
+    is_flag=True,
+    default=False,
+    help="Feed the production-style 'prod_question' phrasing to the model "
+    "instead of the clean 'question'.",
+)
 def eval(
     questions_path: str,
     schema_path: str,
@@ -81,19 +88,20 @@ def eval(
     endpoint: str,
     judge_model: str,
     judge_endpoint: str,
+    use_prod_questions: bool,
 ) -> None:
     """Evaluate text-2-SQL generation and log results to MLflow."""
     load_dotenv()
 
-    experiment_name = os.environ.get("MLFLOW_EXPERIMENT_NAME")
+    experiment_name = os.environ.get("MLFLOW_EVAL_EXPERIMENT_NAME")
     if not experiment_name:
-        raise click.ClickException("MLFLOW_EXPERIMENT_NAME is not set in the environment.")
+        raise click.ClickException("MLFLOW_EVAL_EXPERIMENT_NAME is not set in the environment.")
     tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
 
     setup_mlflow(tracking_uri, experiment_name)
 
     schema_text = format_schema_for_prompt(load_schema(schema_path))
-    data = load_dataset(questions_path)
+    data = load_dataset(questions_path, use_prod_questions)
     predict_fn = create_predict_fn(model, endpoint, schema_text)
     judge_scorer = build_sql_judge_scorer(
         judge_model, judge_endpoint, schema_text, db_path

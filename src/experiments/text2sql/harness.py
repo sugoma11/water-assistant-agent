@@ -8,6 +8,7 @@ setup / global-param logging.
 
 import hashlib
 import json
+import logging
 import numbers
 import os
 import subprocess
@@ -23,6 +24,13 @@ from mlflow.entities import Feedback
 from mlflow.entities.model_registry import PromptVersion
 from mlflow.genai import scorer
 from pydantic import BaseModel
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.text2sql.core import (
     SYSTEM_PROMPT_TEMPLATE,
@@ -178,6 +186,43 @@ class SqlJudgeResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # litellm helpers
 # ---------------------------------------------------------------------------
+logger = logging.getLogger(__name__)
+
+# Transient litellm/OpenAI errors worth retrying instead of aborting a whole
+# (potentially hours-long) GEPA run: server disconnects surface as
+# APIConnectionError or get mapped to InternalServerError, plus the usual
+# timeout / rate-limit / 503 blips. Non-transient errors (BadRequest, auth, ...)
+# fall through and raise immediately.
+RETRYABLE_LLM_ERRORS: tuple[type[Exception], ...] = (
+    litellm.APIConnectionError,
+    litellm.InternalServerError,
+    litellm.ServiceUnavailableError,
+    litellm.Timeout,
+    litellm.RateLimitError,
+    litellm.APIError,
+)
+
+# Env-tunable retry budget; 0 disables retries (raises on the first error).
+LLM_MAX_ATTEMPTS = max(1, int(os.environ.get("LLM_MAX_ATTEMPTS", "10")))
+
+
+# Deterministic (no-jitter) exponential backoff: ~8, 16, 32, 60, 60s. Runs on a
+# single eval worker, so there's nothing to de-sync; predictable slow retries give
+# a flaky endpoint real time to recover.
+@retry(
+    retry=retry_if_exception_type(RETRYABLE_LLM_ERRORS),
+    wait=wait_exponential(multiplier=8, min=8, max=60),
+    stop=stop_after_attempt(LLM_MAX_ATTEMPTS),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+def completion_with_retry(**kwargs: Any) -> Any:
+    """``litellm.completion`` wrapped in tenacity exponential backoff so a single
+    dropped connection (or rate-limit blip) doesn't waste a whole training run.
+    Only :data:`RETRYABLE_LLM_ERRORS` are retried; everything else raises at once."""
+    return litellm.completion(**kwargs)
+
+
 def read_sampling_params(prefix: str) -> dict[str, Any]:
     """Read env-driven sampling params under ``{prefix}_*`` (e.g. ``LLM`` for
     generation, ``JUDGE`` for the LLM-as-Judge). ``top_k`` is only included when set."""
@@ -277,14 +322,20 @@ def extract_usage(resp: Any, prefix: str) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Data loading (kept out of the script so train can reuse it verbatim)
 # ---------------------------------------------------------------------------
-def load_dataset(questions_path: str) -> list[dict[str, Any]]:
-    """Load a JSON list of {"question", "sql", "argilla_link"} records into the
-    MLflow GenAI evaluation format."""
+def load_dataset(
+    questions_path: str, use_prod_questions: bool = False
+) -> list[dict[str, Any]]:
+    """Load a JSON list of {"question", "prod_question", "sql", "argilla_link"}
+    records into the MLflow GenAI evaluation format. When ``use_prod_questions`` is
+    set, the production-style ``prod_question`` phrasing is fed to the model instead
+    of the clean ``question`` (the output key stays ``question`` so downstream code
+    is unchanged)."""
+    question_key = "prod_question" if use_prod_questions else "question"
     with open(questions_path) as f:
         records = json.load(f)
     return [
         {
-            "inputs": {"question": rec["question"]},
+            "inputs": {"question": rec[question_key]},
             "expectations": {
                 "sql": rec["sql"],
                 "argilla_link": rec.get("argilla_link", ""),
@@ -319,7 +370,7 @@ def _make_predict_fn(
 
     def predict_fn(question: str) -> dict[str, str]:
         user_prompt = USER_PROMPT_TEMPLATE.format(question=question)
-        resp = litellm.completion(
+        resp = completion_with_retry(
             messages=[
                 {"role": "system", "content": get_system_prompt()},
                 {"role": "user", "content": user_prompt},
@@ -439,20 +490,39 @@ def build_sql_judge_scorer(
 
     def sql_is_correct(
         inputs: dict[str, Any],
-        outputs: dict[str, Any] | None,
+        outputs: dict[str, Any] | str | None,
         expectations: dict[str, Any],
     ) -> Feedback:
         question = inputs.get("question", "")
         argilla_link = expectations.get("argilla_link", "")
-        generated_sql = (outputs or {}).get("sql", "")
         reference_sql = expectations.get("sql", "")
+        # MLflow's optimize loop swallows predict_fn exceptions and replaces the
+        # outputs with a plain error STRING (optimize.py::_run_single), so outputs
+        # is not always the {"sql": ...} dict we return. Normalise that to "no SQL"
+        # and surface the underlying predict_fn error in the rationale.
+        if not isinstance(outputs, dict):
+            return Feedback(
+                name="sql_is_correct",
+                value=False,
+                rationale=(
+                    f"predict_fn produced no SQL output: {outputs}"
+                    if outputs
+                    else "Model produced no SQL."
+                ),
+                metadata={
+                    "question": str(question),
+                    "argilla_link": str(argilla_link),
+                    "generated_sql": "",
+                },
+            )
+        generated_sql = outputs.get("sql", "")
         metadata = {
             "question": str(question),
             "argilla_link": str(argilla_link),
             "generated_sql": str(generated_sql),
             **{
                 k: str(v)
-                for k, v in (outputs or {}).items()
+                for k, v in outputs.items()
                 if k.endswith("_tokens")
             },
         }
@@ -508,7 +578,7 @@ def build_sql_judge_scorer(
                 ),
             )
         try:
-            resp = litellm.completion(
+            resp = completion_with_retry(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt},
@@ -562,11 +632,12 @@ def setup_mlflow(tracking_uri: str, experiment_name: str) -> None:
     litellm.enable_json_schema_validation = True
 
 
-def make_run_name(model: str) -> str:
-    """``{model}-{hh}-{mm}-{month}-{yy}`` with slashes sanitized out of the model."""
-    safe_model = model.replace("/", "_")
+def make_run_name(label: str) -> str:
+    """``{label}-{month}-{day}-{hh}-{mm}`` with slashes sanitized and the
+    ``openai/`` provider prefix dropped from model names."""
+    safe = label.replace("openai/", "").replace("/", "_")
     now = datetime.now()
-    return f"{safe_model}-{now:%H-%M-%m-%y}"
+    return f"{safe}-{now:%m-%d-%H-%M}"
 
 
 def get_commit_hash() -> str:

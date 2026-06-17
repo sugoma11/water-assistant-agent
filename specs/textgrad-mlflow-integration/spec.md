@@ -145,7 +145,10 @@ not to change how the assistant itself answers questions.
 - SC2. For a TextGrad run, the tracking UI shows the technique name, the three model
   roles, the configured number of epochs, before/after quality on validation and test,
   and the optimized prompt is retrievable as an artifact — with the same metric names
-  used by existing techniques.
+  used by existing techniques. Concretely, those names match the GEPA run: validation via
+  the optimizer's logged `eval_score` progression plus the run's `initial_eval_score` /
+  `final_eval_score`, and test via `test_quality_{before,after}`. (No `val_quality_*`
+  metric is introduced — GEPA does not emit one.)
 - SC2a. The run keeps the best validation-scoring prompt: if a later epoch scores worse
   on validation than an earlier one, the reported optimized prompt is the earlier
   (better) one, not the last epoch's.
@@ -163,8 +166,10 @@ not to change how the assistant itself answers questions.
   a fabricated optimized prompt.
 - EC2. **No improvement found** — record the run and report that the result did not beat
   the baseline rather than presenting an unchanged prompt as an improvement.
-- EC3. **Empty or too-small training split** — refuse to run with a clear message rather
-  than producing an unreliable result.
+- EC3. **Empty or too-small training or validation split** — refuse to run with a clear
+  message rather than producing an unreliable result. The train/validation/test split is
+  the same seeded `split_dataset` split GEPA uses (same seed, same validation set), so the
+  per-epoch keep-best stays comparable across techniques (FR3, NFR2).
 - EC4. **Quality judge unavailable mid-run** — surface the judge failure; do not score the
   candidate as zero or as passing by default.
 - EC5. **Optimized prompt fails to save/version** — treat the run as failed for

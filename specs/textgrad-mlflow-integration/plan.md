@@ -47,9 +47,10 @@ text2sql-train-textgrad (new)─┘         │
                                         ├─ mlflow.genai.optimize_prompts(predict_fn, train, prompt_uris,
                                         │        optimizer=<Gepa|TextGrad>, scorers=[judge])
                                         │        └─ optimizer.optimize(eval_fn, train, prompts, tracking)
-                                        ├─ val_before  = result.initial_eval_score
-                                        ├─ val/test-after eval phases
-                                        └─ log_metrics(val/test_quality_{before,after})
+                                        ├─ val_before/after = result.initial/final_eval_score
+                                        │     (val progression already logged by the optimizer as `eval_score`, step=epoch)
+                                        ├─ test-after eval phase
+                                        └─ log_metric(test_quality_{before,after})   # val metrics come from the optimizer, like GEPA
 
 TextGradPromptOptimizer(BasePromptOptimizer)   [new, src/experiments/text2sql/textgrad_optimizer.py]
    __init__(optimizer_model, optimizer_endpoint, val_set, epochs, batch_size,
@@ -66,8 +67,10 @@ TextGradPromptOptimizer(BasePromptOptimizer)   [new, src/experiments/text2sql/te
          keep-best / revert to best on no improvement
        return PromptOptimizerOutput(optimized_prompts={name: best}, initial/final scores)
 
-CustomLiteLLMEngine(textgrad EngineLM)   [new, in textgrad_optimizer.py]
-   wraps litellm.completion via build_completion_kwargs(optimizer_model, endpoint, "OPTIMIZER")
+SchemaInjectingEngine(ChatExternalClient) + plain ChatExternalClient   [per the working notebook]
+   each wraps OpenAI(base_url, api_key) built from ENDPOINTS[endpoint] (make_client); the task
+   engine injects the fixed schema per call (render_system_prompt), the backward/optimizer engine
+   stays schema-free; tg.set_backward_engine(backward_engine)
 ```
 
 Reused unchanged: `sampler.split_dataset`, `load_dataset`, `create_optimizable_predict_fn`,
@@ -79,18 +82,22 @@ Reused unchanged: `sampler.split_dataset`, `load_dataset`, `create_optimizable_p
 - **Train/val/test split** — `sampler.split_dataset(data, seed, cache_path)`, identical seed
   and cache as GEPA (FR3, NFR2). TextGrad uses train for steps, val for keep-best, test for
   the after metric only.
-- **Optimizable prompt** — single prompt `text2sql_system` (`PROMPT_NAME`), seeded from
-  `SYSTEM_PROMPT_TEMPLATE` (with the `{schema}` placeholder). The TGD `tg.Variable` value is
-  this template text; `render_system_prompt` substitutes the schema at task-call time inside
-  `predict_fn` (the placeholder is preserved across edits via a TGD constraint, mirroring how
-  GEPA mutates the same template). Saved verbatim by `optimize_prompts`' `register_prompt`
-  (FR6).
+- **Optimizable prompt** — single prompt `text2sql_system` (`PROMPT_NAME`). Per the working
+  notebook, only the **instruction block** (`SYSTEM_PROMPT_TEMPLATE.split("Schema:")[0]`) is the
+  optimizable `tg.Variable`; the schema is fixed context the task engine (`SchemaInjectingEngine`)
+  injects via `render_system_prompt` at call time, so it never enters the optimizer/backward prompts
+  (a full schema there was observed to drop the endpoint connection). TGD `constraints` forbid
+  re-introducing the schema and keep the strict output rules. For FR6 the optimized instruction block
+  is recombined into the full `SYSTEM_PROMPT_TEMPLATE` shape before `optimize_prompts`'
+  `register_prompt` saves it, so the stored artifact stays a full, reusable template with parity to
+  GEPA's.
 - **Model roles (FR9)** — task model (`--model`/`--endpoint`), judge model
   (`--judge-model`/`--judge-endpoint`, the shared SQL judge), optimizer model
   (`--optimizer-model`/`--optimizer-endpoint`). All three logged as run params.
 - **Run record** — extends the existing run with `technique`, the three model roles, `epochs`,
-  `batch_size`, `max_steps_per_epoch`, `sampler_seed`, and split sizes; carries the same
-  `{val,test}_quality_{before,after}` metrics and the registered optimized prompt (FR5, FR10).
+  `batch_size`, `max_steps_per_epoch`, `sampler_seed`, the `OPTIMIZER_*` sampling params, and split
+  sizes; carries the same metrics as GEPA (`test_quality_{before,after}` plus the optimizer's
+  `eval_score` / `initial_eval_score` / `final_eval_score`) and the registered optimized prompt (FR5, FR10).
 
 ## Interfaces / Contracts
 
@@ -118,8 +125,10 @@ Options mirror `text2sql-train` for the shared roles, replacing GEPA's `--teache
 `_run_optimization(*, optimizer, technique, extra_params, model, endpoint, judge_model,
 judge_endpoint, schema_text, train_set, val_set, test_set, prompt_version, db_path, …)`:
 opens the run, logs global + `technique` + `extra_params`, runs test-before, calls
-`optimize_prompts`, logs `val_quality_before = result.initial_eval_score`, runs val/test-after,
-logs the four metrics. GEPA's `train()` becomes a thin wrapper that builds `GepaPromptOptimizer`
+`optimize_prompts`, reads `result.initial_eval_score`/`final_eval_score` for the val summary (already
+logged by the optimizer as the `eval_score` step series, like GEPA — not re-logged), runs test-after,
+and logs `test_quality_{before,after}`. No `val_quality_*` metric is added, so GEPA's logged
+params/metrics stay byte-identical (FR8). GEPA's `train()` becomes a thin wrapper that builds `GepaPromptOptimizer`
 and calls it; `train_textgrad()` builds `TextGradPromptOptimizer`. **A `technique` param is also
 added to the GEPA run** (logging-only; no behavior change) so both are filterable (FR4, NFR1).
 
@@ -134,36 +143,43 @@ added to the GEPA run** (logging-only; no behavior change) so both are filterabl
 
 ### Optimizer-model engine / sampling params
 
-New env family `OPTIMIZER_*` (`OPTIMIZER_TEMPERATURE/TOP_P/SEED`, optional `TOP_K`) read by
-`read_sampling_params("OPTIMIZER")`, logged like `LLM_*`/`JUDGE_*`. Add defaults to
-`.example.env`. Endpoint resolution reuses `ENDPOINTS` + `build_completion_kwargs`.
+New env family `OPTIMIZER_*` (`OPTIMIZER_TEMPERATURE/TOP_P/TOP_K/SEED`, `TOP_K` included for parity
+with the `JUDGE_*` block) read by `read_sampling_params("OPTIMIZER")` and logged **on the TextGrad run
+only** (via `train_textgrad`/`extra_params`, NOT in the shared `log_global_params`, so GEPA runs are
+unchanged — FR8). Add defaults to `.example.env`. Endpoint resolution reuses `ENDPOINTS` via
+`make_client` (`OpenAI(base_url, api_key)`), the way the notebook builds the `ChatExternalClient`
+engines.
 
 ## TextGrad-internal mechanism (the one piece needing a spike)
 
 Because the forward pass + judge come from `eval_fn` (outside TextGrad's autograd graph), the
 judge rationale must be injected into TGD as a textual gradient on the prompt Variable.
 
-- **Primary approach:** create `system_prompt = tg.Variable(seed, requires_grad=True, role_description=…)`
-  and `optimizer = tg.TGD(parameters=[system_prompt], engine=CustomLiteLLMEngine(...), constraints=[…])`.
-  Per batch, for each result build a feedback Variable embedding `(question, generated_sql,
-  pass/fail, rationale)` and attach it to `system_prompt.gradients`, then `optimizer.step()`
-  rewrites `system_prompt.value`. (TGD "reads textual gradients, constructs an optimization
-  prompt, calls the backward engine, and updates `.value`.")
-- **Fallback if direct gradient attachment isn't supported by the installed version:** wrap each
-  example with a minimal TextGrad loss op (subclass the autograd `Function`) whose `backward`
-  returns the rationale as the gradient on `system_prompt`, then `tg.sum(losses).backward()` +
-  `optimizer.step()`.
-- **TGD constraints** keep the `{schema}` placeholder intact and require "output a single system
-  prompt only" so edits stay a valid, reusable template (FR6, parity with GEPA).
+- **Primary approach (proven in the notebook):** `system_prompt = tg.Variable(instructions,
+  requires_grad=True, role_description=…)`; `tg.set_backward_engine(backward_engine)`;
+  `optimizer = tg.TGD(parameters=[system_prompt], constraints=[…])`. Per example, run the task model
+  (`tg.BlackboxLLM(task_engine, system_prompt)`), judge the output with the shared judge, wrap the
+  judge's **rationale + verdict** in a `tg.TextLoss` applied to the response, accumulate per-example
+  losses, then `tg.sum(losses).backward()` + `optimizer.step()` rewrites `system_prompt.value`. The
+  judge rationale is thus the textual gradient pushed into the prompt (FR11). NB: the notebook loop is
+  iteration-based; the optimizer must adapt it to the **epoch-based** loop FR10/C1 require.
+- **Fallback if the TextLoss bridge misbehaves on a given version:** attach a hand-built feedback
+  Variable embedding `(question, generated_sql, pass/fail, rationale)` directly to
+  `system_prompt.gradients` before `optimizer.step()`, or subclass the autograd `Function` so
+  `backward` returns the rationale as the gradient on `system_prompt`.
+- **TGD constraints** forbid re-introducing the schema ("do not paste/invent the schema") and keep
+  the strict output rules ("single DuckDB SQL only"), so the optimized instruction block recombines
+  into a valid, reusable template (FR6, parity with GEPA).
 
 This is the first deliverable (Phase 1 spike) so the exact API is pinned before the rest is built.
 
 ## Phases / Dependencies
 
 1. **Spike: TextGrad wiring + dependency.** Add `textgrad` to `pyproject.toml`; confirm it
-   installs on Python 3.13. In a scratch script, build `CustomLiteLLMEngine` against a real
-   endpoint, attach a hand-written gradient to a `tg.Variable`, and confirm `TGD.step()` rewrites
-   it. Lock in the gradient-injection API (primary vs. fallback). *Blocks everything.*
+   installs on Python 3.13. In a scratch script (the notebook), build the `ChatExternalClient` /
+   `SchemaInjectingEngine` engines against a real endpoint, drive the judge-as-`TextLoss` bridge, and
+   confirm `TGD.step()` rewrites the `tg.Variable`. Lock in the gradient-injection API (primary
+   TextLoss vs. fallback direct-gradient). *Blocks everything.*
 2. **Refactor train.py into a shared routine** with GEPA still passing. Pure extraction; verify
    no behavior change (Testing Strategy regression check) — guards FR8/SC4.
 3. **Implement `TextGradPromptOptimizer`** (`textgrad_optimizer.py`): engine, epoch/batch loop,
@@ -184,9 +200,9 @@ This is the first deliverable (Phase 1 spike) so the exact API is pinned before 
   varies by version. Mitigated by the Phase 1 spike and the documented fallback.
 - **R2: Python 3.13 + textgrad compatibility.** Resolve in Phase 1; if unsupported, pin a
   compatible version or isolate the dep.
-- **R3: optimizer-model endpoint routing.** TextGrad's stock engines assume `OPENAI_API_KEY`-style
-  env. Mitigated by the `CustomLiteLLMEngine` using `build_completion_kwargs` (api_base/key per
-  `ENDPOINTS`), parallel to GEPA's `configure_teacher_env`.
+- **R3: optimizer-model endpoint routing.** Mitigated as in the notebook: each role's engine is a
+  `ChatExternalClient` wrapping `OpenAI(base_url, api_key)` built from `ENDPOINTS[endpoint]`
+  (`make_client`), so per-role endpoints route correctly without touching global env.
 - **R4: comparability of effort units.** GEPA uses `max_metric_calls`; TextGrad uses epochs/batch.
   Both are recorded; report effort in both unit systems for side-by-side reasoning (NFR3).
 - **R5: cost.** Each epoch adds a full val eval + per-batch task+judge calls. Keep `--epochs`/
@@ -194,23 +210,6 @@ This is the first deliverable (Phase 1 spike) so the exact API is pinned before 
 - **OQ1: reverting in TextGrad.** Confirm `Variable.set_value`/equivalent for the keep-best revert
   during the spike; otherwise track best template in Python and rebuild the Variable.
 
-## Testing Strategy
-
-- **GEPA regression (SC4/FR8):** run `text2sql-train` on a tiny fixed split before and after the
-  Phase 2 refactor; assert identical logged params/metrics and optimized template.
-- **TextGrad happy path (SC1, SC2, FR2):** small split, `--epochs 1–2`; assert the run logs
-  `technique`, three model roles, epochs/batch params, `{val,test}_quality_{before,after}` (same
-  names as GEPA), and a retrievable registered prompt artifact.
-- **Keep-best (SC2a/FR12):** unit-test `TextGradPromptOptimizer` with a stub `eval_fn` whose val
-  score peaks at an early epoch then drops; assert the returned template is the early best, not
-  the last.
-- **Shared judge (FR9/A3/NFR1):** assert the metric name (`sql_is_correct/mean` →
-  `*_quality_*`) and judge model recorded match the GEPA path on identical inputs.
-- **Failure (SC5/EC1,EC4):** point `--optimizer-model` (and separately the judge) at an
-  unreachable endpoint; assert a clear error, run marked FAILED, and no optimized prompt
-  registered.
-- **Guards (EC2/EC3):** stub a no-improvement run (report best==baseline, no new version) and an
-  empty/too-small train split (refused up front).
 
 ## Traceability
 

@@ -23,15 +23,12 @@ at the chosen endpoint — no global litellm config is needed.
 """
 
 import os
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import click
-import mlflow
 from dotenv import load_dotenv
 from gepa.strategies.instruction_proposal import InstructionProposalSignature
-from mlflow.genai import evaluate
 from mlflow.genai.optimize import GepaPromptOptimizer
 
 from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.text2sql.core import (
@@ -41,41 +38,17 @@ from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistan
 )
 from experiments.text2sql.harness import (
     ENDPOINTS,
-    build_sql_judge_scorer,
     configure_teacher_env,
-    create_optimizable_predict_fn,
-    create_predict_fn,
     load_dataset,
-    log_global_params,
-    make_run_name,
     register_prompt_if_changed,
     setup_mlflow,
     to_mlflow_model_uri,
     validate_teacher_model,
 )
 from experiments.text2sql.sampler import split_dataset
+from experiments.text2sql.train_common import PROMPT_NAME, _run_optimization
 
 MAX_METRIC_CALLS = 100
-
-PROMPT_NAME = "text2sql_system"
-
-
-def run_eval_phase(
-    name: str,
-    model: str,
-    data: list[dict[str, Any]],
-    predict_fn: Callable[..., dict[str, str]],
-    judge_scorer: Callable[..., Any],
-) -> float:
-    """Evaluate ``predict_fn`` on ``data`` in a nested MLflow run (avoids metric
-    name collisions between the before/after eval phases) and return the
-    judge quality in [0, 1]."""
-    click.echo(f"Evaluating phase {name!r} on {len(data)} samples...")
-    with mlflow.start_run(run_name=make_run_name(f"{name}-{model}"), nested=True):
-        results = evaluate(data=data, predict_fn=predict_fn, scorers=[judge_scorer])
-    quality = results.metrics.get("sql_is_correct/mean", 0.0)
-    click.echo(f"{name}: {quality:.2%}")
-    return quality
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +112,7 @@ def run_eval_phase(
     help="Feed the production-style 'prod_question' phrasing to the model "
     "instead of the clean 'question'.",
 )
-def train(
+def train_gepa(
     questions_path: str,
     schema_path: str,
     db_path: str,
@@ -181,9 +154,6 @@ def train(
             "registered prompt URI."
         )
 
-    judge_scorer = build_sql_judge_scorer(judge_model, judge_endpoint, schema_text, db_path)
-    baseline_predict_fn = create_predict_fn(model, endpoint, schema_text)
-
     gepa_kwargs: dict[str, Any] = {"valset": val_set, "seed": sampler_seed}
     reflection_prompt_template = gepa_kwargs.get(
         "reflection_prompt_template", InstructionProposalSignature.default_prompt_template
@@ -191,82 +161,42 @@ def train(
     # GEPA fully evaluates the seed prompt on the valset at iteration 0 and the
     # accepted candidates along the way; budget two full valset passes on top of
     # the optimization budget proper.
-    total_metric_calls = len(val_set) * 2 + MAX_METRIC_CALLS
-
-    with mlflow.start_run(run_name=make_run_name(f"gepa-{model}")):
-        log_global_params(
-            model=model,
-            endpoint=endpoint,
-            judge_model=judge_model,
-            judge_endpoint=judge_endpoint,
-            questions_path=questions_path,
-            schema_path=schema_path,
-            schema_text=schema_text,
-            db_path=db_path,
-        )
-        mlflow.log_params(
-            {
-                "teacher_model": teacher_model,
-                "teacher_endpoint": teacher_endpoint,
-                "sampler_seed": sampler_seed,
-                "max_metric_calls": MAX_METRIC_CALLS,
-                "total_metric_calls": total_metric_calls,
-                "train_size": len(train_set),
-                "val_size": len(val_set),
-                "test_size": len(test_set),
-            }
-        )
-        mlflow.log_text(reflection_prompt_template, "reflection_prompt_template.txt")
-
-        test_before = run_eval_phase(
-            "test-before", model, test_set, baseline_predict_fn, judge_scorer
-        )
-        mlflow.log_metric("test_quality_before", test_before)
-
-        click.echo(
-            f"Running GEPA ({total_metric_calls} metric calls max: "
-            f"{MAX_METRIC_CALLS} optimization + 2x{len(val_set)} full valset passes)..."
-        )
-        result = mlflow.genai.optimize_prompts(
-            predict_fn=create_optimizable_predict_fn(
-                model, endpoint, schema_text, prompt_version
-            ),
-            train_data=train_set,
-            prompt_uris=[prompt_version.uri],
-            optimizer=GepaPromptOptimizer(
-                reflection_model=to_mlflow_model_uri(teacher_model),
-                max_metric_calls=total_metric_calls,
-                display_progress_bar=True,
-                gepa_kwargs=gepa_kwargs,
-            ),
-            scorers=[judge_scorer],
-            enable_tracking=True,
-        )
-        optimized = result.optimized_prompts[0]
-        click.echo(f"Optimized prompt registered as {optimized.uri}")
-
-        # GEPA fully evaluates the seed (iteration 0) and every accepted candidate
-        # on the valset, so its own initial/final scores ARE the before/after val
-        # measurements -- no separate val eval phase needed. optimize_prompts already
-        # logs these on this run as initial_eval_score/final_eval_score, so we don't
-        # re-log them; we only keep the values for the summary echo below.
-        val_before = result.initial_eval_score or 0.0
-        val_after = result.final_eval_score or 0.0
-
-        optimized_predict_fn = create_predict_fn(
-            model, endpoint, schema_text, system_prompt_template=optimized.template
-        )
-        test_after = run_eval_phase(
-            "test-after", model, test_set, optimized_predict_fn, judge_scorer
-        )
-        mlflow.log_metric("test_quality_after", test_after)
-
+    # total_metric_calls = len(val_set) * 2 + MAX_METRIC_CALLS
+    total_metric_calls = len(val_set) * 2 + 1
     click.echo(
-        f"val:  {val_before:.2%} -> {val_after:.2%}\n"
-        f"test: {test_before:.2%} -> {test_after:.2%}\n"
-        f"Optimized prompt: {optimized.uri}"
+        f"Running GEPA ({total_metric_calls} metric calls max: "
+        f"{MAX_METRIC_CALLS} optimization + 2x{len(val_set)} full valset passes)..."
+    )
+    _run_optimization(
+        optimizer=GepaPromptOptimizer(
+            reflection_model=to_mlflow_model_uri(teacher_model),
+            max_metric_calls=total_metric_calls,
+            display_progress_bar=True,
+            gepa_kwargs=gepa_kwargs,
+        ),
+        technique="gepa",
+        extra_params={
+            "teacher_model": teacher_model,
+            "teacher_endpoint": teacher_endpoint,
+            "max_metric_calls": MAX_METRIC_CALLS,
+            "total_metric_calls": total_metric_calls,
+        },
+        model=model,
+        endpoint=endpoint,
+        judge_model=judge_model,
+        judge_endpoint=judge_endpoint,
+        questions_path=questions_path,
+        schema_path=schema_path,
+        schema_text=schema_text,
+        db_path=db_path,
+        train_set=train_set,
+        val_set=val_set,
+        test_set=test_set,
+        prompt_version=prompt_version,
+        sampler_seed=sampler_seed,
+        extra_artifacts={"reflection_prompt_template.txt": reflection_prompt_template},
     )
 
 
 if __name__ == "__main__":
-    train()
+    train_gepa()

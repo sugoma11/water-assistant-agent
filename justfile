@@ -1,12 +1,5 @@
 import "models.just"
-
-# ── Paths ─────────────────────────────────────────────────────────────────────
-schema_path    := "src/Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG/tenants/green_roof/sensordata.py"
-questions_path := "data/text2sql/deflated_75_sqls_prod.json"
-db_path        := "data/water.duckdb"
-# ── Endpoints ─────────────────────────────────────────────────────────────────
-blablador := "blablador"
-kisski    := "kisski"
+import "common.just"
 
 # Generate domain-specific questions for a water management LLM assistant
 # openai/qwen3-235b-a22b looks the best from GAIA
@@ -77,8 +70,17 @@ text2sql-eval model endpoint judge-model judge-endpoint use-prod-questions="fals
 
 # GEPA-train the text2sql system prompt; before/after val+test evals logged to MLflow
 # Experiment name + tracking URI are read from .env (MLFLOW_TRAIN_EXPERIMENT_NAME, MLFLOW_TRACKING_URI)
-text2sql-train model=qwen36-35b-blablador endpoint=blablador judge-model=qwen-397b-kisski judge-endpoint=kisski teacher-model=qwen36-35b-blablador teacher-endpoint=blablador sampler-seed="42" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path:
-    uv run text2sql-train --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --teacher-model {{teacher-model}} --teacher-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
+# text2sql-train-gepa model=qwen36-35b-blablador endpoint=blablador judge-model=qwen-397b-kisski judge-endpoint=kisski teacher-model=qwen36-35b-blablador teacher-endpoint=blablador sampler-seed="42" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path:
+#     uv run text2sql-train-gepa --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --teacher-model {{teacher-model}} --teacher-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
+
+text2sql-train-gepa model=eve-instruct endpoint=blablador judge-model=eve-instruct judge-endpoint=blablador teacher-model=eve-instruct teacher-endpoint=blablador sampler-seed="42" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path:
+    uv run text2sql-train-gepa --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --teacher-model {{teacher-model}} --teacher-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
+
+# TextGrad-train the text2sql system prompt; before/after val+test evals logged to MLflow
+# Effort is epochs/batch (not metric calls); --optimizer-* drives the backward/proposal model.
+# Experiment name + tracking URI are read from .env (MLFLOW_TRAIN_EXPERIMENT_NAME, MLFLOW_TRACKING_URI)
+text2sql-train-textgrad model=eve-instruct endpoint=blablador judge-model=eve-instruct judge-endpoint=blablador optimizer-model=glm-4.7 optimizer-endpoint=kisski epochs="1" batch-size="1" sampler-seed="42" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path:
+    uv run text2sql-train-textgrad --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --optimizer-model {{optimizer-model}} --optimizer-endpoint {{optimizer-endpoint}} --epochs {{epochs}} --batch-size {{batch-size}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
 
 # Group-aware train/val/test split (near-duplicate groups never straddle splits)
 text2sql-sample questions-path=questions_path seed="42":

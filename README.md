@@ -11,6 +11,9 @@ With ngrok:
 docker compose up -d
 ```
 
+#### Experiments
+
+
 #### Given
 Green roofs:
 Four green roofs in Leipzig: near the Opera House, MDR, UFZ, Tarosser strasse.
@@ -57,6 +60,32 @@ Now I see one agent (core agent) with tools: a text-2-sql tool, a model tool, so
 Every site (roof / wineyard) has an own semantic layer with terms definitions and assumptions (initialized with us, probably optimized). Some part of the core agent's prompt should be shared before sites.
 
 Text-2-SQL prompt is shared (or even a ready solution is used), schema description could be different.
+
+
+#### Prompt-optimization training
+
+The text-2-SQL system prompt is optimized by one of two interchangeable techniques, each a
+`just` recipe that logs a before/after val+test eval to MLflow (experiment name and tracking
+URI come from `.env`):
+
+- `just text2sql-train-gepa …` — **GEPA**. Effort is a metric-call budget; the proposer is the
+  `--teacher-model`/`--teacher-endpoint` role.
+- `just text2sql-train-textgrad …` — **TextGrad**. Effort is expressed as `--epochs` (required)
+  and `--batch-size` over the train split rather than a metric-call budget; the
+  backward/proposal LLM is the `--optimizer-model`/`--optimizer-endpoint` role.
+
+Both share the same dataset loader, the same seeded train/val/test split (`--sampler-seed`),
+the same FLEX LLM-as-Judge, the same metric names, and register the same prompt — so runs are
+directly comparable in the MLflow UI. **Three model roles** are configured per run:
+
+- **task** (`--model`/`--endpoint`) — the student model that generates the SQL.
+- **judge** (`--judge-model`/`--judge-endpoint`) — the LLM-as-Judge scoring correctness.
+- **proposer** — GEPA's `--teacher-*` or TextGrad's `--optimizer-*`, the model that rewrites
+  the prompt.
+
+TextGrad's proposer sampling (temperature/top-p/top-k/seed) is read from the `OPTIMIZER_*`
+variables in `.env` (see `.example.env`; defaults `0.0 / 1.0 / 1 / 42` for deterministic,
+reproducible proposals) and is logged on the TextGrad run only, so GEPA runs stay unaffected.
 
 
 ## Literature

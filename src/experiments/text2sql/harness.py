@@ -237,6 +237,22 @@ def read_sampling_params(prefix: str) -> dict[str, Any]:
     return params
 
 
+def read_optimizer_params_for_logging() -> dict[str, Any]:
+    """``OPTIMIZER_*`` sampling params (for the TextGrad backward/proposal model),
+    keyed with an ``optimizer_`` prefix so they log cleanly as run params without
+    colliding with the unprefixed ``LLM`` generation params (``temperature``,
+    ``seed``, ...).
+
+    Logged on the TextGrad run only -- passed through ``train_textgrad``'s
+    ``extra_params``, never added to the shared ``log_global_params`` -- so GEPA runs
+    keep byte-identical params (FR8). Mirrors how the ``JUDGE_*`` params are logged
+    with a ``judge_`` prefix in :func:`log_global_params`."""
+    return {
+        f"optimizer_{key}": value
+        for key, value in read_sampling_params("OPTIMIZER").items()
+    }
+
+
 def build_completion_kwargs(
     model: str, endpoint: str, param_prefix: str = "LLM"
 ) -> dict[str, Any]:

@@ -93,7 +93,7 @@ reads technique/before-after/prompt from tracking UI · **US4** clear failure on
   (no repo `outputs/`); read `best_skill.md`; compute `final_eval_score` via `eval_fn`;
   return `PromptOptimizerOutput(optimized_prompts={name: best}, initial_eval_score,
   final_eval_score, *_per_scorer)`. (depends: T011, T012)
-- [ ] T014 Log the per-epoch val series in `optimize()`: read `history.json`, emit the
+- [x] T014 Log the per-epoch val series in `optimize()`: read `history.json`, emit the
   `eval_score` / `eval_score.<scorer>` progression at `step=epoch` under GEPA's metric names
   plus `initial_eval_score` / `final_eval_score` on the same run (SC2). The series source MUST
   sit on the same `eval_fn` axis as the `initial/final_eval_score` endpoints per the T005

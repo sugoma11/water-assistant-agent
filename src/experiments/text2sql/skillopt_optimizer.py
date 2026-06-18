@@ -41,6 +41,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import mlflow
 import numpy as np
 import skillopt.prompts as skillopt_prompts
 from mlflow.genai.optimize.optimizers import BasePromptOptimizer
@@ -418,6 +419,32 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
         scores = [r.score for r in records if r.score is not None]
         return float(np.mean(scores)) if scores else 0.0
 
+    def _log_eval_score(self, value: float, step: int, enable_tracking: bool) -> None:
+        """Log a val score under the SAME metric names GEPA's/TextGrad's optimizer logs
+        (``eval_score`` + ``eval_score.<scorer>``), so the val progression is directly
+        comparable in the MLflow UI (NFR1, SC2)."""
+        if not enable_tracking:
+            return
+        mlflow.log_metrics(
+            {"eval_score": value, f"eval_score.{SCORER_NAME}": value}, step=step
+        )
+
+    def _log_history_series(
+        self, history: list[dict[str, Any]], enable_tracking: bool
+    ) -> None:
+        """Log SkillOpt's per-epoch val progression from ``history.json`` under GEPA's
+        ``eval_score`` metric names at ``step=epoch`` (SC2). Each row's ``current_score``
+        is the kept candidate's mean judge ``hard`` over the val split -- the same axis as
+        the ``eval_fn`` ``initial/final_eval_score`` endpoints (F-001), since the gate
+        scores via this adapter's own ``rollout``. With the full-pass cfg one row == one
+        epoch and ``row["step"] == row["epoch"]`` (F-003). Rows with no usable score
+        (skip/placeholder rows carrying a sentinel ``-1``) are skipped."""
+        for row in history:
+            score = row.get("current_score")
+            if score is None or score < 0:
+                continue
+            self._log_eval_score(float(score), step=int(row["epoch"]), enable_tracking=enable_tracking)
+
     def optimize(
         self,
         eval_fn: _EvalFunc,
@@ -438,6 +465,7 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
 
         # Baseline val on the eval_fn axis (initial_eval_score), same metric as GEPA.
         initial_eval_score = self._val_score(eval_fn, name, seed_skill)
+        self._log_eval_score(initial_eval_score, step=0, enable_tracking=enable_tracking)
         logger.info("SkillOpt baseline val eval_score=%.4f", initial_eval_score)
 
         adapter = Text2SqlEnvAdapter(
@@ -456,6 +484,10 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
             Path(cfg["skill_init"]).write_text(seed_skill, encoding="utf-8")
             ReflACTTrainer(cfg, adapter).train()
             best_skill = Path(out_root, "best_skill.md").read_text(encoding="utf-8")
+            history = json.loads(Path(out_root, "history.json").read_text(encoding="utf-8"))
+
+        # Per-epoch val progression on the eval_fn axis (SC2, F-001/F-003).
+        self._log_history_series(history, enable_tracking=enable_tracking)
 
         # Best candidate val on the same eval_fn axis (final_eval_score).
         final_eval_score = self._val_score(eval_fn, name, best_skill)

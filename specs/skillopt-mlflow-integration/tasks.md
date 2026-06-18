@@ -149,7 +149,7 @@ reads technique/before-after/prompt from tracking UI · **US4** clear failure on
 
 ## Phase 6 — Docs, env defaults & comparison validation
 
-- [ ] T024 [P] Document the new technique in `README.md` (how to select SkillOpt, the three
+- [x] T024 [P] Document the new technique in `README.md` (how to select SkillOpt, the three
   roles, the effort knobs); extend `.example.env` only if the spike (T006) added
   SkillOpt-specific env vars beyond the shared `OPTIMIZER_*`. (depends: T017)
 - [ ] T025 Validate US2/US3/SC2/SC3 end-to-end: run `text2sql-train-skillopt` and an existing

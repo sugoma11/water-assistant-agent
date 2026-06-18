@@ -64,7 +64,7 @@ Text-2-SQL prompt is shared (or even a ready solution is used), schema descripti
 
 #### Prompt-optimization training
 
-The text-2-SQL system prompt is optimized by one of two interchangeable techniques, each a
+The text-2-SQL system prompt is optimized by one of three interchangeable techniques, each a
 `just` recipe that logs a before/after val+test eval to MLflow (experiment name and tracking
 URI come from `.env`):
 
@@ -73,19 +73,30 @@ URI come from `.env`):
 - `just text2sql-train-textgrad …` — **TextGrad**. Effort is expressed as `--epochs` (required)
   and `--batch-size` over the train split rather than a metric-call budget; the
   backward/proposal LLM is the `--optimizer-model`/`--optimizer-endpoint` role.
+- `just text2sql-train-…-skillopt …` — **SkillOpt** (Microsoft's ReflACT loop: rollout →
+  reflect → merge/select edits → keep-best on a hard validation gate). Effort is expressed as
+  three required knobs — `--epochs` (full passes over the train split), `--edit-budget` (max
+  prompt edits applied per round), and `--minibatch-size` (reflection batch) — rather than a
+  metric-call budget. `--reflect-on-success/--no-reflect-on-success` (default off) toggles
+  success reflection; failure reflection is always on. The reflection/edit LLM is the
+  `--optimizer-model`/`--optimizer-endpoint` role. Only the prompt's **instruction block** is
+  the trainable skill; the DB schema stays fixed context, and `best_skill.md` is recombined
+  into the full template before registration. A new prompt version is registered only when the
+  best skill strictly beats the baseline on the validation gate (otherwise the seed prompt is
+  kept byte-for-byte).
 
-Both share the same dataset loader, the same seeded train/val/test split (`--sampler-seed`),
+All three share the same dataset loader, the same seeded train/val/test split (`--sampler-seed`),
 the same FLEX LLM-as-Judge, the same metric names, and register the same prompt — so runs are
 directly comparable in the MLflow UI. **Three model roles** are configured per run:
 
 - **task** (`--model`/`--endpoint`) — the student model that generates the SQL.
 - **judge** (`--judge-model`/`--judge-endpoint`) — the LLM-as-Judge scoring correctness.
-- **proposer** — GEPA's `--teacher-*` or TextGrad's `--optimizer-*`, the model that rewrites
-  the prompt.
+- **proposer** — GEPA's `--teacher-*`, or TextGrad's / SkillOpt's `--optimizer-*`, the model
+  that rewrites the prompt.
 
-TextGrad's proposer sampling (temperature/top-p/top-k/seed) is read from the `OPTIMIZER_*`
-variables in `.env` (see `.example.env`; defaults `0.0 / 1.0 / 1 / 42` for deterministic,
-reproducible proposals) and is logged on the TextGrad run only, so GEPA runs stay unaffected.
+The proposer sampling (temperature/top-p/top-k/seed) is read from the `OPTIMIZER_*` variables
+in `.env` (see `.example.env`; defaults `0.0 / 1.0 / 1 / 42` for deterministic, reproducible
+proposals) and is logged on the TextGrad and SkillOpt runs only, so GEPA runs stay unaffected.
 
 
 ## Literature

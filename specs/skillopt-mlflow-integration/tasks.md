@@ -135,7 +135,7 @@ reads technique/before-after/prompt from tracking UI · **US4** clear failure on
 - [x] T020 EC3 split guard in `SkillOptPromptOptimizer.optimize`: refuse empty/too-small
   train **or** val split up front (before any LLM call or trainer construction) with a clear
   message, reusing the `MIN_SPLIT_SIZE` pattern from `prompt_skill.py`. (depends: T013)
-- [ ] T021 EC1/EC4/SC5 failure propagation: ensure an unreachable optimizer/target endpoint
+- [x] T021 EC1/EC4/SC5 failure propagation: ensure an unreachable optimizer/target endpoint
   or a judge failure raises so `mlflow.start_run` marks the run **FAILED** with no optimized
   prompt reported; add friendly errors (not bare `KeyError`) when a role's `*_API_BASE` /
   `*_API_KEY` env var is unset (TextGrad retrospective finding #4). (depends: T017, T011)

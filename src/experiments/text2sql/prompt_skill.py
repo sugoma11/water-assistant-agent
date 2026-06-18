@@ -13,11 +13,9 @@ optimized instruction block back into the full ``SYSTEM_PROMPT_TEMPLATE`` shape 
 the registered artifact stays a complete, reusable template (FR6).
 """
 
-import os
-
 from openai import OpenAI
 
-from experiments.text2sql.harness import ENDPOINTS
+from experiments.text2sql.harness import ENDPOINTS, read_endpoint_credentials
 
 # Section marker that separates the optimizable instruction block from the fixed
 # schema context in SYSTEM_PROMPT_TEMPLATE.
@@ -36,14 +34,17 @@ def make_client(endpoint: str) -> OpenAI:
     Mirrors how the notebook wires each engine: resolve the endpoint's
     ``(api_base, api_key)`` env vars and point an ``openai.OpenAI`` client at them, so
     per-role endpoints route correctly without touching global litellm/env config.
+
+    Both the unknown-endpoint case and an unset ``*_API_BASE``/``*_API_KEY`` env var
+    raise an actionable ``ValueError`` (rather than a bare ``KeyError``; EC1, TextGrad
+    retrospective finding #4) so a misconfigured optimizer/task role fails clearly.
     """
-    try:
-        base_var, key_var = ENDPOINTS[endpoint]
-    except KeyError as exc:
+    if endpoint not in ENDPOINTS:
         raise ValueError(
             f"Unknown endpoint {endpoint!r}; expected one of {sorted(ENDPOINTS)}"
-        ) from exc
-    return OpenAI(base_url=os.environ[base_var], api_key=os.environ[key_var])
+        )
+    base_url, api_key = read_endpoint_credentials(endpoint)
+    return OpenAI(base_url=base_url, api_key=api_key)
 
 
 def instruction_block(template: str) -> str:

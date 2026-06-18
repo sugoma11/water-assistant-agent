@@ -253,6 +253,27 @@ def read_optimizer_params_for_logging() -> dict[str, Any]:
     }
 
 
+def read_endpoint_credentials(endpoint: str) -> tuple[str, str]:
+    """Resolve an ``ENDPOINTS`` entry's ``(api_base, api_key)`` from the environment.
+
+    Raises an actionable :class:`ValueError` when the role's ``*_API_BASE`` /
+    ``*_API_KEY`` env vars are unset, instead of the bare ``KeyError`` an
+    ``os.environ[...]`` read would otherwise surface (TextGrad retrospective finding
+    #4); a missing credential is then a clear "set this env var" failure rather than an
+    opaque crash. Callers validate endpoint-name membership (CLI ``click.Choice`` or the
+    friendlier lookup in the caller), so this assumes ``endpoint`` is a known key."""
+    api_base_var, api_key_var = ENDPOINTS[endpoint]
+    missing = [name for name in (api_base_var, api_key_var) if not os.environ.get(name)]
+    if missing:
+        raise ValueError(
+            f"Endpoint {endpoint!r} is selected but its credential env var(s) "
+            f"{', '.join(missing)} {'is' if len(missing) == 1 else 'are'} unset; set "
+            f"{'it' if len(missing) == 1 else 'them'} in the environment (see "
+            ".example.env) before optimizing."
+        )
+    return os.environ[api_base_var], os.environ[api_key_var]
+
+
 def build_completion_kwargs(
     model: str, endpoint: str, param_prefix: str = "LLM"
 ) -> dict[str, Any]:
@@ -260,16 +281,17 @@ def build_completion_kwargs(
     sampling params. ``param_prefix`` selects the env var family for the sampling
     params: ``LLM`` for generation, ``JUDGE`` for the LLM-as-Judge."""
     try:
-        api_base_var, api_key_var = ENDPOINTS[endpoint]
+        ENDPOINTS[endpoint]
     except KeyError as exc:
         raise click.BadParameter(
             f"Unknown endpoint {endpoint!r}; expected one of {sorted(ENDPOINTS)}"
         ) from exc
 
+    api_base, api_key = read_endpoint_credentials(endpoint)
     return {
         "model": model,
-        "api_base": os.environ[api_base_var],
-        "api_key": os.environ[api_key_var],
+        "api_base": api_base,
+        "api_key": api_key,
         **read_sampling_params(param_prefix),
     }
 

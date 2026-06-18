@@ -139,7 +139,7 @@ reads technique/before-after/prompt from tracking UI · **US4** clear failure on
   or a judge failure raises so `mlflow.start_run` marks the run **FAILED** with no optimized
   prompt reported; add friendly errors (not bare `KeyError`) when a role's `*_API_BASE` /
   `*_API_KEY` env var is unset (TextGrad retrospective finding #4). (depends: T017, T011)
-- [ ] T022 EC5/EC6 robustness in `optimize()`: a round with no usable edits is left to
+- [x] T022 EC5/EC6 robustness in `optimize()`: a round with no usable edits is left to
   SkillOpt's native keep-best (no malformed edit applied); if `best_skill.md` is missing/
   unreadable or the prompt fails to save/version, fail the run with a clear, actionable
   message (EC6). (depends: T015)

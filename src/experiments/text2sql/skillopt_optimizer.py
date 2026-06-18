@@ -496,12 +496,28 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
 
         # Drive the trainer in a temp out_root so the repo is never polluted with
         # SkillOpt's outputs/; read back the best-on-val skill before the dir is removed.
+        # EC5: a round whose reflection yields no usable edit is left to SkillOpt's own
+        # native keep-best -- the trainer simply keeps the current best skill and never
+        # applies a malformed edit, so no special handling is needed here.
         with tempfile.TemporaryDirectory() as out_root:
             cfg = self._build_cfg(out_root, train_data)
             Path(cfg["skill_init"]).write_text(seed_skill, encoding="utf-8")
             ReflACTTrainer(cfg, adapter).train()
-            best_skill = Path(out_root, "best_skill.md").read_text(encoding="utf-8")
-            history = json.loads(Path(out_root, "history.json").read_text(encoding="utf-8"))
+            # EC6: if the trainer's result artifacts are missing/unreadable the optimized
+            # prompt cannot be recovered, so fail the run with a clear message rather than
+            # crashing on a bare FileNotFoundError/JSONDecodeError or reporting a result.
+            try:
+                best_skill = Path(out_root, "best_skill.md").read_text(encoding="utf-8")
+                history = json.loads(
+                    Path(out_root, "history.json").read_text(encoding="utf-8")
+                )
+            except (OSError, ValueError) as exc:
+                raise RuntimeError(
+                    "SkillOpt finished but its result artifacts could not be read back "
+                    f"from {out_root!r} (best_skill.md / history.json): {exc}. The "
+                    "optimized prompt cannot be recovered, so the run is failed rather "
+                    "than reporting a result (EC6)."
+                ) from exc
 
         # Per-epoch val progression on the eval_fn axis (SC2, F-001/F-003).
         self._log_history_series(history, enable_tracking=enable_tracking)

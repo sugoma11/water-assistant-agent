@@ -497,8 +497,34 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
             initial_eval_score,
         )
 
-        # Honest keep-best handling lands in T015; for now return the recombined best.
-        optimized_template = recombine(best_skill)
+        # Honest keep-best (EC2): only a strict gain over baseline on the eval_fn axis
+        # (the same axis as the logged endpoints, F-001/F-004) counts as an improvement.
+        # When the best validated skill did not beat baseline, return the original seed
+        # template byte-for-byte so register_prompt_if_changed dedups it and no spurious
+        # version is registered -- rather than presenting an unchanged prompt as a win.
+        if final_eval_score > initial_eval_score:
+            optimized_template = recombine(best_skill)
+            # The fixed schema context must survive recombination so the registered
+            # artifact stays a complete, reusable template (FR6, A6, SC6).
+            if "{schema}" not in optimized_template:
+                raise RuntimeError(
+                    "Recombined SkillOpt template lost the {schema} placeholder; refusing "
+                    "to register a prompt the task path cannot inject the schema into "
+                    "(FR6, SC6)."
+                )
+            logger.info(
+                "SkillOpt improved val %.4f -> %.4f; registering optimized prompt.",
+                initial_eval_score,
+                final_eval_score,
+            )
+        else:
+            optimized_template = seed_template
+            logger.info(
+                "SkillOpt did not beat the baseline (val stayed %.4f); keeping the seed "
+                "prompt unchanged -- no new version will be registered.",
+                initial_eval_score,
+            )
+
         return PromptOptimizerOutput(
             optimized_prompts={name: optimized_template},
             initial_eval_score=initial_eval_score,

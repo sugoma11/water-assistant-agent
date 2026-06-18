@@ -100,7 +100,7 @@ reads technique/before-after/prompt from tracking UI · **US4** clear failure on
   agreement check (F-001). Apply the T005 fallback (per-epoch `eval_fn` series, or
   initial/final only) if granularity is insufficient or the axes disagree, noting the
   limitation. (depends: T013)
-- [ ] T015 Recombine + keep-best honesty in `optimize()`: when `final_eval_score >
+- [x] T015 Recombine + keep-best honesty in `optimize()`: when `final_eval_score >
   initial_eval_score`, return `_recombine(best_skill)`; otherwise return
   `target_prompts[name]` **byte-for-byte** so `register_prompt_if_changed` dedups and no
   spurious version is registered (EC2). The keep/return decision is made on the `eval_fn`

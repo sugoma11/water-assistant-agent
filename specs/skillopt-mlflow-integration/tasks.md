@@ -109,7 +109,7 @@ reads technique/before-after/prompt from tracking UI · **US4** clear failure on
 
 ## Phase 4 — CLI & MLflow wiring (US1, US3) — depends on Phase 3
 
-- [ ] T016 Implement `src/experiments/text2sql/train_skillopt.py` with `train_skillopt`
+- [x] T016 Implement `src/experiments/text2sql/train_skillopt.py` with `train_skillopt`
   (click command) mirroring `train_textgrad.py`: options `--questions-path`/`--schema-path`/
   `--db-path`, `--model`/`--endpoint` (task), `--judge-model`/`--judge-endpoint` (shared
   judge), `--optimizer-model`/`--optimizer-endpoint` (SkillOpt layer), required-no-default
@@ -117,16 +117,16 @@ reads technique/before-after/prompt from tracking UI · **US4** clear failure on
   (default off), `--sampler-seed` (default 42), `--use-prod-questions`. Build the optimizer,
   call the shared `_run_optimization(optimizer, technique="skillopt", extra_params=…)`.
   (depends: T015)
-- [ ] T017 Populate `extra_params` in `train_skillopt.py` so the run records: the three model
+- [x] T017 Populate `extra_params` in `train_skillopt.py` so the run records: the three model
   roles + their endpoints, `epochs`, `edit_budget`, `minibatch_size`, `reflect_on_success`,
   `sampler_seed`, split sizes, and the `OPTIMIZER_*` sampling params via
   `read_optimizer_params_for_logging()` — logged **on the SkillOpt run only** (not in
   `log_global_params`), so GEPA/TextGrad runs stay byte-identical (FR5, FR10, NFR3, FR8).
   (depends: T016)
-- [ ] T018 [P] Add the entry point `text2sql-train-skillopt =
+- [x] T018 [P] Add the entry point `text2sql-train-skillopt =
   "experiments.text2sql.train_skillopt:train_skillopt"` to `[project.scripts]` in
   `pyproject.toml`. (depends: T016)
-- [ ] T019 [P] Add a `text2sql-train-…-skillopt` recipe to `experiments.just` parallel to
+- [x] T019 [P] Add a `text2sql-train-…-skillopt` recipe to `experiments.just` parallel to
   the GEPA one (student-judge-optimizer-technique naming), forwarding all required options.
   (depends: T016)
 

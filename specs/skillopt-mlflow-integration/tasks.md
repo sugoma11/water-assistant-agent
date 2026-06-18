@@ -73,7 +73,7 @@ reads technique/before-after/prompt from tracking UI · **US4** clear failure on
   `src/experiments/text2sql/skillopt_optimizer.py`: `build_train_env` / `build_eval_env`
   wrapping our train/val records into SkillOpt's `env_manager` shape, and `get_task_types`
   → `["text2sql"]`. Use the seams pinned in T003–T005. (depends: T006, T008)
-- [ ] T011 Implement `Text2SqlEnvAdapter.rollout(env_manager, skill_content, out_dir)` in
+- [x] T011 Implement `Text2SqlEnvAdapter.rollout(env_manager, skill_content, out_dir)` in
   `skillopt_optimizer.py`: for each item call the project litellm `predict_fn` with
   `system=_recombine(skill_content)`, score with the shared `build_sql_judge_scorer`, set
   `hard = 1.0/0.0` from the judge verdict, `soft = hard`, stash the judge rationale; guard

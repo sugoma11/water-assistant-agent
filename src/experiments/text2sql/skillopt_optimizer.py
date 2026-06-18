@@ -44,7 +44,16 @@ import skillopt.prompts as skillopt_prompts
 from skillopt.envs.base import EnvAdapter
 from skillopt.gradient.reflect import run_minibatch_reflect
 
-from experiments.text2sql.harness import build_completion_kwargs
+from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.text2sql.core import (
+    USER_PROMPT_TEMPLATE,
+    clean_sql,
+)
+from experiments.text2sql.harness import (
+    build_completion_kwargs,
+    completion_with_retry,
+    render_system_prompt,
+)
+from experiments.text2sql.prompt_skill import recombine
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +197,83 @@ class Text2SqlEnvAdapter(EnvAdapter):
             update_mode=self._cfg.get("skill_update_mode", "patch"),
         )
 
+    def _task_sql(self, question: str, skill_content: str) -> tuple[str, str, str]:
+        """Run the task model on one question with the candidate skill, via the project
+        litellm completion path (same path ``create_predict_fn`` uses, so the task model
+        is sampled identically to the val/test eval phase). The skill is recombined into
+        the full template and the fixed schema is injected per call (FR6, A6); returns the
+        rendered system + user messages (persisted for reflection) and the cleaned SQL."""
+        system = render_system_prompt(recombine(skill_content), self._schema_text)
+        user = USER_PROMPT_TEMPLATE.format(question=question)
+        resp = completion_with_retry(
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            **self._task_kwargs,
+        )
+        return system, user, clean_sql(resp.choices[0].message.content or "")
+
     def rollout(
         self, env_manager: Any, skill_content: str, out_dir: str, **kwargs: Any
-    ) -> list[dict[str, Any]]:  # implemented in T011
-        raise NotImplementedError
+    ) -> list[dict[str, Any]]:
+        """Roll out the candidate skill over a split: generate SQL with the task model,
+        score with the shared FLEX judge, and emit SkillOpt's result-dict shape.
+
+        ``hard = 1.0/0.0`` from the judge verdict and ``soft = hard`` — the same pass/fail
+        signal that produces the reported metric (FR11, A3) — so both the success/failure
+        reflection partition and the val gate run off the judge. EC4: on a judge error we
+        **raise** rather than default a grade. The reflection stage reads each item's
+        trajectory from ``<out_dir>/predictions/<id>/conversation.json``, so a conversation
+        file is persisted per item (returning ``{id, hard, soft}`` alone is insufficient)."""
+        pred_dir = os.path.join(out_dir, "predictions")
+        results: list[dict[str, Any]] = []
+        for i, rec in enumerate(env_manager):
+            rid = str(rec.get("id", i))
+            question = rec["inputs"]["question"]
+            ref_sql = rec["expectations"]["sql"]
+            system, user, sql = self._task_sql(question, skill_content)
+
+            fb = self._judge(
+                inputs={"question": question},
+                outputs={"sql": sql},
+                expectations={"sql": ref_sql, "argilla_link": ""},
+            )
+            # EC4: the shared scorer swallows judge-call failures into
+            # Feedback(value=False, error=...); never let that fabricate an INCORRECT
+            # grade -- raise so the run is marked FAILED instead of training/gating on it.
+            err = getattr(fb, "error", None)
+            if err is not None:
+                raise RuntimeError(
+                    "Shared SQL judge failed during SkillOpt rollout "
+                    f"(id={rid!r}, question={question!r}); refusing to grade the "
+                    f"candidate by default (EC4). Underlying error: {err}"
+                ) from (err if isinstance(err, BaseException) else None)
+            hard = 1.0 if fb.value else 0.0
+
+            item_dir = os.path.join(pred_dir, rid)
+            os.makedirs(item_dir, exist_ok=True)
+            with open(os.path.join(item_dir, "conversation.json"), "w") as f:
+                json.dump(
+                    [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                        {"role": "assistant", "content": sql},
+                    ],
+                    f,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            results.append(
+                {
+                    "id": rid,
+                    "hard": hard,
+                    "soft": hard,
+                    "task_description": question,
+                    "task_type": TASK_TYPE,
+                    "reference_text": ref_sql,
+                    "fail_reason": "" if hard else (fb.rationale or ""),
+                    "n_turns": 1,
+                }
+            )
+        return results

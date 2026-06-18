@@ -61,7 +61,7 @@ reads technique/before-after/prompt from tracking UI · **US4** clear failure on
 - [x] T007 Create `src/experiments/text2sql/prompt_skill.py` and move `_instruction_block`,
   `_recombine`, `SCHEMA_MARKER`, `make_client`, and `MIN_SPLIT_SIZE` out of
   `textgrad_optimizer.py` into it (pure extraction, no behavior change). (depends: T001)
-- [ ] T008 Update `src/experiments/text2sql/textgrad_optimizer.py` to import the lifted
+- [x] T008 Update `src/experiments/text2sql/textgrad_optimizer.py` to import the lifted
   helpers from `prompt_skill.py`; delete the now-duplicated definitions. (depends: T007)
 - [ ] T009 Regression-check TextGrad after extraction: run a small `text2sql-train-textgrad`
   optimization (or its existing smoke path) and confirm the run records and registered

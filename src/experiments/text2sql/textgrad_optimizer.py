@@ -42,7 +42,6 @@ built (``train_textgrad`` / the shared ``_run_optimization``).
 """
 
 import logging
-import os
 from collections.abc import Callable
 from typing import Any
 
@@ -53,26 +52,21 @@ from mlflow.entities import Feedback
 from mlflow.genai.optimize.optimizers import BasePromptOptimizer
 from mlflow.genai.optimize.optimizers.base import _EvalFunc
 from mlflow.genai.optimize.types import PromptOptimizerOutput
-from openai import OpenAI
 from textgrad.engine.local_model_openai_api import ChatExternalClient
 
 from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.text2sql.core import (
     USER_PROMPT_TEMPLATE,
     clean_sql,
 )
-from experiments.text2sql.harness import ENDPOINTS, render_system_prompt
+from experiments.text2sql.harness import render_system_prompt
+from experiments.text2sql.prompt_skill import (
+    MIN_SPLIT_SIZE,
+    instruction_block,
+    make_client,
+    recombine,
+)
 
 logger = logging.getLogger(__name__)
-
-# Section marker that separates the optimizable instruction block from the fixed
-# schema context in SYSTEM_PROMPT_TEMPLATE.
-SCHEMA_MARKER = "Schema:"
-
-# Smallest train/val split TextGrad will run on (EC3): a gradient step needs at least
-# one train record and per-epoch keep-best needs at least one val record. Refused up
-# front, before any LLM call, so a degenerate split fails fast instead of producing an
-# unreliable result.
-MIN_SPLIT_SIZE = 1
 
 # Single-scorer name shared with the FLEX judge (build_sql_judge_scorer) and GEPA's
 # per-scorer eval metric, so the TextGrad run's `eval_score.sql_is_correct` series is
@@ -105,22 +99,6 @@ JUDGE_LOSS_TEMPLATE = (
     "future SQL is correct. If the\nverdict is CORRECT, briefly affirm what worked so "
     "it is preserved."
 )
-
-
-def make_client(endpoint: str) -> OpenAI:
-    """Build an OpenAI-compatible client for an ``ENDPOINTS`` entry (R3).
-
-    Mirrors how the notebook wires each TextGrad engine: resolve the endpoint's
-    ``(api_base, api_key)`` env vars and point an ``openai.OpenAI`` client at them, so
-    per-role endpoints route correctly without touching global litellm/env config.
-    """
-    try:
-        base_var, key_var = ENDPOINTS[endpoint]
-    except KeyError as exc:
-        raise ValueError(
-            f"Unknown endpoint {endpoint!r}; expected one of {sorted(ENDPOINTS)}"
-        ) from exc
-    return OpenAI(base_url=os.environ[base_var], api_key=os.environ[key_var])
 
 
 # Sampling params textgrad's ChatExternalClient.generate actually forwards to the
@@ -222,19 +200,6 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         self.seed = seed
         self.display_progress_bar = display_progress_bar
 
-    # -- prompt template <-> optimizable instruction block -------------------
-    @staticmethod
-    def _instruction_block(template: str) -> str:
-        """The optimizable instruction block: everything before the schema section."""
-        return template.split(SCHEMA_MARKER)[0].rstrip()
-
-    @staticmethod
-    def _recombine(instruction: str) -> str:
-        """Recombine an optimized instruction block into the full template shape so
-        the registered artifact is a complete, reusable template (FR6). The
-        ``{schema}`` placeholder is filled by ``render_system_prompt`` at call time."""
-        return f"{instruction}\n\n{SCHEMA_MARKER}\n\n{{schema}}\n"
-
     # -- shared judge + val scoring ------------------------------------------
     def _judge(self, question: str, ref_sql: str, sql: str) -> Feedback:
         """Call the shared judge directly; returns the Feedback (.value, .rationale).
@@ -265,7 +230,7 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         task predict_fn + judge GEPA scores with), so the reported val metric is
         directly comparable. The candidate is recombined into the full template shape
         because ``eval_fn`` renders ``{schema}`` into the patched prompt."""
-        records = eval_fn({name: self._recombine(instruction)}, self.val_set)
+        records = eval_fn({name: recombine(instruction)}, self.val_set)
         scores = [r.score for r in records if r.score is not None]
         return float(np.mean(scores)) if scores else 0.0
 
@@ -335,7 +300,7 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         tg.set_backward_engine(backward_engine, override=True)
 
         system_prompt = tg.Variable(
-            self._instruction_block(seed_template),
+            instruction_block(seed_template),
             requires_grad=True,
             role_description=INSTRUCTION_ROLE,
         )
@@ -405,7 +370,7 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         # dedups it and no spurious new prompt version is registered -- rather than
         # presenting an unchanged (or equal-scoring) prompt as an improvement.
         if best_val > initial_eval_score:
-            optimized_template = self._recombine(best_prompt)
+            optimized_template = recombine(best_prompt)
             logger.info(
                 "TextGrad improved val %.4f -> %.4f; registering optimized prompt.",
                 initial_eval_score,

@@ -69,7 +69,7 @@ reads technique/before-after/prompt from tracking UI · **US4** clear failure on
 
 ## Phase 3 — Core: adapter + optimizer (US1, US2, US3) — depends on Phases 1–2
 
-- [ ] T010 Implement `Text2SqlEnvAdapter(skillopt.envs.base.EnvAdapter)` in new
+- [x] T010 Implement `Text2SqlEnvAdapter(skillopt.envs.base.EnvAdapter)` in new
   `src/experiments/text2sql/skillopt_optimizer.py`: `build_train_env` / `build_eval_env`
   wrapping our train/val records into SkillOpt's `env_manager` shape, and `get_task_types`
   → `["text2sql"]`. Use the seams pinned in T003–T005. (depends: T006, T008)

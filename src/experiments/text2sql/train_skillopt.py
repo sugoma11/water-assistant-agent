@@ -32,6 +32,7 @@ from experiments.text2sql.harness import (
     ENDPOINTS,
     build_sql_judge_scorer,
     load_dataset,
+    read_optimizer_params_for_logging,
     register_prompt_if_changed,
     setup_mlflow,
 )
@@ -191,6 +192,12 @@ def train_skillopt(
         f"Running SkillOpt ({epochs} epoch(s), edit_budget={edit_budget}, "
         f"minibatch_size={minibatch_size}, reflect_on_success={reflect_on_success})..."
     )
+    # Recorded on the SkillOpt run only (via extra_params, never via the shared
+    # log_global_params), so GEPA/TextGrad runs keep byte-identical params (FR8, NFR3).
+    # The task + judge roles/endpoints + sampler_seed + split sizes are logged by
+    # _run_optimization (log_global_params + the shared log_params); here we add the
+    # optimizer role, the effort knobs, and the OPTIMIZER_* sampling params that drive
+    # SkillOpt's reflection/edit model (FR5, FR10).
     extra_params: dict[str, Any] = {
         "optimizer_model": optimizer_model,
         "optimizer_endpoint": optimizer_endpoint,
@@ -198,6 +205,7 @@ def train_skillopt(
         "edit_budget": edit_budget,
         "minibatch_size": minibatch_size,
         "reflect_on_success": reflect_on_success,
+        **read_optimizer_params_for_logging(),
     }
     _run_optimization(
         optimizer=optimizer,

@@ -60,7 +60,12 @@ from experiments.text2sql.harness import (
     completion_with_retry,
     render_system_prompt,
 )
-from experiments.text2sql.prompt_skill import instruction_block, make_client, recombine
+from experiments.text2sql.prompt_skill import (
+    MIN_SPLIT_SIZE,
+    instruction_block,
+    make_client,
+    recombine,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -458,6 +463,18 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
                 f"{len(target_prompts)} target prompts: {sorted(target_prompts)}."
             )
         ((name, seed_template),) = target_prompts.items()
+
+        # Refuse a degenerate split up front (EC3), before any LLM call or trainer
+        # construction. This is the same seeded ``split_dataset`` split GEPA/TextGrad use,
+        # so a too-small train or val split is a dataset/seed problem, not a SkillOpt one;
+        # the per-round keep-best gate also needs a non-empty val split to be meaningful.
+        if len(train_data) < MIN_SPLIT_SIZE or len(self.val_set) < MIN_SPLIT_SIZE:
+            raise ValueError(
+                "SkillOpt needs a non-empty train and val split (the same seeded "
+                f"split_dataset split GEPA/TextGrad use); got train={len(train_data)}, "
+                f"val={len(self.val_set)} (minimum {MIN_SPLIT_SIZE} each). Enlarge the "
+                "dataset or adjust the sampler split before optimizing."
+            )
 
         # The trainable skill document is the prompt's instruction block; the schema is
         # fixed context kept out of the skill doc and the reflection prompts (FR6, A6).

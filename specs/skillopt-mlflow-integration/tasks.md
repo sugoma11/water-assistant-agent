@@ -132,7 +132,7 @@ reads technique/before-after/prompt from tracking UI · **US4** clear failure on
 
 ## Phase 5 — Error handling (US4, EC1–EC6) — depends on Phase 4
 
-- [ ] T020 EC3 split guard in `SkillOptPromptOptimizer.optimize`: refuse empty/too-small
+- [x] T020 EC3 split guard in `SkillOptPromptOptimizer.optimize`: refuse empty/too-small
   train **or** val split up front (before any LLM call or trainer construction) with a clear
   message, reusing the `MIN_SPLIT_SIZE` pattern from `prompt_skill.py`. (depends: T013)
 - [ ] T021 EC1/EC4/SC5 failure propagation: ensure an unreachable optimizer/target endpoint

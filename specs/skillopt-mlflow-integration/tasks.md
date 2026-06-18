@@ -143,7 +143,7 @@ reads technique/before-after/prompt from tracking UI · **US4** clear failure on
   SkillOpt's native keep-best (no malformed edit applied); if `best_skill.md` is missing/
   unreadable or the prompt fails to save/version, fail the run with a clear, actionable
   message (EC6). (depends: T015)
-- [ ] T023 Verify SC5 end-to-end: deliberately induce a SkillOpt failure (e.g. unreachable
+- [x] T023 Verify SC5 end-to-end: deliberately induce a SkillOpt failure (e.g. unreachable
   optimizer endpoint) via the CLI and confirm a clear error + a run marked failed with no
   optimized result. (depends: T021, T022)
 

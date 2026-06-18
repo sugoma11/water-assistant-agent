@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Any
 
 import skillopt.prompts as skillopt_prompts
+from mlflow.genai.optimize.optimizers import BasePromptOptimizer
 from skillopt.envs.base import EnvAdapter
 from skillopt.gradient.reflect import run_minibatch_reflect
 
@@ -53,7 +54,7 @@ from experiments.text2sql.harness import (
     completion_with_retry,
     render_system_prompt,
 )
-from experiments.text2sql.prompt_skill import recombine
+from experiments.text2sql.prompt_skill import make_client, recombine
 
 logger = logging.getLogger(__name__)
 
@@ -277,3 +278,128 @@ class Text2SqlEnvAdapter(EnvAdapter):
                 }
             )
         return results
+
+
+class SkillOptPromptOptimizer(BasePromptOptimizer):
+    """Optimize the text-2-SQL system prompt with SkillOpt's ReflACT trainer.
+
+    Args:
+        task_model / task_endpoint: the model that answers questions with the skill being
+            optimized; passed to :class:`Text2SqlEnvAdapter` and called via the project
+            litellm path (so it keeps the ``openai/`` provider prefix).
+        optimizer_model / optimizer_endpoint: SkillOpt's reflection/edit model, run on
+            SkillOpt's own ``openai_chat`` backend pointed at a project endpoint (FR9, Q4).
+            ``optimizer_model`` is sent straight to the OpenAI-compatible endpoint, so it
+            carries **no** provider prefix.
+        judge_scorer: the shared FLEX SQL judge object also passed to
+            ``optimize_prompts(scorers=...)`` (FR9, A3).
+        schema_text: the fixed DB schema injected into the task prompt per call.
+        val_set: the seeded val split (same split GEPA/TextGrad use) SkillOpt gates on.
+        epochs: full passes over the train split (``num_epochs``, FR10).
+        edit_budget: max edits applied per round (constant; FR10, FR13, OQ1).
+        minibatch_size: SkillOpt's reflection minibatch size (FR10).
+        reflect_on_success: enable success reflection (failure reflection is always on);
+            recorded, default off (FR11, Q3).
+        seed: seeds SkillOpt's ``seed``/``split_seed`` (== sampler_seed, NFR2).
+    """
+
+    # SkillOpt-internal knobs not exposed as spec effort knobs; pinned in the spike.
+    _ANALYST_WORKERS = 2
+    _MERGE_BATCH_SIZE = 8
+    _MAX_ANALYST_ROUNDS = 1
+    _SKILL_UPDATE_MODE = "patch"
+
+    def __init__(
+        self,
+        *,
+        task_model: str,
+        task_endpoint: str,
+        optimizer_model: str,
+        optimizer_endpoint: str,
+        judge_scorer: Any,
+        schema_text: str,
+        val_set: list[dict[str, Any]],
+        epochs: int,
+        edit_budget: int,
+        minibatch_size: int,
+        reflect_on_success: bool = False,
+        seed: int = 42,
+    ) -> None:
+        self.task_model = task_model
+        self.task_endpoint = task_endpoint
+        self.optimizer_model = optimizer_model
+        self.optimizer_endpoint = optimizer_endpoint
+        self.judge_scorer = judge_scorer
+        self.schema_text = schema_text
+        self.val_set = val_set
+        self.epochs = epochs
+        self.edit_budget = edit_budget
+        self.minibatch_size = minibatch_size
+        self.reflect_on_success = reflect_on_success
+        self.seed = seed
+
+    def _build_cfg(
+        self, out_root: str, train_data: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Map the spec effort knobs onto a flat SkillOpt ``cfg`` dict the in-process
+        ``ReflACTTrainer`` reads directly (the structured-YAML flatten step is bypassed,
+        so the flat key names from ``spike-findings.md`` are used verbatim).
+
+        Decisions pinned in the spike: a **full-pass epoch** (``batch_size ==
+        train_size``, ``accumulation = 1`` → one rollout per epoch, Q1); a **constant edit
+        budget** (``lr_scheduler="constant"`` + ``min_edit_budget == edit_budget``, OQ1) so
+        the recorded budget is one stable number; the mandatory hard val gate
+        (``use_gate=True``, ``gate_metric="hard"``, FR12/Q2); ``eval_test=False`` so the
+        test metric comes from ``_run_optimization``'s test-after phase (one metric path
+        across techniques); and ``failure_only = not reflect_on_success`` (FR11, Q3).
+
+        The optimizer role's endpoint + key are resolved from the project ``ENDPOINTS``
+        via :func:`make_client` (project endpoints only, never a library default, Q4/A2);
+        the task role is never built on SkillOpt's side (it runs inside ``rollout``), but
+        ``target_model``/``target_backend`` are still set because ``train()`` reads them.
+        """
+        n_train = len(train_data)
+        opt_client = make_client(self.optimizer_endpoint)
+        return {
+            # roles / backends
+            "model_backend": "openai_chat",
+            "optimizer_backend": "openai_chat",
+            "target_backend": "openai_chat",
+            "optimizer_model": self.optimizer_model,
+            "target_model": self.task_model.removeprefix("openai/"),
+            # seam 1: optimizer role -> project endpoint, plain openai-compatible auth
+            "optimizer_azure_openai_auth_mode": "openai_compatible",
+            "optimizer_azure_openai_endpoint": str(opt_client.base_url),
+            "optimizer_azure_openai_api_key": opt_client.api_key,
+            # effort knobs (FR10) + constant-LR decision (OQ1)
+            "num_epochs": self.epochs,
+            "edit_budget": self.edit_budget,
+            "min_edit_budget": self.edit_budget,
+            "lr_scheduler": "constant",
+            "lr_control_mode": "fixed",
+            "minibatch_size": self.minibatch_size,
+            "merge_batch_size": self._MERGE_BATCH_SIZE,
+            "analyst_workers": self._ANALYST_WORKERS,
+            "max_analyst_rounds": self._MAX_ANALYST_ROUNDS,
+            "skill_update_mode": self._SKILL_UPDATE_MODE,
+            # full-pass epoch (Q1): batch_size == train_size, accumulation == 1
+            "train_size": n_train,
+            "batch_size": n_train,
+            "accumulation": 1,
+            "seed": self.seed,
+            "split_seed": self.seed,
+            # validation gate (FR12 / Q2): hard gate over the val split
+            "use_gate": True,
+            "gate_metric": "hard",
+            "sel_env_num": len(self.val_set),
+            "eval_test": False,
+            # success-reflection toggle (FR11, Q3): failure_only = not reflect_on_success
+            "failure_only": not self.reflect_on_success,
+            # keep optional feature prompts out of the critical path
+            "use_meta_skill": False,
+            "use_slow_update": False,
+            "longitudinal_pair_policy": "mixed",
+            # required by train()
+            "out_root": out_root,
+            "skill_init": os.path.join(out_root, "skill_init.md"),
+        }

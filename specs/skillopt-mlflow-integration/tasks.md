@@ -78,7 +78,7 @@ reads technique/before-after/prompt from tracking UI · **US4** clear failure on
   `system=_recombine(skill_content)`, score with the shared `build_sql_judge_scorer`, set
   `hard = 1.0/0.0` from the judge verdict, `soft = hard`, stash the judge rationale; guard
   EC4 — on judge error **raise**, never default a grade (FR11, A3). (depends: T010)
-- [ ] T012 Implement the `cfg` builder in `SkillOptPromptOptimizer.__init__`/`optimize`
+- [x] T012 Implement the `cfg` builder in `SkillOptPromptOptimizer.__init__`/`optimize`
   (`skillopt_optimizer.py`) mapping spec knobs → SkillOpt cfg: `epochs→num_epochs`,
   `edit_budget→learning_rate` (constant: `lr_scheduler` const + `min_learning_rate ==
   learning_rate`, OQ1), `minibatch_size→minibatch_size`, `batch_size`=full train size,

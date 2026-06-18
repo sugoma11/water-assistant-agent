@@ -85,7 +85,7 @@ reads technique/before-after/prompt from tracking UI · **US4** clear failure on
   `use_gate=true`, `eval_test=false`, `seed`/`split_seed`=`sampler_seed`, success-reflection
   toggle (key from T005). Roles/endpoints set from `ENDPOINTS[...]` via `make_client`
   resolution — project endpoints only, never a library default (Q4, A2). (depends: T010)
-- [ ] T013 Implement `SkillOptPromptOptimizer(BasePromptOptimizer).optimize(eval_fn,
+- [x] T013 Implement `SkillOptPromptOptimizer(BasePromptOptimizer).optimize(eval_fn,
   train_data, target_prompts, enable_tracking)` in `skillopt_optimizer.py`: assert exactly
   one target prompt; seed skill = `_instruction_block(seed_template)` written to a tmp
   `skill_init.md`; compute `initial_eval_score` via `eval_fn` on the val set; run

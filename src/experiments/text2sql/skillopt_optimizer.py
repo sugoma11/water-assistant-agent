@@ -37,11 +37,16 @@ time, so no runtime network is needed and the run is reproducible.
 import json
 import logging
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import skillopt.prompts as skillopt_prompts
 from mlflow.genai.optimize.optimizers import BasePromptOptimizer
+from mlflow.genai.optimize.optimizers.base import _EvalFunc
+from mlflow.genai.optimize.types import PromptOptimizerOutput
+from skillopt.engine.trainer import ReflACTTrainer
 from skillopt.envs.base import EnvAdapter
 from skillopt.gradient.reflect import run_minibatch_reflect
 
@@ -54,7 +59,7 @@ from experiments.text2sql.harness import (
     completion_with_retry,
     render_system_prompt,
 )
-from experiments.text2sql.prompt_skill import make_client, recombine
+from experiments.text2sql.prompt_skill import instruction_block, make_client, recombine
 
 logger = logging.getLogger(__name__)
 
@@ -403,3 +408,69 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
             "out_root": out_root,
             "skill_init": os.path.join(out_root, "skill_init.md"),
         }
+
+    def _val_score(self, eval_fn: _EvalFunc, name: str, instruction: str) -> float:
+        """Mean judge pass-rate over the val split via MLflow's ``eval_fn`` (the same
+        task predict_fn + judge GEPA/TextGrad score with), so the reported val metric is
+        directly comparable. The candidate skill is recombined into the full template
+        because ``eval_fn`` renders ``{schema}`` into the patched prompt (FR6)."""
+        records = eval_fn({name: recombine(instruction)}, self.val_set)
+        scores = [r.score for r in records if r.score is not None]
+        return float(np.mean(scores)) if scores else 0.0
+
+    def optimize(
+        self,
+        eval_fn: _EvalFunc,
+        train_data: list[dict[str, Any]],
+        target_prompts: dict[str, str],
+        enable_tracking: bool = True,
+    ) -> PromptOptimizerOutput:
+        if len(target_prompts) != 1:
+            raise ValueError(
+                "SkillOptPromptOptimizer optimizes exactly one prompt; got "
+                f"{len(target_prompts)} target prompts: {sorted(target_prompts)}."
+            )
+        ((name, seed_template),) = target_prompts.items()
+
+        # The trainable skill document is the prompt's instruction block; the schema is
+        # fixed context kept out of the skill doc and the reflection prompts (FR6, A6).
+        seed_skill = instruction_block(seed_template)
+
+        # Baseline val on the eval_fn axis (initial_eval_score), same metric as GEPA.
+        initial_eval_score = self._val_score(eval_fn, name, seed_skill)
+        logger.info("SkillOpt baseline val eval_score=%.4f", initial_eval_score)
+
+        adapter = Text2SqlEnvAdapter(
+            train_data,
+            self.val_set,
+            task_model=self.task_model,
+            task_endpoint=self.task_endpoint,
+            judge_scorer=self.judge_scorer,
+            schema_text=self.schema_text,
+        )
+
+        # Drive the trainer in a temp out_root so the repo is never polluted with
+        # SkillOpt's outputs/; read back the best-on-val skill before the dir is removed.
+        with tempfile.TemporaryDirectory() as out_root:
+            cfg = self._build_cfg(out_root, train_data)
+            Path(cfg["skill_init"]).write_text(seed_skill, encoding="utf-8")
+            ReflACTTrainer(cfg, adapter).train()
+            best_skill = Path(out_root, "best_skill.md").read_text(encoding="utf-8")
+
+        # Best candidate val on the same eval_fn axis (final_eval_score).
+        final_eval_score = self._val_score(eval_fn, name, best_skill)
+        logger.info(
+            "SkillOpt final val eval_score=%.4f (baseline %.4f)",
+            final_eval_score,
+            initial_eval_score,
+        )
+
+        # Honest keep-best handling lands in T015; for now return the recombined best.
+        optimized_template = recombine(best_skill)
+        return PromptOptimizerOutput(
+            optimized_prompts={name: optimized_template},
+            initial_eval_score=initial_eval_score,
+            final_eval_score=final_eval_score,
+            initial_eval_score_per_scorer={SCORER_NAME: initial_eval_score},
+            final_eval_score_per_scorer={SCORER_NAME: final_eval_score},
+        )

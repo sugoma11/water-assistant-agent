@@ -93,7 +93,7 @@ from experiments.text2sql.train_common import PROMPT_NAME, _run_optimization
 )
 @click.option(
     "--batch-size",
-    default=1,
+    default=2,
     show_default=True,
     type=int,
     help="Records per gradient step.",

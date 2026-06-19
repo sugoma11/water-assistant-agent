@@ -5,3 +5,5 @@ db_path        := "data/water.duckdb"
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 blablador := "blablador"
 kisski    := "kisski"
+
+textgrad_sql_epochs := "3"

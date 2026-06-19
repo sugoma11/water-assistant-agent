@@ -161,8 +161,7 @@ def train_gepa(
     # GEPA fully evaluates the seed prompt on the valset at iteration 0 and the
     # accepted candidates along the way; budget two full valset passes on top of
     # the optimization budget proper.
-    # total_metric_calls = len(val_set) * 2 + MAX_METRIC_CALLS
-    total_metric_calls = len(val_set) * 2 + 1
+    total_metric_calls = len(val_set) * 2 + MAX_METRIC_CALLS
     click.echo(
         f"Running GEPA ({total_metric_calls} metric calls max: "
         f"{MAX_METRIC_CALLS} optimization + 2x{len(val_set)} full valset passes)..."

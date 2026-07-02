@@ -6,7 +6,9 @@ TextGrad run records the same metric names, judge and registered prompt as the G
 run (FR9, A3, NFR1) and the two techniques are directly comparable.
 
 It ports the validated reference notebook (``notebooks/textgrad_prompt_opt.ipynb``,
-Phase-1 spike) into an epoch-based loop (FR10):
+Phase-1 spike) into a budget-stopped loop: epochs repeat over the train split until the
+run's money budget is exhausted (``cost_meter.exhausted()``, checked per gradient step),
+rather than running a fixed number of epochs (FR2, FR7):
 
 - **Training step (the textual-gradient signal).** The task model runs through
   TextGrad's ``BlackboxLLM(task_engine, system_prompt)`` so the response Variable is
@@ -22,14 +24,15 @@ Phase-1 spike) into an epoch-based loop (FR10):
   additively and a whole epoch of unchecked steps bloats it well past the point where it
   still helps on val, so a per-epoch checkpoint can never recover a good intermediate.
   To keep that per-step gate cheap, it scores the candidate on a small fixed val
-  **subset** (``val_gate_size``) rather than the full val set, and the whole
-  optimization phase is capped at ``metric_call_budget`` task+judge calls -- the same
-  accounting GEPA uses (``train_gepa`` budgets ``2*len(val) + MAX_METRIC_CALLS``). The
-  reported ``initial_eval_score`` / ``final_eval_score`` are still measured on the FULL
-  val set (baseline seed + best candidate), exactly the two full passes GEPA reserves,
-  so the reported metric stays directly comparable; only the cheap per-step accept/revert
-  gate runs on the subset. The per-step ``eval_score`` series logged under GEPA's metric
-  name is the subset-gate score.
+  **subset** (``val_gate_size``) rather than the full val set; the gate eval and the
+  gradient-step forward are billable spend the money budget governs, and the loop stops
+  within one gradient step of exhaustion (FR2, FR5, FR7). The reported
+  ``initial_eval_score`` / ``final_eval_score`` are still measured on the FULL val set
+  (baseline seed + best candidate) but run inside ``meter.excluded()``, so those two
+  reserved passes are visible as ``cost_excluded`` and never charge the budget (D3, SC4)
+  -- mirroring GEPA's two reserved full passes -- and the reported metric stays directly
+  comparable; only the cheap per-step accept/revert gate runs on the subset. The per-step
+  ``eval_score`` series logged under GEPA's metric name is the subset-gate score.
 - **Train signal (per-iteration monitor).** Each gradient step also logs the batch judge
   pass-rate as ``train_score`` (and its complement ``train_loss``) at the same
   gradient-step x-axis as ``eval_score``, so the train/val curves line up in the MLflow
@@ -45,15 +48,17 @@ block is recombined into the full ``SYSTEM_PROMPT_TEMPLATE`` shape so the regist
 ``text2sql_system`` artifact stays a complete, reusable template with parity to GEPA's
 (FR6).
 
-Note on ``__init__``: the plan's task list (T011) enumerates the loop params
-(``optimizer_model``/``optimizer_endpoint``/``val_set``/``epochs``/... ); the pinned
-primary approach (T010, T002) additionally needs the **task engine** and the **shared
-judge** to run the forward + judge inside the gradient step, so ``__init__`` takes
-``task_model``/``task_endpoint``/``judge_scorer``/``schema_text`` as well -- a superset
-of T011's literal list. All of these are already available where the optimizer is
-built (``train_textgrad`` / the shared ``_run_optimization``).
+Note on ``__init__``: beyond the loop params
+(``optimizer_model``/``optimizer_endpoint``/``val_set``/...) the primary approach also
+needs the **task engine**, the **shared judge** and the **cost meter** to run the
+forward + judge inside the gradient step and to drive the per-step budget stop, so
+``__init__`` takes
+``task_model``/``task_endpoint``/``judge_scorer``/``schema_text``/``cost_meter`` as well.
+All of these are already available where the optimizer is built (``train_textgrad`` /
+the shared ``_run_optimization``).
 """
 
+import itertools
 import logging
 import os
 from collections.abc import Callable
@@ -365,19 +370,14 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
             gradient-step forward and the reflection rewrites, and ``exhausted()`` drives
             the per-step budget stop (D1-2).
         val_set: the seeded val split (same split GEPA uses). Used in FULL for the
-            reported baseline/final ``{initial,final}_eval_score`` (GEPA's two reserved
-            full passes) and subsampled to ``val_gate_size`` for the per-step keep-best.
-        epochs: number of full passes over the train split (FR10, C5).
-        metric_call_budget: cap on task+judge (metric) calls spent during optimization
-            -- the per-step batch forward + the subset gate. Mirrors GEPA's
-            ``MAX_METRIC_CALLS`` so the two techniques cost the same order of magnitude;
-            the two reserved FULL val passes (baseline + final) sit OUTSIDE this budget,
-            exactly like GEPA's ``2*len(val) + MAX_METRIC_CALLS``.
+            reported baseline/final ``{initial,final}_eval_score`` (the two reserved
+            excluded passes) and subsampled to ``val_gate_size`` for the per-step
+            keep-best. Epochs repeat over the train split until the money budget stops
+            the run (FR2, FR7); there is no epoch or step cap.
         val_gate_size: size of the fixed val subset scored for the per-step keep-best
             accept/revert. ``None`` falls back to the full val set (the old, pricier
             behavior). Drawn once with ``seed`` so the gate is stable across steps.
         batch_size: records per gradient step.
-        max_steps_per_epoch: optional cap on gradient steps per epoch.
         seed: seeds the per-epoch train shuffle and the val-gate subset (NFR2).
         display_progress_bar: show a per-epoch batch progress bar.
     """
@@ -393,13 +393,10 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         schema_text: str,
         cost_meter: CostMeter,
         val_set: list[dict[str, Any]],
-        epochs: int,
-        metric_call_budget: int = 100,
         val_gate_size: int | None = 8,
         task_sampling_params: dict[str, Any] | None = None,
         optimizer_sampling_params: dict[str, Any] | None = None,
         batch_size: int = 1,
-        max_steps_per_epoch: int | None = None,
         seed: int = 42,
         display_progress_bar: bool = False,
     ) -> None:
@@ -413,11 +410,8 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         self.task_sampling_params = task_sampling_params or {}
         self.optimizer_sampling_params = optimizer_sampling_params or {}
         self.val_set = val_set
-        self.epochs = epochs
-        self.metric_call_budget = metric_call_budget
         self.val_gate_size = val_gate_size
         self.batch_size = batch_size
-        self.max_steps_per_epoch = max_steps_per_epoch
         self.seed = seed
         self.display_progress_bar = display_progress_bar
 
@@ -476,18 +470,15 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
     def _epoch_batches(
         self, train_data: list[dict[str, Any]], epoch: int
     ) -> list[list[dict[str, Any]]]:
-        """A seeded full-pass shuffle of the train split chunked into batches, capped
-        at ``max_steps_per_epoch`` (FR10). Reseeded per epoch (``seed + epoch``) for
-        reproducible-yet-varied passes."""
+        """A seeded full-pass shuffle of the train split chunked into batches. Reseeded
+        per epoch (``seed + epoch``) for reproducible-yet-varied passes. Epochs repeat
+        until the budget stops the run, so there is no per-epoch step cap."""
         rng = np.random.default_rng(self.seed + epoch)
         order = [train_data[i] for i in rng.permutation(len(train_data))]
-        batches = [
+        return [
             order[i : i + self.batch_size]
             for i in range(0, len(order), self.batch_size)
         ]
-        if self.max_steps_per_epoch is not None:
-            batches = batches[: self.max_steps_per_epoch]
-        return batches
 
     def _log_eval_score(self, value: float, step: int, enable_tracking: bool) -> None:
         """Log the per-step val score under the SAME metric names GEPA's optimizer
@@ -579,13 +570,16 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         gate_set = self._build_gate_set()
 
         # Reported baseline on the FULL val set (initial_eval_score) -- one of the two
-        # full passes reserved OUTSIDE metric_call_budget, mirroring GEPA's
-        # `2*len(val) + MAX_METRIC_CALLS`. The per-step keep-best, however, compares on
-        # the cheap fixed `gate_set`, so seed it with the seed prompt's *gate* score
-        # (apples-to-apples with the per-step gate; identical when gate_set is full val).
-        initial_eval_score = self._val_score(
-            eval_fn, name, system_prompt.get_value(), self.val_set
-        )
+        # full passes reserved as excluded spend (D3), mirroring GEPA's two full passes
+        # that sit outside the budget. Runs inside `meter.excluded()` so it is still
+        # counted (visible as `cost_excluded`, SC4) but never charges the budget. The
+        # per-step keep-best, however, compares on the cheap fixed `gate_set`, so seed it
+        # with the seed prompt's *gate* score (apples-to-apples with the per-step gate;
+        # identical when gate_set is full val) -- and that gate baseline stays billable.
+        with self.cost_meter.excluded():
+            initial_eval_score = self._val_score(
+                eval_fn, name, system_prompt.get_value(), self.val_set
+            )
         best_gate = self._val_score(eval_fn, name, system_prompt.get_value(), gate_set)
         best_prompt = system_prompt.get_value()
         # The logged eval_score series is the per-step gate series, so anchor step 0 on
@@ -593,28 +587,34 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         # PromptOptimizerOutput, which optimize_prompts logs on this run).
         self._log_eval_score(best_gate, step=0, enable_tracking=enable_tracking)
         logger.info(
-            "TextGrad baseline: full-val eval_score=%.4f, gate(n=%d) score=%.4f, "
-            "metric_call_budget=%d",
-            initial_eval_score, len(gate_set), best_gate, self.metric_call_budget,
+            "TextGrad baseline: full-val eval_score=%.4f, gate(n=%d) score=%.4f",
+            initial_eval_score, len(gate_set), best_gate,
         )
 
-        spent = len(gate_set)  # task+judge (metric) calls spent against the budget
         global_step = 0
         budget_exhausted = False
-        for epoch in range(1, self.epochs + 1):
+        # Epochs repeat until the money budget stops the run (FR2, FR7); there is no
+        # epoch cap. Each epoch reseeds the train shuffle for a reproducible-yet-varied
+        # pass.
+        for epoch in itertools.count(1):
             if budget_exhausted:
                 break
             batches = self._epoch_batches(train_data, epoch)
             if self.display_progress_bar:
                 from tqdm import tqdm
 
-                batches = tqdm(batches, desc=f"epoch {epoch}/{self.epochs}")
+                batches = tqdm(batches, desc=f"epoch {epoch}")
             for batch in batches:
-                if spent >= self.metric_call_budget:
+                # Per-gradient-step budget checkpoint (FR2, FR7): stop within one step of
+                # exhaustion, keeping the best-so-far prompt (FR8). check_unmetered first
+                # so a run whose spend became untrustworthy fails loudly rather than
+                # stopping on a meaningless budget read (EC2, OQ3).
+                self.cost_meter.check_unmetered()
+                if self.cost_meter.exhausted():
                     logger.info(
-                        "TextGrad metric-call budget exhausted (%d/%d) after %d "
-                        "gradient steps; stopping optimization.",
-                        spent, self.metric_call_budget, global_step,
+                        "TextGrad budget exhausted after %d gradient steps; stopping "
+                        "optimization.",
+                        global_step,
                     )
                     budget_exhausted = True
                     break
@@ -645,7 +645,6 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
                 if not losses:
                     continue
                 global_step += 1
-                spent += len(losses)  # batch forward + judge metric calls
                 # Per-iteration train monitor: the batch judge pass-rate that produced
                 # this step's textual gradient (logged before backward/step so it labels
                 # the prompt that generated it).
@@ -659,11 +658,10 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
                 # the rewrite only if it does not regress on the gate, else immediately
                 # revert to the best prompt. Reverting each step (not each epoch) catches
                 # a good intermediate and stops TextGrad's additive bloat from compounding
-                # across the epoch; scoring on the subset (not the full val set) is what
-                # keeps the per-step gate within the GEPA-parity metric budget. The
-                # returned template is the best, not the last.
+                # across the epoch. This gate eval stays billable -- it is genuine
+                # optimization spend the budget governs (FR5). The returned template is
+                # the best, not the last.
                 gate = self._val_score(eval_fn, name, system_prompt.get_value(), gate_set)
-                spent += len(gate_set)
                 self._log_eval_score(gate, step=global_step, enable_tracking=enable_tracking)
                 if gate >= best_gate:
                     best_gate = gate
@@ -682,13 +680,17 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         # Ensure the live prompt is the best-on-gate one before returning.
         system_prompt.set_value(best_prompt)
 
-        # Reported final score is the best candidate's FULL-val pass -- GEPA's second
-        # reserved full pass. When the gate already IS the full val set, best_gate is
-        # that score, so skip the redundant pass.
+        # Reported final score is the best candidate's FULL-val pass -- the second
+        # reserved excluded pass (D3, SC4), so it runs inside `meter.excluded()`. When
+        # the gate already IS the full val set, best_gate is that score, so skip the
+        # redundant pass.
         if gate_set is self.val_set:
             final_eval_score = best_gate
         else:
-            final_eval_score = self._val_score(eval_fn, name, best_prompt, self.val_set)
+            with self.cost_meter.excluded():
+                final_eval_score = self._val_score(
+                    eval_fn, name, best_prompt, self.val_set
+                )
 
         # Honest no-improvement handling (EC2): only a strict gain over the baseline on
         # the FULL val set counts as an improvement (the gate subset only drove per-step

@@ -82,7 +82,7 @@ sees budget, spend (tokens + money, per role) and stop reason in the tracking UI
   metered `optimizer` client; disable the inherited `CachedEngine` disk cache in
   `_DefaultGenKwargsEngine` so every metered call pays real tokens (D3, R5).
   (depends: T009)
-- [ ] T011 Rewrite the TextGrad loop in `textgrad_optimizer.py`: delete the
+- [x] T011 Rewrite the TextGrad loop in `textgrad_optimizer.py`: delete the
   `epochs`/`metric_call_budget`/`max_steps_per_epoch` params and `spent` bookkeeping;
   `for epoch in itertools.count(1)` with the existing per-gradient-step checkpoint now
   `if self.cost_meter.exhausted(): break` + `check_unmetered()` (FR2, FR7); run the

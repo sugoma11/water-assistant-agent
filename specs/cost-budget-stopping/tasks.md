@@ -89,7 +89,7 @@ sees budget, spend (tokens + money, per role) and stop reason in the tracking UI
   baseline and final full-val `_val_score` calls inside `meter.excluded()` while
   per-step gate evals stay billable (FR4, FR5). Keep-best/revert logic untouched (FR8).
   (depends: T010)
-- [ ] T012 Clean up `src/experiments/text2sql/train_textgrad.py`: remove `--epochs`,
+- [x] T012 Clean up `src/experiments/text2sql/train_textgrad.py`: remove `--epochs`,
   `--metric-call-budget`, `--max-steps-per-epoch` options and their logged params; keep
   `--batch-size`, `--val-gate-size` as structural knobs (FR2, C3). (depends: T007, T011)
 - [ ] T013 Verify TextGrad with a tiny-budget run: stops within one gradient step of

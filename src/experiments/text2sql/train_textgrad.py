@@ -6,7 +6,8 @@ is :class:`TextGradPromptOptimizer` instead of ``GepaPromptOptimizer`` so the tw
 techniques are directly comparable in the MLflow UI (same metric names, judge and
 registered prompt). The only knobs that differ from GEPA are the optimizer-model role
 (``--optimizer-model``/``--optimizer-endpoint``) that drives TextGrad's backward/proposal
-engine and the effort budget expressed as epochs/batch instead of metric calls (FR10, C5).
+engine; both techniques stop on the same ``--budget`` money cap (FR2), with
+``--batch-size``/``--val-gate-size`` left as structural knobs.
 
 Model-string convention: ``--model``/``--judge-model``/``--optimizer-model`` all take the
 litellm ``openai/<name>`` form (matching ``text2sql-train``). The task and judge models run
@@ -93,32 +94,11 @@ from experiments.text2sql.train_common import (
     help="Inference endpoint for the optimizer (backward) model.",
 )
 @click.option(
-    "--epochs",
-    required=True,
-    type=int,
-    help="Number of full passes over the train split (TextGrad effort budget).",
-)
-@click.option(
     "--batch-size",
     default=2,
     show_default=True,
     type=int,
     help="Records per gradient step.",
-)
-@click.option(
-    "--max-steps-per-epoch",
-    default=None,
-    type=int,
-    help="Optional cap on gradient steps per epoch (default: full pass).",
-)
-@click.option(
-    "--metric-call-budget",
-    default=100,
-    show_default=True,
-    type=int,
-    help="Cap on task+judge (metric) calls spent during optimization (batch forward + "
-    "per-step gate). Mirrors GEPA's MAX_METRIC_CALLS; the two reserved full val passes "
-    "(baseline + final) sit outside this budget.",
 )
 @click.option(
     "--val-gate-size",
@@ -159,10 +139,7 @@ def train_textgrad(
     judge_endpoint: str,
     optimizer_model: str,
     optimizer_endpoint: str,
-    epochs: int,
     batch_size: int,
-    max_steps_per_epoch: int | None,
-    metric_call_budget: int,
     val_gate_size: int,
     budget: float,
     sampler_seed: int,
@@ -239,28 +216,21 @@ def train_textgrad(
         # honored instead of TextGrad's hardcoded 2000 default.
         optimizer_sampling_params=read_sampling_params("OPTIMIZER"),
         val_set=val_set,
-        epochs=epochs,
-        metric_call_budget=metric_call_budget,
         # 0 is the CLI sentinel for "gate on the full val set"; the optimizer takes None.
         val_gate_size=val_gate_size or None,
         batch_size=batch_size,
-        max_steps_per_epoch=max_steps_per_epoch,
         seed=sampler_seed,
         display_progress_bar=True,
     )
 
     click.echo(
-        f"Running TextGrad ({epochs} epoch(s), batch_size={batch_size}, "
-        f"max_steps_per_epoch={max_steps_per_epoch}, "
-        f"metric_call_budget={metric_call_budget}, val_gate_size={val_gate_size})..."
+        f"Running TextGrad (budget={budget} EUR, batch_size={batch_size}, "
+        f"val_gate_size={val_gate_size})..."
     )
     extra_params: dict[str, Any] = {
         "optimizer_model": optimizer_model,
         "optimizer_endpoint": optimizer_endpoint,
-        "epochs": epochs,
         "batch_size": batch_size,
-        "max_steps_per_epoch": max_steps_per_epoch,
-        "metric_call_budget": metric_call_budget,
         "val_gate_size": val_gate_size,
         **read_optimizer_params_for_logging(),
     }

@@ -17,7 +17,6 @@ import os
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
-from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -35,41 +34,48 @@ UNMETERED_FRACTION = 0.05
 
 
 # ---------------------------------------------------------------------------
-# Contextvars: master gate + litellm-path attribution + exclusion bucket (D1/D3).
-# Module-level (not per-meter) since only one meter is active at a time and the
-# litellm seam / GEPA callback read them without a meter reference.
+# Process-global meter state: master gate + exclusion bucket (D1/D3).
+# Deliberately NOT contextvars (revised 2026-07-03): ``mlflow.genai.evaluate`` runs
+# every real dataset row on ``MlflowGenAIEvalPredict_N`` worker threads that do not
+# inherit the caller's context — thread identity, not concurrency, breaks contextvar
+# inheritance — so a contextvar gate/exclusion set around ``evaluate()`` would miss
+# every ``eval_fn``-flowing call (TextGrad's gate + bracketing passes, GEPA's
+# candidate evals, i.e. most of GEPA's spend). Module-level globals survive any
+# thread; they are safe because exactly one meter is active per process and the
+# excluded bracketing passes are sequential (nothing else is in flight while one
+# runs). Role attribution is construction-bound at the call-site builders (the
+# ``cost_meter_role`` completion kwarg) for the same reason.
 # ---------------------------------------------------------------------------
-_active_meter: ContextVar[Optional["CostMeter"]] = ContextVar(
-    "cost_meter_active", default=None
-)
-_current_role: ContextVar[Optional[str]] = ContextVar(
-    "cost_meter_role", default=None
-)
-_excluded: ContextVar[bool] = ContextVar("cost_meter_excluded", default=False)
+_state_lock = threading.Lock()
+_active: Optional["CostMeter"] = None
+_excluded: bool = False
 
 
 def active_meter() -> Optional["CostMeter"]:
     """The meter currently gating metering, or ``None`` outside :meth:`CostMeter.active`
     (standalone eval, test-before/after phases) — the litellm seam no-ops then."""
-    return _active_meter.get()
+    with _state_lock:
+        return _active
 
 
-def current_role() -> Optional[str]:
-    """The role tag set at the active litellm call site (``task``/``judge``), or ``None``."""
-    return _current_role.get()
+def _is_excluded() -> bool:
+    """Whether an :meth:`CostMeter.excluded` bracketing pass is in flight."""
+    with _state_lock:
+        return _excluded
 
 
 @contextmanager
 def role(name: str) -> Iterator[None]:
-    """Tag litellm-path calls made under this context with ``name`` (``task`` /
-    ``judge``) for attribution. Module-level so the litellm call sites — which do not
-    hold a meter reference — can set it; harmless when no meter is active, since the
-    litellm seam only records while a meter is active."""
-    token = _current_role.set(name)
-    try:
-        yield
-    finally:
-        _current_role.reset(token)
+    """Deprecated no-op, removed with T027: role attribution is construction-bound
+    (the ``cost_meter_role`` completion kwarg set by the call-site builders) because
+    mlflow's eval worker threads do not inherit a role contextvar."""
+    yield
+
+
+def current_role() -> Optional[str]:
+    """Deprecated, removed with T027: the role now travels in the completion kwargs
+    (``cost_meter_role``), never in a contextvar."""
+    return None
 
 
 class BudgetExhaustedStop(Exception):
@@ -186,7 +192,7 @@ class CostMeter:
         in_cost = input_tokens / 1e6 * self._prices.price(role, "input")
         out_cost = output_tokens / 1e6 * self._prices.price(role, "output")
         call_cost = in_cost + out_cost
-        excluded = _excluded.get()
+        excluded = _is_excluded()
         with self._lock:
             self._tokens[role]["input"] += input_tokens
             self._tokens[role]["output"] += output_tokens
@@ -287,28 +293,39 @@ class CostMeter:
     def active(self) -> Iterator["CostMeter"]:
         """Master gate: metering seams record only while a meter is active. Everything
         outside — standalone eval, test-before/after phases — is unmetered by design
-        (FR12, EC3, NFR4)."""
-        token = _active_meter.set(self)
+        (FR12, EC3, NFR4). Backed by process-global state, not a contextvar, so calls
+        made on mlflow's eval worker threads still see the gate (see module comment);
+        exactly one meter may be active per process."""
+        global _active
+        with _state_lock:
+            if _active is not None:
+                raise RuntimeError(
+                    "A CostMeter is already active in this process; the global "
+                    "metering gate supports exactly one active meter (one "
+                    "optimization run) at a time."
+                )
+            _active = self
         try:
             yield self
         finally:
-            _active_meter.reset(token)
-
-    def role(self, name: str):
-        """Tag litellm-path calls made under this context with ``name`` (``task`` /
-        ``judge``) for attribution. Delegates to the module-level :func:`role` so the
-        litellm call sites and meter holders share one implementation."""
-        return role(name)
+            with _state_lock:
+                _active = None
 
     @contextmanager
     def excluded(self) -> Iterator[None]:
         """Calls made under this context are still counted (visible as
-        ``cost_excluded``) but never charge the budget (FR5, SC4)."""
-        token = _excluded.set(True)
+        ``cost_excluded``) but never charge the budget (FR5, SC4). Backed by
+        process-global state so the flag reaches mlflow's eval worker threads (see
+        module comment); not reentrant — safe because the reserved bracketing passes
+        are strictly sequential, with nothing else in flight."""
+        global _excluded
+        with _state_lock:
+            _excluded = True
         try:
             yield
         finally:
-            _excluded.reset(token)
+            with _state_lock:
+                _excluded = False
 
 
 # ---------------------------------------------------------------------------

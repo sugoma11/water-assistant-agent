@@ -114,7 +114,7 @@ trace-validation call runs on the main thread). The contextvar-based seams there
 miss every `eval_fn`-flowing call — TextGrad's gate + baseline/final passes, and
 GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
 
-- [ ] T026 Rework `cost_meter.py` state: back `active()` and `excluded()` with
+- [x] T026 Rework `cost_meter.py` state: back `active()` and `excluded()` with
   process-global meter state (module-level, lock-guarded) instead of ContextVars so
   they survive mlflow's eval worker threads; retire the `role(name)` contextvar —
   role attribution moves to the call-site builders (T027). Safe because exactly one

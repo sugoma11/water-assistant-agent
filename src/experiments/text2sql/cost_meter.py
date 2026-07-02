@@ -12,11 +12,69 @@ Prices come from six env vars ``PRICE_{TASK,JUDGE,OPTIMIZER}_{INPUT,OUTPUT}`` in
 million tokens (D4); the budget is EUR. Roles are ``task``, ``judge`` and ``optimizer``.
 """
 
+import logging
 import os
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
+from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 # The three metering roles; every optimization-phase call is attributed to exactly one.
 ROLES: tuple[str, ...] = ("task", "judge", "optimizer")
+
+# Unmetered-call failure threshold (OQ3, EC2): a run whose unmetered calls exceed
+# ``max(UNMETERED_MIN, UNMETERED_FRACTION * metered_calls)`` has spend too unreliable to
+# trust, so ``check_unmetered`` raises rather than reporting a misleading cost. Constant
+# here, revisitable without spec impact.
+UNMETERED_MIN = 5
+UNMETERED_FRACTION = 0.05
+
+
+# ---------------------------------------------------------------------------
+# Contextvars: master gate + litellm-path attribution + exclusion bucket (D1/D3).
+# Module-level (not per-meter) since only one meter is active at a time and the
+# litellm seam / GEPA callback read them without a meter reference.
+# ---------------------------------------------------------------------------
+_active_meter: ContextVar[Optional["CostMeter"]] = ContextVar(
+    "cost_meter_active", default=None
+)
+_current_role: ContextVar[Optional[str]] = ContextVar(
+    "cost_meter_role", default=None
+)
+_excluded: ContextVar[bool] = ContextVar("cost_meter_excluded", default=False)
+
+
+def active_meter() -> Optional["CostMeter"]:
+    """The meter currently gating metering, or ``None`` outside :meth:`CostMeter.active`
+    (standalone eval, test-before/after phases) — the litellm seam no-ops then."""
+    return _active_meter.get()
+
+
+def current_role() -> Optional[str]:
+    """The role tag set at the active litellm call site (``task``/``judge``), or ``None``."""
+    return _current_role.get()
+
+
+@contextmanager
+def role(name: str) -> Iterator[None]:
+    """Tag litellm-path calls made under this context with ``name`` (``task`` /
+    ``judge``) for attribution. Module-level so the litellm call sites — which do not
+    hold a meter reference — can set it; harmless when no meter is active, since the
+    litellm seam only records while a meter is active."""
+    token = _current_role.set(name)
+    try:
+        yield
+    finally:
+        _current_role.reset(token)
+
+
+class MeterIntegrityError(RuntimeError):
+    """Raised by :meth:`CostMeter.check_unmetered` when unmetered calls are frequent
+    enough to make the recorded spend meaningless (EC2, OQ3)."""
 
 
 # ---------------------------------------------------------------------------
@@ -39,9 +97,9 @@ class PriceConfig:
         refusing absent, non-numeric or negative values with a message naming the
         offending env var (EC5, SC6, US5)."""
         values: dict[str, float] = {}
-        for role in ROLES:
+        for role_name in ROLES:
             for direction in ("input", "output"):
-                var = f"PRICE_{role.upper()}_{direction.upper()}"
+                var = f"PRICE_{role_name.upper()}_{direction.upper()}"
                 raw = os.environ.get(var)
                 if raw is None:
                     raise ValueError(
@@ -60,10 +118,167 @@ class PriceConfig:
                         f"Price env var {var}={raw!r} is negative; set it to a "
                         "non-negative EUR-per-1M-tokens value."
                     )
-                values[f"{role}_{direction}"] = price
+                values[f"{role_name}_{direction}"] = price
         return cls(**values)
 
     def price(self, role: str, direction: str) -> float:
         """EUR-per-1M-tokens price for ``role`` (task/judge/optimizer) and ``direction``
         (input/output)."""
         return getattr(self, f"{role}_{direction}")
+
+
+# ---------------------------------------------------------------------------
+# The meter (T002)
+# ---------------------------------------------------------------------------
+class CostMeter:
+    """Thread-safe accumulator of tokens and EUR cost per role, with a budget-based
+    stop signal. Per-role token/cost counters cover every metered call (billable +
+    excluded) so they reconcile with the post-hoc trace audit (SC5); ``billable_cost``
+    is the budget-governing subtotal and ``excluded_cost`` the reserved-pass subtotal
+    (D3, SC4)."""
+
+    def __init__(self, budget: float, prices: PriceConfig) -> None:
+        self._budget = float(budget)
+        self._prices = prices
+        self._lock = threading.Lock()
+        self._tokens: dict[str, dict[str, int]] = {
+            r: {"input": 0, "output": 0} for r in ROLES
+        }
+        self._cost: dict[str, float] = {r: 0.0 for r in ROLES}
+        self._billable_cost = 0.0
+        self._excluded_cost = 0.0
+        self._metered_calls = 0
+        self._unmetered_calls = 0
+        self._stop_reason = "completed"
+
+    # -- metering ---------------------------------------------------------
+    def record(self, role: Optional[str], input_tokens: int, output_tokens: int) -> None:
+        """Accumulate one call's tokens and cost (``tokens/1e6 * price``) into the
+        billable or excluded bucket per the :meth:`excluded` context. A missing or
+        unknown role is a misattribution we refuse to guess at (R6): it falls through
+        to :meth:`record_unmetered`, counting toward the same threshold as
+        missing-usage calls."""
+        if role not in ROLES:
+            logger.warning(
+                "COST METER: call with role=%r is not one of %s; counting it as "
+                "unmetered rather than misattributing its spend.",
+                role,
+                ROLES,
+            )
+            self.record_unmetered(role)
+            return
+        in_cost = input_tokens / 1e6 * self._prices.price(role, "input")
+        out_cost = output_tokens / 1e6 * self._prices.price(role, "output")
+        call_cost = in_cost + out_cost
+        excluded = _excluded.get()
+        with self._lock:
+            self._tokens[role]["input"] += input_tokens
+            self._tokens[role]["output"] += output_tokens
+            self._cost[role] += call_cost
+            if excluded:
+                self._excluded_cost += call_cost
+            else:
+                self._billable_cost += call_cost
+            self._metered_calls += 1
+
+    def record_unmetered(self, role: Optional[str]) -> None:
+        """Register a call whose spend could not be measured (missing usage data, EC2)
+        or attributed (missing role, R6) and emit a prominent warning. Tracked so
+        :meth:`check_unmetered` can fail a run whose spend is meaningless."""
+        with self._lock:
+            self._unmetered_calls += 1
+            count = self._unmetered_calls
+        logger.warning(
+            "COST METER: UNMETERED call (role=%r) — usage/role missing, its spend is "
+            "NOT counted against the budget (unmetered so far: %d).",
+            role,
+            count,
+        )
+
+    # -- budget/stop primitives ------------------------------------------
+    def exhausted(self) -> bool:
+        """``billable_cost >= budget``; latches ``stop_reason='budget_exhausted'`` the
+        first time it fires (default ``'completed'``; the runner sets ``'failed'`` via
+        :meth:`mark_failed` when the optimization phase raises)."""
+        with self._lock:
+            over = self._billable_cost >= self._budget
+            if over and self._stop_reason == "completed":
+                self._stop_reason = "budget_exhausted"
+            return over
+
+    def check_unmetered(self) -> None:
+        """Raise :class:`MeterIntegrityError` when unmetered calls exceed
+        ``max(UNMETERED_MIN, UNMETERED_FRACTION * metered_calls)`` (OQ3) — frequent
+        enough that the recorded spend can no longer be trusted."""
+        with self._lock:
+            unmetered = self._unmetered_calls
+            threshold = max(UNMETERED_MIN, UNMETERED_FRACTION * self._metered_calls)
+        if unmetered > threshold:
+            raise MeterIntegrityError(
+                f"{unmetered} unmetered LLM calls exceed the tolerated "
+                f"{threshold:.1f} (max({UNMETERED_MIN}, "
+                f"{UNMETERED_FRACTION:.0%} of metered calls)); recorded spend is "
+                "unreliable, failing the run instead of reporting a misleading cost."
+            )
+
+    def exclude_accumulated_billable(self) -> None:
+        """Reclassify all billable spend so far as excluded (D3). Used by
+        ``BudgetStopper`` on its first call to move GEPA's seed full-val pass — which
+        runs inside the engine before any stopper fires — into the excluded bucket."""
+        with self._lock:
+            self._excluded_cost += self._billable_cost
+            self._billable_cost = 0.0
+
+    def mark_failed(self) -> None:
+        """Record that the optimization phase raised (FR9, EC4/EC6): the run's true
+        stop reason is ``'failed'`` even if a budget stop had already latched."""
+        with self._lock:
+            self._stop_reason = "failed"
+
+    @property
+    def stop_reason(self) -> str:
+        return self._stop_reason
+
+    # -- reporting --------------------------------------------------------
+    def spend_summary(self) -> dict[str, float]:
+        """The FR9 metric dict logged by ``_run_optimization``: per-role token counts
+        and cost, billable ``cost_total``, ``cost_excluded`` (reserved passes, SC4) and
+        ``unmetered_calls`` (EC2)."""
+        with self._lock:
+            summary: dict[str, float] = {}
+            for r in ROLES:
+                summary[f"tokens_{r}_input"] = self._tokens[r]["input"]
+                summary[f"tokens_{r}_output"] = self._tokens[r]["output"]
+                summary[f"cost_{r}"] = self._cost[r]
+            summary["cost_total"] = self._billable_cost
+            summary["cost_excluded"] = self._excluded_cost
+            summary["unmetered_calls"] = self._unmetered_calls
+            return summary
+
+    # -- contexts (D1/D3) -------------------------------------------------
+    @contextmanager
+    def active(self) -> Iterator["CostMeter"]:
+        """Master gate: metering seams record only while a meter is active. Everything
+        outside — standalone eval, test-before/after phases — is unmetered by design
+        (FR12, EC3, NFR4)."""
+        token = _active_meter.set(self)
+        try:
+            yield self
+        finally:
+            _active_meter.reset(token)
+
+    def role(self, name: str):
+        """Tag litellm-path calls made under this context with ``name`` (``task`` /
+        ``judge``) for attribution. Delegates to the module-level :func:`role` so the
+        litellm call sites and meter holders share one implementation."""
+        return role(name)
+
+    @contextmanager
+    def excluded(self) -> Iterator[None]:
+        """Calls made under this context are still counted (visible as
+        ``cost_excluded``) but never charge the budget (FR5, SC4)."""
+        token = _excluded.set(True)
+        try:
+            yield
+        finally:
+            _excluded.reset(token)

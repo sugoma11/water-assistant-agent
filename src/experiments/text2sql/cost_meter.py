@@ -19,7 +19,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +70,12 @@ def role(name: str) -> Iterator[None]:
         yield
     finally:
         _current_role.reset(token)
+
+
+class BudgetExhaustedStop(Exception):
+    """Raised at a SkillOpt rollout checkpoint to abort ``trainer.train()`` when the
+    budget is exhausted; :meth:`SkillOptPromptOptimizer.optimize` catches it and takes
+    the budget-stop read-back path (D2)."""
 
 
 class MeterIntegrityError(RuntimeError):
@@ -282,3 +288,49 @@ class CostMeter:
             yield
         finally:
             _excluded.reset(token)
+
+
+# ---------------------------------------------------------------------------
+# Attachment primitives (T003)
+# ---------------------------------------------------------------------------
+class BudgetStopper:
+    """GEPA ``StopperProtocol`` (``(gepa_state) -> bool``) that stops the run once the
+    budget is exhausted. On its first invocation it reclassifies the spend accumulated
+    so far — GEPA's seed full-val pass, which the engine runs before any stopper fires —
+    into the excluded bucket (D3), so the seed pass never charges the budget."""
+
+    def __init__(self, meter: CostMeter) -> None:
+        self.meter = meter
+        self._snapshotted = False
+
+    def __call__(self, gepa_state: Any) -> bool:
+        if not self._snapshotted:
+            self.meter.exclude_accumulated_billable()
+            self._snapshotted = True
+        self.meter.check_unmetered()
+        return self.meter.exhausted()
+
+
+def litellm_reflection_callback(meter: CostMeter):
+    """Build a litellm success callback that records GEPA's reflection calls to the
+    ``optimizer`` role. Task/judge calls carry a ``cost_meter_role`` metadata tag (see
+    ``harness.build_completion_kwargs``) and are already metered directly in
+    ``completion_with_retry``, so this callback skips them and attributes only the
+    untagged, library-internal reflection calls (D1-3)."""
+
+    def _callback(
+        kwargs: dict[str, Any],
+        response_obj: Any,
+        start_time: Any,
+        end_time: Any,
+    ) -> None:
+        metadata = (kwargs.get("litellm_params") or {}).get("metadata") or {}
+        if "cost_meter_role" in metadata:
+            return  # already recorded directly by the litellm seam
+        usage = getattr(response_obj, "usage", None)
+        if usage is None:
+            meter.record_unmetered("optimizer")
+            return
+        meter.record("optimizer", usage.prompt_tokens, usage.completion_tokens)
+
+    return _callback

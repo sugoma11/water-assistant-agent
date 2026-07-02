@@ -73,7 +73,7 @@ sees budget, spend (tokens + money, per role) and stop reason in the tracking UI
 
 ## Phase 3 — TextGrad, fully project-owned (US1–US4) — depends on Phase 2
 
-- [ ] T009 Extend `make_client(endpoint, meter=None, role=None)` in
+- [x] T009 Extend `make_client(endpoint, meter=None, role=None)` in
   `src/experiments/text2sql/prompt_skill.py` with a metered variant wrapping
   `chat.completions.create` that records usage under the construction-bound role
   (D1-2). (depends: T002)

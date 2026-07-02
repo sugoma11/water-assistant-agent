@@ -17,11 +17,24 @@ Phase-1 spike) into an epoch-based loop (FR10):
   judge rationale is thus the textual gradient pushed into the prompt (FR11). The
   forward pass has to go through ``BlackboxLLM`` -- not ``eval_fn`` -- because only
   then does ``backward()`` reach the prompt Variable.
-- **Validation scoring (the reported metric + keep-best).** Per-epoch and at baseline
-  the prompt is scored through MLflow's ``eval_fn`` (the canonical optimize path: same
-  task ``predict_fn`` and same judge scorer GEPA uses), giving ``initial_eval_score`` /
-  ``final_eval_score`` and the per-epoch ``eval_score`` series under the exact metric
-  name GEPA logs. Keep-best/revert (FR12, SC2a) is driven by this val mean.
+- **Validation scoring (the reported metric + keep-best).** Keep-best/revert (FR12,
+  SC2a) is driven *per gradient step*, not per epoch: TextGrad rewrites the prompt
+  additively and a whole epoch of unchecked steps bloats it well past the point where it
+  still helps on val, so a per-epoch checkpoint can never recover a good intermediate.
+  To keep that per-step gate cheap, it scores the candidate on a small fixed val
+  **subset** (``val_gate_size``) rather than the full val set, and the whole
+  optimization phase is capped at ``metric_call_budget`` task+judge calls -- the same
+  accounting GEPA uses (``train_gepa`` budgets ``2*len(val) + MAX_METRIC_CALLS``). The
+  reported ``initial_eval_score`` / ``final_eval_score`` are still measured on the FULL
+  val set (baseline seed + best candidate), exactly the two full passes GEPA reserves,
+  so the reported metric stays directly comparable; only the cheap per-step accept/revert
+  gate runs on the subset. The per-step ``eval_score`` series logged under GEPA's metric
+  name is the subset-gate score.
+- **Train signal (per-iteration monitor).** Each gradient step also logs the batch judge
+  pass-rate as ``train_score`` (and its complement ``train_loss``) at the same
+  gradient-step x-axis as ``eval_score``, so the train/val curves line up in the MLflow
+  UI. TextGrad's *true* loss is the judge rationale text pushed into the prompt; this
+  scalar is only a monitor, not the optimized objective.
 
 Only the **instruction block** of ``SYSTEM_PROMPT_TEMPLATE`` (everything before the
 ``Schema:`` section) is the optimizable ``tg.Variable``; the large DB schema is fixed
@@ -42,6 +55,7 @@ built (``train_textgrad`` / the shared ``_run_optimization``).
 """
 
 import logging
+import os
 from collections.abc import Callable
 from typing import Any
 
@@ -52,9 +66,23 @@ from mlflow.entities import Feedback
 from mlflow.genai.optimize.optimizers import BasePromptOptimizer
 from mlflow.genai.optimize.optimizers.base import _EvalFunc
 from mlflow.genai.optimize.types import PromptOptimizerOutput
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    InternalServerError,
+    RateLimitError,
+)
+from tenacity import (
+    RetryError,
+    before_sleep_log,
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 from textgrad.engine.local_model_openai_api import ChatExternalClient
 
-from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.text2sql.core import (
+from water_assistant_agent.text2sql.core import (
     USER_PROMPT_TEMPLATE,
     clean_sql,
 )
@@ -107,42 +135,203 @@ JUDGE_LOSS_TEMPLATE = (
 # are dropped rather than raising a TypeError.
 _ENGINE_GEN_PARAMS = ("temperature", "top_p", "max_tokens")
 
+# TextGrad's task + backward engines reach the endpoint through the raw `openai` client
+# (not litellm), so the project's robust `completion_with_retry` policy never covers
+# them -- their only protection is TextGrad's own weak built-in retry (5 quick attempts,
+# <=5s backoff). That is why a brief blablador disconnect mid-`optimizer.step()` aborted
+# a whole multi-epoch run with a `tenacity.RetryError[APIConnectionError]`. Mirror the
+# litellm path's patient policy (harness.completion_with_retry: ~8,16,32,60,60s, env-
+# tunable LLM_MAX_ATTEMPTS) here so the gradient-step forward AND the backward/optimizer
+# call ride through the same transient server disconnects the GEPA path already survives.
+_RETRYABLE_OPENAI_ERRORS: tuple[type[BaseException], ...] = (
+    APIConnectionError,
+    APITimeoutError,
+    InternalServerError,
+    RateLimitError,
+)
 
-class SchemaInjectingEngine(ChatExternalClient):
+_ENGINE_MAX_ATTEMPTS = max(1, int(os.environ.get("LLM_MAX_ATTEMPTS", "10")))
+
+# How many times to re-request when the endpoint returns a 200 whose `message.content`
+# is empty (None or blank). A reasoning model can spend its whole `max_tokens` budget on
+# `reasoning_content` and emit no final content, or the endpoint can hiccup under load;
+# at temperature > 0 a re-request usually yields real content. This is SEPARATE from
+# `_ENGINE_MAX_ATTEMPTS` (transport-level errors): an empty completion is a *successful*
+# HTTP call, so tenacity's exception retry never sees it. TextGrad caches a `None`
+# response as a cache *miss* (engine.openai: `if cache_or_none is not None`), so each
+# re-request genuinely re-samples the endpoint rather than replaying the cached None.
+_EMPTY_COMPLETION_MAX_ATTEMPTS = max(
+    1, int(os.environ.get("LLM_EMPTY_COMPLETION_MAX_ATTEMPTS", "5"))
+)
+
+
+def _is_retryable_openai_error(exc: BaseException) -> bool:
+    """True for transient endpoint errors worth retrying. TextGrad's own ``@retry`` wraps
+    the underlying error in a ``tenacity.RetryError`` (it retries on *any* exception), so
+    unwrap one level before matching -- otherwise a server disconnect arrives here
+    disguised as ``RetryError`` and slips past the type check. Non-transient errors
+    (BadRequest, auth, ...) fall through and raise at once."""
+    if isinstance(exc, RetryError) and exc.last_attempt is not None:
+        exc = exc.last_attempt.exception() or exc
+    return isinstance(exc, _RETRYABLE_OPENAI_ERRORS)
+
+
+def _is_empty_completion(response: Any) -> bool:
+    """True when the endpoint returned no usable text: a 200 whose ``message.content`` is
+    ``None`` (a reasoning model that emitted only ``reasoning_content``, or a completion
+    truncated at ``max_tokens`` before any content) or only whitespace. Such a call
+    succeeds at the HTTP layer, so the transport-error retry never catches it, yet
+    feeding the returned ``None`` straight into ``tg.Variable`` trips its
+    ``type(value) in [str, bytes, int]`` assertion and aborts the whole run."""
+    return not isinstance(response, str) or not response.strip()
+
+
+class _DefaultGenKwargsEngine(ChatExternalClient):
+    """``ChatExternalClient`` that applies a fixed set of default generation kwargs to
+    every call. TextGrad's engine otherwise hardcodes ``max_tokens=2000`` and ignores
+    the project's sampling params, so both the gradient-step forward AND the
+    backward/reflection engine would silently cap their output -- a thinking model's
+    reasoning blows past 2000 tokens and the endpoint then returns an empty
+    (``content=None``) completion. Carrying the project's sampling params here keeps
+    TextGrad's engines sampling the *same way* the litellm eval path does (NFR2), most
+    importantly honoring ``max_tokens``.
+
+    Only the keys textgrad's engine forwards to the completion call
+    (:data:`_ENGINE_GEN_PARAMS`) are applied; ``seed``/``top_k`` have no hook in
+    ``ChatExternalClient`` and are dropped. Explicit call-site kwargs win over these
+    configured defaults.
+
+    Both the task forward (via :class:`SchemaInjectingEngine`, which routes through this
+    ``super().generate``) and the backward/optimizer engine go through this one seam, so
+    decorating it here gives every TextGrad endpoint call the project's patient retry
+    policy (:func:`_is_retryable_openai_error`, ``LLM_MAX_ATTEMPTS``)."""
+
+    def __init__(
+        self,
+        *args: Any,
+        gen_kwargs: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._gen_kwargs = {
+            k: v for k, v in (gen_kwargs or {}).items() if k in _ENGINE_GEN_PARAMS
+        }
+
+    @retry(
+        retry=retry_if_exception(_is_retryable_openai_error),
+        wait=wait_exponential(multiplier=8, min=8, max=60),
+        stop=stop_after_attempt(_ENGINE_MAX_ATTEMPTS),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True,
+    )
+    def generate(self, content: Any, system_prompt: str | None = None, **kwargs: Any) -> Any:
+        gen_kwargs = {**self._gen_kwargs, **kwargs}
+        response: Any = None
+        for attempt in range(1, _EMPTY_COMPLETION_MAX_ATTEMPTS + 1):
+            response = super().generate(content, system_prompt=system_prompt, **gen_kwargs)
+            if not _is_empty_completion(response):
+                return response
+            logger.warning(
+                "TextGrad %s returned an empty completion (content=%s) on attempt "
+                "%d/%d; re-requesting (an empty 200 is a successful call, so the "
+                "transport-error retry never sees it).",
+                type(self).__name__,
+                type(response).__name__,
+                attempt,
+                _EMPTY_COMPLETION_MAX_ATTEMPTS,
+            )
+        # Still empty after every re-request: hand the empty result back so each engine
+        # degrades in its own way (SchemaInjectingEngine -> empty SQL answer the judge
+        # scores INCORRECT; ReflectionEngine -> neutral no-op gradient) instead of
+        # crashing the run on a single unlucky completion.
+        return response
+
+
+class SchemaInjectingEngine(_DefaultGenKwargsEngine):
     """Task engine that appends the fixed DB schema to whatever (optimizable) system
     prompt it receives, so the schema reaches the model on every call but never lives
     inside the optimizable Variable. This keeps the schema fixed AND keeps the
     backward/optimizer prompts small (a full schema in the gradient prompt is large
     and was observed to drop the endpoint connection).
 
-    ``gen_kwargs`` carries the task model's generation sampling params (the project's
-    ``LLM_*`` family) so the gradient-step forward samples the *same way* the litellm
-    eval path does, keeping the task model consistent across the training and
-    validation/test paths. Only the keys textgrad's engine forwards to the completion
-    call (:data:`_ENGINE_GEN_PARAMS`) are applied; ``seed``/``top_k`` have no hook in
-    ``ChatExternalClient`` and are dropped."""
+    Inherits the default generation sampling params (``gen_kwargs``) from
+    :class:`_DefaultGenKwargsEngine` so the gradient-step forward samples the same way
+    the litellm eval/validation/test paths do."""
 
-    def __init__(
-        self,
-        *args: Any,
-        schema_text: str,
-        gen_kwargs: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> None:
+    def __init__(self, *args: Any, schema_text: str, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._schema_text = schema_text
-        self._gen_kwargs = {
-            k: v for k, v in (gen_kwargs or {}).items() if k in _ENGINE_GEN_PARAMS
-        }
 
     def generate(self, content: Any, system_prompt: str | None = None, **kwargs: Any) -> Any:
         base = system_prompt if system_prompt is not None else self.system_prompt
-        # Explicit call-site kwargs win over the configured LLM_* defaults.
-        return super().generate(
+        response = super().generate(
             content,
             system_prompt=render_system_prompt(base, self._schema_text),
-            **{**self._gen_kwargs, **kwargs},
+            **kwargs,
         )
+        # An OpenAI-compatible endpoint can still return a 200 whose `message.content`
+        # is None -- e.g. a reasoning model that emitted only `reasoning_content`, or a
+        # completion truncated at `max_tokens`. The shared base already re-requests such
+        # an empty completion (`_EMPTY_COMPLETION_MAX_ATTEMPTS`); if every retry is still
+        # empty, coerce it to "" exactly as the canonical litellm eval path does
+        # (`_make_predict_fn`: `... .content or ""`), so an empty completion is a
+        # legitimately-INCORRECT empty SQL answer the judge can score, keeping the task
+        # model consistent across the training and eval paths (NFR2) instead of crashing
+        # the whole run on a single empty response. The backward/reflection engine
+        # degrades the same empty completion differently (see `ReflectionEngine`).
+        if _is_empty_completion(response):
+            logger.warning(
+                "Task engine returned an empty completion (%s) on the gradient-step "
+                "forward after every retry; treating it as an empty SQL answer, "
+                "consistent with the litellm eval path.",
+                type(response).__name__,
+            )
+            return ""
+        return response
+
+
+# Neutral fallback gradient used ONLY when the reflection engine returns an empty
+# completion on every retry. It is deliberately a no-op instruction: it carries no task
+# content (so it cannot push the prompt toward a wrong rewrite) and steers the optimizer
+# to leave the instructions unchanged for this example. Any change it does provoke is
+# still gated by the per-step keep-best/val revert, so a fallback step can never regress
+# the returned prompt.
+_EMPTY_GRADIENT_FALLBACK = (
+    "No actionable feedback could be generated for this example because the reflection "
+    "model returned an empty response. Leave the instructions unchanged for this case."
+)
+
+
+class ReflectionEngine(_DefaultGenKwargsEngine):
+    """Backward/optimizer engine for TextGrad's textual-gradient + prompt-rewrite calls.
+
+    Identical to its base except for how it degrades a persistently empty completion.
+    TextGrad feeds the backward engine's return value straight into ``tg.Variable`` (the
+    textual gradient / proposed rewrite), which asserts the value is a ``str`` -- so a
+    ``None`` from a reasoning model that spent its whole budget on ``reasoning_content``
+    used to abort the entire multi-epoch run mid-backward (the opaque ``Value must be a
+    string ... Got NoneType`` assertion). The shared base already *re-requests* an empty
+    completion (usually transient at temperature > 0); only if every retry still comes
+    back empty does this engine substitute a neutral, no-op gradient
+    (:data:`_EMPTY_GRADIENT_FALLBACK`) and log loudly, so one unlucky reflection costs a
+    single wasted step (reverted by keep-best if it regresses) instead of the whole run.
+
+    The task engine (:class:`SchemaInjectingEngine`) degrades the *same* empty completion
+    differently -- to an empty SQL answer the judge scores INCORRECT -- which is why the
+    two coercions live in the subclasses rather than the shared base."""
+
+    def generate(self, content: Any, system_prompt: str | None = None, **kwargs: Any) -> Any:
+        response = super().generate(content, system_prompt=system_prompt, **kwargs)
+        if _is_empty_completion(response):
+            logger.warning(
+                "TextGrad reflection (backward) engine returned an empty completion (%s) "
+                "on every retry; substituting a neutral no-op gradient so the run "
+                "survives instead of crashing tg.Variable. This step's update is still "
+                "gated by the per-step keep-best/val revert.",
+                type(response).__name__,
+            )
+            return _EMPTY_GRADIENT_FALLBACK
+        return response
 
 
 class TextGradPromptOptimizer(BasePromptOptimizer):
@@ -161,11 +350,21 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
             samples the same way the litellm eval path does (NFR2). Only the keys
             textgrad's engine forwards are honored (:data:`_ENGINE_GEN_PARAMS`).
         schema_text: the fixed DB schema injected into the task prompt per call.
-        val_set: the seeded val split (same split GEPA uses) for per-epoch keep-best.
+        val_set: the seeded val split (same split GEPA uses). Used in FULL for the
+            reported baseline/final ``{initial,final}_eval_score`` (GEPA's two reserved
+            full passes) and subsampled to ``val_gate_size`` for the per-step keep-best.
         epochs: number of full passes over the train split (FR10, C5).
+        metric_call_budget: cap on task+judge (metric) calls spent during optimization
+            -- the per-step batch forward + the subset gate. Mirrors GEPA's
+            ``MAX_METRIC_CALLS`` so the two techniques cost the same order of magnitude;
+            the two reserved FULL val passes (baseline + final) sit OUTSIDE this budget,
+            exactly like GEPA's ``2*len(val) + MAX_METRIC_CALLS``.
+        val_gate_size: size of the fixed val subset scored for the per-step keep-best
+            accept/revert. ``None`` falls back to the full val set (the old, pricier
+            behavior). Drawn once with ``seed`` so the gate is stable across steps.
         batch_size: records per gradient step.
         max_steps_per_epoch: optional cap on gradient steps per epoch.
-        seed: seeds the per-epoch train shuffle (NFR2).
+        seed: seeds the per-epoch train shuffle and the val-gate subset (NFR2).
         display_progress_bar: show a per-epoch batch progress bar.
     """
 
@@ -180,7 +379,10 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         schema_text: str,
         val_set: list[dict[str, Any]],
         epochs: int,
+        metric_call_budget: int = 100,
+        val_gate_size: int | None = 8,
         task_sampling_params: dict[str, Any] | None = None,
+        optimizer_sampling_params: dict[str, Any] | None = None,
         batch_size: int = 1,
         max_steps_per_epoch: int | None = None,
         seed: int = 42,
@@ -193,8 +395,11 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         self.judge_scorer = judge_scorer
         self.schema_text = schema_text
         self.task_sampling_params = task_sampling_params or {}
+        self.optimizer_sampling_params = optimizer_sampling_params or {}
         self.val_set = val_set
         self.epochs = epochs
+        self.metric_call_budget = metric_call_budget
+        self.val_gate_size = val_gate_size
         self.batch_size = batch_size
         self.max_steps_per_epoch = max_steps_per_epoch
         self.seed = seed
@@ -225,14 +430,32 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
             ) from (err if isinstance(err, BaseException) else None)
         return fb
 
-    def _val_score(self, eval_fn: _EvalFunc, name: str, instruction: str) -> float:
-        """Mean judge pass-rate over the val split via MLflow's ``eval_fn`` (the same
+    def _val_score(
+        self,
+        eval_fn: _EvalFunc,
+        name: str,
+        instruction: str,
+        dataset: list[dict[str, Any]],
+    ) -> float:
+        """Mean judge pass-rate over ``dataset`` via MLflow's ``eval_fn`` (the same
         task predict_fn + judge GEPA scores with), so the reported val metric is
-        directly comparable. The candidate is recombined into the full template shape
-        because ``eval_fn`` renders ``{schema}`` into the patched prompt."""
-        records = eval_fn({name: recombine(instruction)}, self.val_set)
+        directly comparable. ``dataset`` is the full val set for the reported
+        baseline/final scores and the small fixed gate subset for the per-step
+        keep-best. The candidate is recombined into the full template shape because
+        ``eval_fn`` renders ``{schema}`` into the patched prompt."""
+        records = eval_fn({name: recombine(instruction)}, dataset)
         scores = [r.score for r in records if r.score is not None]
         return float(np.mean(scores)) if scores else 0.0
+
+    def _build_gate_set(self) -> list[dict[str, Any]]:
+        """Fixed val subset used for the cheap per-step keep-best gate. Drawn once with
+        ``seed`` so the accept/revert signal is stable across steps; ``val_gate_size``
+        of ``None`` (or >= len(val)) falls back to the full val set."""
+        if self.val_gate_size is None or self.val_gate_size >= len(self.val_set):
+            return self.val_set
+        rng = np.random.default_rng(self.seed)
+        idx = sorted(rng.permutation(len(self.val_set))[: self.val_gate_size])
+        return [self.val_set[i] for i in idx]
 
     def _epoch_batches(
         self, train_data: list[dict[str, Any]], epoch: int
@@ -251,13 +474,31 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         return batches
 
     def _log_eval_score(self, value: float, step: int, enable_tracking: bool) -> None:
-        """Log the per-epoch val score under the SAME metric names GEPA's optimizer
+        """Log the per-step val score under the SAME metric names GEPA's optimizer
         logs (``eval_score`` + ``eval_score.<scorer>``), so the val progression is
-        directly comparable in the MLflow UI (NFR1, SC2)."""
+        directly comparable in the MLflow UI (NFR1, SC2). ``step`` is the global
+        gradient-step counter (0 = baseline)."""
         if not enable_tracking:
             return
         mlflow.log_metrics(
             {"eval_score": value, f"eval_score.{SCORER_NAME}": value}, step=step
+        )
+
+    def _log_train_score(self, value: float, step: int, enable_tracking: bool) -> None:
+        """Log the per-iteration train signal at the same gradient-step x-axis as
+        ``eval_score``: the batch judge pass-rate (``train_score`` +
+        ``train_score.<scorer>``) and its complement (``train_loss``). This is the
+        scalar proxy for TextGrad's textual loss -- a monitor of the gradient signal,
+        not the optimized objective -- so the train/val curves can be read together."""
+        if not enable_tracking:
+            return
+        mlflow.log_metrics(
+            {
+                "train_score": value,
+                f"train_score.{SCORER_NAME}": value,
+                "train_loss": 1.0 - value,
+            },
+            step=step,
         )
 
     def optimize(
@@ -293,9 +534,15 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
             schema_text=self.schema_text,
             gen_kwargs=self.task_sampling_params,
         )
-        backward_engine = ChatExternalClient(
+        # The backward/reflection engine carries the OPTIMIZER_* sampling params (most
+        # importantly max_tokens) so a long reflection isn't truncated to an empty
+        # completion. If one still comes back empty, ReflectionEngine re-requests it and,
+        # as a last resort, returns a neutral no-op gradient instead of letting a None
+        # crash tg.Variable mid-backward and abort the whole run.
+        backward_engine = ReflectionEngine(
             client=make_client(self.optimizer_endpoint),
             model_string=self.optimizer_model,
+            gen_kwargs=self.optimizer_sampling_params,
         )
         tg.set_backward_engine(backward_engine, override=True)
 
@@ -307,22 +554,51 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         task_model = tg.BlackboxLLM(task_engine, system_prompt)
         optimizer = tg.TGD(parameters=[system_prompt], constraints=TGD_CONSTRAINTS)
 
-        # Baseline val (initial_eval_score) + keep-best seed (FR12, SC2a).
-        initial_eval_score = self._val_score(eval_fn, name, system_prompt.get_value())
-        best_val = initial_eval_score
-        best_prompt = system_prompt.get_value()
-        self._log_eval_score(initial_eval_score, step=0, enable_tracking=enable_tracking)
-        logger.info("TextGrad baseline val eval_score=%.4f", initial_eval_score)
+        gate_set = self._build_gate_set()
 
+        # Reported baseline on the FULL val set (initial_eval_score) -- one of the two
+        # full passes reserved OUTSIDE metric_call_budget, mirroring GEPA's
+        # `2*len(val) + MAX_METRIC_CALLS`. The per-step keep-best, however, compares on
+        # the cheap fixed `gate_set`, so seed it with the seed prompt's *gate* score
+        # (apples-to-apples with the per-step gate; identical when gate_set is full val).
+        initial_eval_score = self._val_score(
+            eval_fn, name, system_prompt.get_value(), self.val_set
+        )
+        best_gate = self._val_score(eval_fn, name, system_prompt.get_value(), gate_set)
+        best_prompt = system_prompt.get_value()
+        # The logged eval_score series is the per-step gate series, so anchor step 0 on
+        # the gate baseline (the full-val initial_eval_score is reported separately via
+        # PromptOptimizerOutput, which optimize_prompts logs on this run).
+        self._log_eval_score(best_gate, step=0, enable_tracking=enable_tracking)
+        logger.info(
+            "TextGrad baseline: full-val eval_score=%.4f, gate(n=%d) score=%.4f, "
+            "metric_call_budget=%d",
+            initial_eval_score, len(gate_set), best_gate, self.metric_call_budget,
+        )
+
+        spent = len(gate_set)  # task+judge (metric) calls spent against the budget
+        global_step = 0
+        budget_exhausted = False
         for epoch in range(1, self.epochs + 1):
+            if budget_exhausted:
+                break
             batches = self._epoch_batches(train_data, epoch)
             if self.display_progress_bar:
                 from tqdm import tqdm
 
                 batches = tqdm(batches, desc=f"epoch {epoch}/{self.epochs}")
             for batch in batches:
+                if spent >= self.metric_call_budget:
+                    logger.info(
+                        "TextGrad metric-call budget exhausted (%d/%d) after %d "
+                        "gradient steps; stopping optimization.",
+                        spent, self.metric_call_budget, global_step,
+                    )
+                    budget_exhausted = True
+                    break
                 optimizer.zero_grad()
                 losses = []
+                n_correct = 0
                 for rec in batch:
                     question = rec["inputs"]["question"]
                     ref_sql = rec["expectations"]["sql"]
@@ -334,6 +610,7 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
                     )
                     response = task_model(q_var)  # graph: system_prompt -> response
                     fb = self._judge(question, ref_sql, clean_sql(response.value))
+                    n_correct += int(bool(fb.value))
                     verdict = "CORRECT" if fb.value else "INCORRECT"
                     eval_instruction = tg.Variable(
                         JUDGE_LOSS_TEMPLATE.format(
@@ -345,49 +622,79 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
                     losses.append(tg.TextLoss(eval_instruction)(response))
                 if not losses:
                     continue
+                global_step += 1
+                spent += len(losses)  # batch forward + judge metric calls
+                # Per-iteration train monitor: the batch judge pass-rate that produced
+                # this step's textual gradient (logged before backward/step so it labels
+                # the prompt that generated it).
+                self._log_train_score(
+                    n_correct / len(losses), step=global_step, enable_tracking=enable_tracking
+                )
                 tg.sum(losses).backward()
                 optimizer.step()
 
-            val = self._val_score(eval_fn, name, system_prompt.get_value())
-            self._log_eval_score(val, step=epoch, enable_tracking=enable_tracking)
-            # Keep-best on val: keep the prompt when it does not regress, else revert
-            # to the best-on-val prompt (FR12, SC2a) -- the returned template is the
-            # best, not the last.
-            if val >= best_val:
-                best_val = val
-                best_prompt = system_prompt.get_value()
-                logger.info("epoch %d: val %.4f >= best -> keep", epoch, val)
-            else:
-                system_prompt.set_value(best_prompt)
-                logger.info("epoch %d: val %.4f < best %.4f -> revert", epoch, val, best_val)
+                # Per-step keep-best on the cheap fixed gate subset (FR12, SC2a): accept
+                # the rewrite only if it does not regress on the gate, else immediately
+                # revert to the best prompt. Reverting each step (not each epoch) catches
+                # a good intermediate and stops TextGrad's additive bloat from compounding
+                # across the epoch; scoring on the subset (not the full val set) is what
+                # keeps the per-step gate within the GEPA-parity metric budget. The
+                # returned template is the best, not the last.
+                gate = self._val_score(eval_fn, name, system_prompt.get_value(), gate_set)
+                spent += len(gate_set)
+                self._log_eval_score(gate, step=global_step, enable_tracking=enable_tracking)
+                if gate >= best_gate:
+                    best_gate = gate
+                    best_prompt = system_prompt.get_value()
+                    logger.info(
+                        "step %d (epoch %d): gate %.4f >= best -> keep",
+                        global_step, epoch, gate,
+                    )
+                else:
+                    system_prompt.set_value(best_prompt)
+                    logger.info(
+                        "step %d (epoch %d): gate %.4f < best %.4f -> revert",
+                        global_step, epoch, gate, best_gate,
+                    )
 
-        # Ensure the live prompt is the best-on-val one before returning.
+        # Ensure the live prompt is the best-on-gate one before returning.
         system_prompt.set_value(best_prompt)
 
-        # Honest no-improvement handling (EC2): only a strict gain over the baseline
-        # counts as an improvement. When the best candidate did not beat baseline,
-        # return the original seed template byte-for-byte so register_prompt_if_changed
-        # dedups it and no spurious new prompt version is registered -- rather than
-        # presenting an unchanged (or equal-scoring) prompt as an improvement.
-        if best_val > initial_eval_score:
+        # Reported final score is the best candidate's FULL-val pass -- GEPA's second
+        # reserved full pass. When the gate already IS the full val set, best_gate is
+        # that score, so skip the redundant pass.
+        if gate_set is self.val_set:
+            final_eval_score = best_gate
+        else:
+            final_eval_score = self._val_score(eval_fn, name, best_prompt, self.val_set)
+
+        # Honest no-improvement handling (EC2): only a strict gain over the baseline on
+        # the FULL val set counts as an improvement (the gate subset only drove per-step
+        # accept/revert). When the best candidate did not beat baseline, return the
+        # original seed template byte-for-byte so register_prompt_if_changed dedups it
+        # and no spurious new prompt version is registered -- rather than presenting an
+        # unchanged (or equal-scoring) prompt as an improvement.
+        if final_eval_score > initial_eval_score:
             optimized_template = recombine(best_prompt)
             logger.info(
-                "TextGrad improved val %.4f -> %.4f; registering optimized prompt.",
+                "TextGrad improved full-val %.4f -> %.4f; registering optimized prompt.",
                 initial_eval_score,
-                best_val,
+                final_eval_score,
             )
         else:
             optimized_template = seed_template
             logger.info(
-                "TextGrad did not beat the baseline (val stayed %.4f); keeping the "
-                "seed prompt unchanged -- no new version will be registered.",
+                "TextGrad did not beat the baseline (full-val stayed %.4f, best "
+                "candidate %.4f); keeping the seed prompt unchanged -- no new version "
+                "will be registered.",
                 initial_eval_score,
+                final_eval_score,
             )
 
         return PromptOptimizerOutput(
             optimized_prompts={name: optimized_template},
             initial_eval_score=initial_eval_score,
-            final_eval_score=best_val,
+            final_eval_score=final_eval_score,
             initial_eval_score_per_scorer={SCORER_NAME: initial_eval_score},
-            final_eval_score_per_scorer={SCORER_NAME: best_val},
+            final_eval_score_per_scorer={SCORER_NAME: final_eval_score},
         )

@@ -21,9 +21,10 @@ from pathlib import Path
 from typing import Any
 
 import click
+import mlflow
 from dotenv import load_dotenv
 
-from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.text2sql.core import (
+from water_assistant_agent.text2sql.core import (
     SYSTEM_PROMPT_TEMPLATE,
     format_schema_for_prompt,
     load_schema,
@@ -110,6 +111,15 @@ from experiments.text2sql.train_common import PROMPT_NAME, _run_optimization
     help="Enable success reflection (failure reflection is always on, FR11).",
 )
 @click.option(
+    "--reasoning-effort",
+    type=click.Choice(["off", "low", "medium", "high"]),
+    default="high",
+    show_default=True,
+    help="Reasoning effort for SkillOpt's reflection/edit (optimizer) model, "
+    "forwarded to the optimizer endpoint as the OpenAI reasoning_effort param; "
+    "'off' disables thinking.",
+)
+@click.option(
     "--sampler-seed",
     default=42,
     show_default=True,
@@ -137,6 +147,7 @@ def train_skillopt(
     edit_budget: int,
     minibatch_size: int,
     reflect_on_success: bool,
+    reasoning_effort: str,
     sampler_seed: int,
     use_prod_questions: bool,
 ) -> None:
@@ -149,6 +160,15 @@ def train_skillopt(
     tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
 
     setup_mlflow(tracking_uri, experiment_name)
+    # SkillOpt's reflection/edit (optimizer) model runs on its own `openai_chat` backend,
+    # i.e. a raw `openai.OpenAI` client (skillopt_optimizer -> make_client), which the
+    # shared `mlflow.litellm.autolog` in setup_mlflow never sees -- so without this the
+    # optimizer's reflection tokens were untraced and every token count undercounted the
+    # optimization overhead. Mirror train_textgrad: enable OpenAI autologging, scoped to
+    # this entry point, so the reflection/edit calls emit traces carrying token usage. The
+    # task rollout + judge still run through litellm and nest under their litellm span
+    # rather than double-counting as standalone traces.
+    mlflow.openai.autolog()
 
     schema_text = format_schema_for_prompt(load_schema(schema_path))
     data = load_dataset(questions_path, use_prod_questions)
@@ -185,12 +205,14 @@ def train_skillopt(
         edit_budget=edit_budget,
         minibatch_size=minibatch_size,
         reflect_on_success=reflect_on_success,
+        reasoning_effort=reasoning_effort,
         seed=sampler_seed,
     )
 
     click.echo(
         f"Running SkillOpt ({epochs} epoch(s), edit_budget={edit_budget}, "
-        f"minibatch_size={minibatch_size}, reflect_on_success={reflect_on_success})..."
+        f"minibatch_size={minibatch_size}, reflect_on_success={reflect_on_success}, "
+        f"reasoning_effort={reasoning_effort})..."
     )
     # Recorded on the SkillOpt run only (via extra_params, never via the shared
     # log_global_params), so GEPA/TextGrad runs keep byte-identical params (FR8, NFR3).
@@ -205,6 +227,7 @@ def train_skillopt(
         "edit_budget": edit_budget,
         "minibatch_size": minibatch_size,
         "reflect_on_success": reflect_on_success,
+        "reasoning_effort": reasoning_effort,
         **read_optimizer_params_for_logging(),
     }
     _run_optimization(

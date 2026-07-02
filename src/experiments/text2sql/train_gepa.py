@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 from gepa.strategies.instruction_proposal import InstructionProposalSignature
 from mlflow.genai.optimize import GepaPromptOptimizer
 
-from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.text2sql.core import (
+from water_assistant_agent.text2sql.core import (
     SYSTEM_PROMPT_TEMPLATE,
     format_schema_for_prompt,
     load_schema,

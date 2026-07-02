@@ -1,4 +1,6 @@
-## Evaluating prompt optimization techniques for water management analysis assistant with RAG
+## Water Assistant Agent
+
+Evaluating prompt optimization techniques for a water management analysis assistant with RAG.
 
 ### Run
 

@@ -4,10 +4,12 @@ with no optimized result reported and a clear, actionable error.
 This drives ``SkillOptPromptOptimizer.optimize`` through a real ``mlflow.start_run``
 (temp file store, so no live server is touched) with the **optimizer role endpoint
 deliberately made unreachable** -- its ``*_API_BASE``/``*_API_KEY`` env vars are unset,
-the EC1 "optimizer endpoint unreachable / misconfigured" failure class. The baseline
-val eval is stubbed offline so the run reaches the optimizer-role resolution without any
-real LLM call; the failure then propagates exactly as it would in the CLI
-(``_run_optimization`` wraps the same ``optimize`` call in ``mlflow.start_run``).
+the EC1 "optimizer endpoint unreachable / misconfigured" failure class. ``optimize``
+resolves the optimizer-role endpoint while building the trainer cfg, before any real LLM
+call, so the run fails there; the failure then propagates exactly as it would in the CLI
+(``_run_optimization`` wraps the same ``optimize`` call in ``mlflow.start_run``). The
+``eval_fn`` is stubbed only to satisfy the call signature -- it is no longer invoked,
+since the initial/final val scores now come from the trainer's own summary.
 
 Asserts SC5: (1) a clear error is raised, (2) the enclosing run ends ``FAILED``,
 (3) no optimized prompt / PromptOptimizerOutput is produced.

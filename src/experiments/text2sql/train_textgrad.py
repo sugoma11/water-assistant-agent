@@ -15,14 +15,16 @@ through litellm so they keep the prefix; TextGrad's task and optimizer engines a
 endpoint, so the ``openai/`` prefix is stripped before they are handed to the optimizer.
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
 import click
+import mlflow
 from dotenv import load_dotenv
 
-from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.text2sql.core import (
+from water_assistant_agent.text2sql.core import (
     SYSTEM_PROMPT_TEMPLATE,
     format_schema_for_prompt,
     load_schema,
@@ -105,6 +107,23 @@ from experiments.text2sql.train_common import PROMPT_NAME, _run_optimization
     help="Optional cap on gradient steps per epoch (default: full pass).",
 )
 @click.option(
+    "--metric-call-budget",
+    default=100,
+    show_default=True,
+    type=int,
+    help="Cap on task+judge (metric) calls spent during optimization (batch forward + "
+    "per-step gate). Mirrors GEPA's MAX_METRIC_CALLS; the two reserved full val passes "
+    "(baseline + final) sit outside this budget.",
+)
+@click.option(
+    "--val-gate-size",
+    default=8,
+    show_default=True,
+    type=int,
+    help="Size of the fixed val subset scored for the per-step keep-best gate. Pass 0 "
+    "to gate on the full val set (the old, pricier behavior).",
+)
+@click.option(
     "--sampler-seed",
     default=42,
     show_default=True,
@@ -131,11 +150,21 @@ def train_textgrad(
     epochs: int,
     batch_size: int,
     max_steps_per_epoch: int | None,
+    metric_call_budget: int,
+    val_gate_size: int,
     sampler_seed: int,
     use_prod_questions: bool,
 ) -> None:
     """Train the text-2-SQL system prompt with TextGrad and log results to MLflow."""
     load_dotenv()
+
+    # Nothing in src/ configures logging, so the root logger's default WARNING threshold
+    # silently dropped every `logger.info(...)` in the optimizer (baseline val eval_score,
+    # per-step keep/revert). Install a root StreamHandler at WARNING (keeps litellm/httpx/
+    # mlflow quiet) and lift only the project's `experiments` logger to INFO so those
+    # progress lines reach the console.
+    logging.basicConfig(level=logging.WARNING)
+    logging.getLogger("experiments").setLevel(logging.INFO)
 
     experiment_name = os.environ.get("MLFLOW_TRAIN_EXPERIMENT_NAME")
     if not experiment_name:
@@ -143,6 +172,15 @@ def train_textgrad(
     tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
 
     setup_mlflow(tracking_uri, experiment_name)
+    # TextGrad's task forward AND backward/reflection engines reach the endpoint through
+    # the raw `openai` SDK (ChatExternalClient -> openai.OpenAI), which the shared
+    # `mlflow.litellm.autolog` in setup_mlflow never sees -- so unlike GEPA (whose
+    # reflection runs through litellm) TextGrad emitted zero reflection traces. Enable
+    # OpenAI autologging here, scoped to the TextGrad entry point so GEPA/eval runs are
+    # unaffected, to capture the gradient-step forwards and the optimizer's prompt
+    # rewrites as traces. litellm's own OpenAI-provider calls (val/judge) then nest under
+    # their litellm span rather than double-counting as standalone traces.
+    mlflow.openai.autolog()
 
     schema_text = format_schema_for_prompt(load_schema(schema_path))
     data = load_dataset(questions_path, use_prod_questions)
@@ -178,8 +216,15 @@ def train_textgrad(
         # litellm eval/test path uses, so the task model is consistent across paths
         # (NFR2). These params are already logged by log_global_params.
         task_sampling_params=read_sampling_params("LLM"),
+        # Drive the backward/reflection engine with the OPTIMIZER_* params (already
+        # logged via read_optimizer_params_for_logging) so its max_tokens budget is
+        # honored instead of TextGrad's hardcoded 2000 default.
+        optimizer_sampling_params=read_sampling_params("OPTIMIZER"),
         val_set=val_set,
         epochs=epochs,
+        metric_call_budget=metric_call_budget,
+        # 0 is the CLI sentinel for "gate on the full val set"; the optimizer takes None.
+        val_gate_size=val_gate_size or None,
         batch_size=batch_size,
         max_steps_per_epoch=max_steps_per_epoch,
         seed=sampler_seed,
@@ -188,7 +233,8 @@ def train_textgrad(
 
     click.echo(
         f"Running TextGrad ({epochs} epoch(s), batch_size={batch_size}, "
-        f"max_steps_per_epoch={max_steps_per_epoch})..."
+        f"max_steps_per_epoch={max_steps_per_epoch}, "
+        f"metric_call_budget={metric_call_budget}, val_gate_size={val_gate_size})..."
     )
     extra_params: dict[str, Any] = {
         "optimizer_model": optimizer_model,
@@ -196,6 +242,8 @@ def train_textgrad(
         "epochs": epochs,
         "batch_size": batch_size,
         "max_steps_per_epoch": max_steps_per_epoch,
+        "metric_call_budget": metric_call_budget,
+        "val_gate_size": val_gate_size,
         **read_optimizer_params_for_logging(),
     }
     _run_optimization(

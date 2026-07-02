@@ -22,7 +22,7 @@ import mlflow
 from dotenv import load_dotenv
 from mlflow.genai import evaluate
 
-from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.text2sql.core import (
+from water_assistant_agent.text2sql.core import (
     format_schema_for_prompt,
     load_schema,
 )

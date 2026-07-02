@@ -5,7 +5,7 @@ from pathlib import Path
 
 import click
 
-from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.text2sql.core import (
+from water_assistant_agent.text2sql.core import (
     SYSTEM_PROMPT_TEMPLATE,
     USER_PROMPT_TEMPLATE,
     load_schema,

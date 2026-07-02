@@ -132,6 +132,16 @@ class PriceConfig:
         (input/output)."""
         return getattr(self, f"{role}_{direction}")
 
+    def as_log_params(self) -> dict[str, float]:
+        """The six prices as identically named, lowercased MLflow params
+        (``price_task_input`` ...) so every technique logs them the same way (FR3,
+        FR10)."""
+        return {
+            f"price_{role_name}_{direction}": self.price(role_name, direction)
+            for role_name in ROLES
+            for direction in ("input", "output")
+        }
+
 
 # ---------------------------------------------------------------------------
 # The meter (T002)
@@ -244,6 +254,17 @@ class CostMeter:
     @property
     def stop_reason(self) -> str:
         return self._stop_reason
+
+    @property
+    def budget(self) -> float:
+        """The EUR budget governing :meth:`exhausted`, logged as the ``budget`` param."""
+        return self._budget
+
+    @property
+    def prices(self) -> PriceConfig:
+        """The price config this meter charges against, logged via
+        :meth:`PriceConfig.as_log_params`."""
+        return self._prices
 
     # -- reporting --------------------------------------------------------
     def spend_summary(self) -> dict[str, float]:

@@ -54,7 +54,7 @@ sees budget, spend (tokens + money, per role) and stop reason in the tracking UI
 
 ## Phase 2 — Shared plumbing (US1, US3, US5) — depends on Phase 1
 
-- [ ] T006 Extend `_run_optimization(..., cost_meter)` in
+- [x] T006 Extend `_run_optimization(..., cost_meter)` in
   `src/experiments/text2sql/train_common.py`: log `budget` + the six lowercased price
   params up front under identical names for every technique (FR10, NFR1); wrap
   `mlflow.genai.optimize_prompts(...)` in `meter.active()` (test-before/after eval

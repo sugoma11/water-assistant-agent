@@ -55,7 +55,6 @@ from water_assistant_agent.text2sql.core import (
     USER_PROMPT_TEMPLATE,
     clean_sql,
 )
-from experiments.text2sql.cost_meter import role
 from experiments.text2sql.harness import (
     build_completion_kwargs,
     completion_with_retry,
@@ -148,7 +147,7 @@ class Text2SqlEnvAdapter(EnvAdapter):
     ) -> None:
         self._train = list(train_records)
         self._val = list(val_records)
-        self._task_kwargs = build_completion_kwargs(task_model, task_endpoint)
+        self._task_kwargs = build_completion_kwargs(task_model, task_endpoint, role="task")
         self._judge = judge_scorer
         self._schema_text = schema_text
 
@@ -218,14 +217,13 @@ class Text2SqlEnvAdapter(EnvAdapter):
         rendered system + user messages (persisted for reflection) and the cleaned SQL."""
         system = render_system_prompt(recombine(skill_content), self._schema_text)
         user = USER_PROMPT_TEMPLATE.format(question=question)
-        with role("task"):
-            resp = completion_with_retry(
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                **self._task_kwargs,
-            )
+        resp = completion_with_retry(
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            **self._task_kwargs,
+        )
         return system, user, clean_sql(resp.choices[0].message.content or "")
 
     def rollout(

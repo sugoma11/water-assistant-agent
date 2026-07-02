@@ -32,7 +32,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from experiments.text2sql.cost_meter import active_meter, current_role, role
+from experiments.text2sql.cost_meter import active_meter
 from water_assistant_agent.text2sql.core import (
     SYSTEM_PROMPT_TEMPLATE,
     USER_PROMPT_TEMPLATE,
@@ -222,23 +222,27 @@ def completion_with_retry(**kwargs: Any) -> Any:
     dropped connection (or rate-limit blip) doesn't waste a whole training run.
     Only :data:`RETRYABLE_LLM_ERRORS` are retried; everything else raises at once.
 
-    On success, usage is recorded to the active :class:`CostMeter` under the role
-    contextvar (a no-op outside ``meter.active()`` — standalone eval and the
-    test-before/after phases, FR12/NFR4). A response with no usage data is logged as an
-    unmetered call rather than silently dropped (EC2, FR11)."""
+    On success, usage is recorded to the active :class:`CostMeter` under the
+    construction-bound ``cost_meter_role`` carried in these kwargs' ``metadata`` (a
+    no-op outside ``meter.active()`` — standalone eval and the test-before/after
+    phases, FR12/NFR4). The role travels in the kwargs rather than a contextvar so it
+    survives mlflow's eval worker threads, which do not inherit the caller's context.
+    A response with no usage data is logged as an unmetered call rather than silently
+    dropped (EC2, FR11)."""
     resp = litellm.completion(**kwargs)
-    _record_to_active_meter(resp)
+    _record_to_active_meter(resp, kwargs)
     return resp
 
 
-def _record_to_active_meter(resp: Any) -> None:
-    """Record ``resp`` usage to the active cost meter under the current role contextvar.
-    Missing usage (or a missing/unknown role, R6) becomes an unmetered call with a loud
-    warning instead of a silently missed charge (EC2)."""
+def _record_to_active_meter(resp: Any, kwargs: dict[str, Any]) -> None:
+    """Record ``resp`` usage to the active cost meter under the ``cost_meter_role``
+    metadata tag baked into the completion kwargs at build time. Missing usage (or a
+    missing/unknown role, R6) becomes an unmetered call with a loud warning instead of
+    a silently missed charge (EC2)."""
     meter = active_meter()
     if meter is None:
         return
-    role = current_role()
+    role = (kwargs.get("metadata") or {}).get("cost_meter_role")
     usage = getattr(resp, "usage", None)
     if usage is None:
         meter.record_unmetered(role)
@@ -304,22 +308,20 @@ def read_endpoint_credentials(endpoint: str) -> tuple[str, str]:
     return os.environ[api_base_var], os.environ[api_key_var]
 
 
-# litellm sampling-param prefix -> cost-meter role for the metadata tag. Only ``LLM``
-# (generation/task) and ``JUDGE`` reach ``build_completion_kwargs`` today; the mapping is
-# defensive for any future prefix.
-_PARAM_PREFIX_ROLE = {"LLM": "task", "JUDGE": "judge", "OPTIMIZER": "optimizer"}
-
-
 def build_completion_kwargs(
-    model: str, endpoint: str, param_prefix: str = "LLM"
+    model: str, endpoint: str, param_prefix: str = "LLM", *, role: str
 ) -> dict[str, Any]:
     """Assemble litellm.completion kwargs for the chosen endpoint and env-driven
     sampling params. ``param_prefix`` selects the env var family for the sampling
     params: ``LLM`` for generation, ``JUDGE`` for the LLM-as-Judge.
 
-    Injects ``metadata={"cost_meter_role": <role>}`` so the GEPA reflection callback can
-    dedupe these already-metered task/judge calls from the library-internal reflection
-    calls it needs to attribute to ``optimizer`` (D1-3)."""
+    ``role`` is the cost-meter role these kwargs' calls are attributed to
+    (``task``/``judge``), bound explicitly at build time — never a contextvar, which
+    mlflow's eval worker threads would not inherit (R6). The injected
+    ``metadata={"cost_meter_role": <role>}`` is what ``completion_with_retry`` records
+    under, and doubles as the dedupe marker the GEPA reflection callback uses to skip
+    these already-metered calls when attributing library-internal reflection calls to
+    ``optimizer`` (D1-3)."""
     try:
         ENDPOINTS[endpoint]
     except KeyError as exc:
@@ -328,7 +330,6 @@ def build_completion_kwargs(
         ) from exc
 
     api_base, api_key = read_endpoint_credentials(endpoint)
-    role = _PARAM_PREFIX_ROLE.get(param_prefix, param_prefix.lower())
     return {
         "model": model,
         "api_base": api_base,
@@ -450,14 +451,13 @@ def _make_predict_fn(
 
     def predict_fn(question: str) -> dict[str, str]:
         user_prompt = USER_PROMPT_TEMPLATE.format(question=question)
-        with role("task"):
-            resp = completion_with_retry(
-                messages=[
-                    {"role": "system", "content": get_system_prompt()},
-                    {"role": "user", "content": user_prompt},
-                ],
-                **completion_kwargs,
-            )
+        resp = completion_with_retry(
+            messages=[
+                {"role": "system", "content": get_system_prompt()},
+                {"role": "user", "content": user_prompt},
+            ],
+            **completion_kwargs,
+        )
         sql = clean_sql(resp.choices[0].message.content or "")
         return {"sql": sql, **extract_usage(resp, "generation")}
 
@@ -471,7 +471,7 @@ def create_predict_fn(
     system_prompt_template: str = SYSTEM_PROMPT_TEMPLATE,
 ) -> Callable[[str], dict[str, str]]:
     """Build a predict_fn that generates DuckDB SQL for a question via litellm."""
-    completion_kwargs = build_completion_kwargs(model, endpoint)
+    completion_kwargs = build_completion_kwargs(model, endpoint, role="task")
     system_prompt = render_system_prompt(system_prompt_template, schema_text)
     return _make_predict_fn(completion_kwargs, lambda: system_prompt)
 
@@ -484,7 +484,7 @@ def create_optimizable_predict_fn(
     patching ``PromptVersion.template``, so the template must be accessed at call
     time — a closure-baked prompt would never see GEPA's mutations (and MLflow
     would warn that the prompt was not used during evaluation)."""
-    completion_kwargs = build_completion_kwargs(model, endpoint)
+    completion_kwargs = build_completion_kwargs(model, endpoint, role="task")
     return _make_predict_fn(
         completion_kwargs,
         lambda: render_system_prompt(prompt_version.template, schema_text),
@@ -565,7 +565,7 @@ def build_sql_judge_scorer(
     assessment.
     """
     completion_kwargs = build_completion_kwargs(
-        judge_model, judge_endpoint, param_prefix="JUDGE"
+        judge_model, judge_endpoint, param_prefix="JUDGE", role="judge"
     )
     con = duckdb.connect(db_path, read_only=True)
 
@@ -659,15 +659,14 @@ def build_sql_judge_scorer(
                 ),
             )
         try:
-            with role("judge"):
-                resp = completion_with_retry(
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": prompt},
-                    ],
-                    response_format=SqlJudgeResponse,
-                    **completion_kwargs,
-                )
+            resp = completion_with_retry(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+                response_format=SqlJudgeResponse,
+                **completion_kwargs,
+            )
             # Record judge usage before parsing so it survives JSON-validation
             # failures (the except branch reuses this metadata dict).
             usage = extract_usage(resp, "judge")

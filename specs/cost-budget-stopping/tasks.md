@@ -121,7 +121,7 @@ GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
   meter is active per process and the excluded bracketing passes are sequential.
   Role-missing semantics unchanged (R6): an unattributable call counts toward the
   same unmetered counter and threshold as missing-usage calls. (depends: T003)
-- [ ] T027 Bind roles at construction in `harness.py` and the call sites:
+- [x] T027 Bind roles at construction in `harness.py` and the call sites:
   `build_completion_kwargs` takes the role as an explicit build-time argument
   (`_make_predict_fn`/`create_predict_fn`/`create_optimizable_predict_fn` → `task`,
   `build_sql_judge_scorer` → `judge`, `Text2SqlEnvAdapter._task_sql` → `task`);
@@ -130,6 +130,11 @@ GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
   same tag keeps deduping the GEPA reflection callback. Verify with the offline
   thread probe that eval-worker calls are metered and `excluded()`-bracketed passes
   land in `cost_excluded`. (depends: T026)
+  *Probe verified 2026-07-03 (offline `mlflow.genai.evaluate`, mocked litellm, 2×6
+  rows):* 12/14 calls ran on `MlflowGenAIEvalPredict_N` worker threads and all 14
+  were metered under the construction-bound `task` role (`unmetered_calls=0`); the
+  `excluded()`-bracketed evaluate pass landed entirely in `cost_excluded` while the
+  unbracketed pass stayed billable.
 
 ## Phase 4 — GEPA (US1–US4) — depends on Phases 2 & 3.5; [P] with Phase 5
 

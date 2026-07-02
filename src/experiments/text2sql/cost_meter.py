@@ -64,20 +64,6 @@ def _is_excluded() -> bool:
         return _excluded
 
 
-@contextmanager
-def role(name: str) -> Iterator[None]:
-    """Deprecated no-op, removed with T027: role attribution is construction-bound
-    (the ``cost_meter_role`` completion kwarg set by the call-site builders) because
-    mlflow's eval worker threads do not inherit a role contextvar."""
-    yield
-
-
-def current_role() -> Optional[str]:
-    """Deprecated, removed with T027: the role now travels in the completion kwargs
-    (``cost_meter_role``), never in a contextvar."""
-    return None
-
-
 class BudgetExhaustedStop(Exception):
     """Raised at a SkillOpt rollout checkpoint to abort ``trainer.train()`` when the
     budget is exhausted; :meth:`SkillOptPromptOptimizer.optimize` catches it and takes

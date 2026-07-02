@@ -51,10 +51,11 @@ from skillopt.engine.trainer import ReflACTTrainer
 from skillopt.envs.base import EnvAdapter
 from skillopt.gradient.reflect import run_minibatch_reflect
 
-from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.text2sql.core import (
+from water_assistant_agent.text2sql.core import (
     USER_PROMPT_TEMPLATE,
     clean_sql,
 )
+from experiments.text2sql.cost_meter import role
 from experiments.text2sql.harness import (
     build_completion_kwargs,
     completion_with_retry,
@@ -217,13 +218,14 @@ class Text2SqlEnvAdapter(EnvAdapter):
         rendered system + user messages (persisted for reflection) and the cleaned SQL."""
         system = render_system_prompt(recombine(skill_content), self._schema_text)
         user = USER_PROMPT_TEMPLATE.format(question=question)
-        resp = completion_with_retry(
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            **self._task_kwargs,
-        )
+        with role("task"):
+            resp = completion_with_retry(
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                **self._task_kwargs,
+            )
         return system, user, clean_sql(resp.choices[0].message.content or "")
 
     def rollout(

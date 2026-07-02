@@ -48,7 +48,7 @@ sees budget, spend (tokens + money, per role) and stop reason in the tracking UI
   `record_unmetered` + loud warning (EC2, FR11); `build_completion_kwargs` injects
   `metadata={"cost_meter_role": <role>}` so the reflection callback can dedupe tagged
   calls. (depends: T002)
-- [ ] T005 Set role contexts at the three litellm call sites: `role("task")` in
+- [x] T005 Set role contexts at the three litellm call sites: `role("task")` in
   `_make_predict_fn` (`harness.py`) and `Text2SqlEnvAdapter._task_sql`
   (`skillopt_optimizer.py`); `role("judge")` in `build_sql_judge_scorer`. (depends: T004)
 

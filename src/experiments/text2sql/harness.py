@@ -32,7 +32,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from experiments.text2sql.cost_meter import active_meter, current_role
+from experiments.text2sql.cost_meter import active_meter, current_role, role
 from water_assistant_agent.text2sql.core import (
     SYSTEM_PROMPT_TEMPLATE,
     USER_PROMPT_TEMPLATE,
@@ -450,13 +450,14 @@ def _make_predict_fn(
 
     def predict_fn(question: str) -> dict[str, str]:
         user_prompt = USER_PROMPT_TEMPLATE.format(question=question)
-        resp = completion_with_retry(
-            messages=[
-                {"role": "system", "content": get_system_prompt()},
-                {"role": "user", "content": user_prompt},
-            ],
-            **completion_kwargs,
-        )
+        with role("task"):
+            resp = completion_with_retry(
+                messages=[
+                    {"role": "system", "content": get_system_prompt()},
+                    {"role": "user", "content": user_prompt},
+                ],
+                **completion_kwargs,
+            )
         sql = clean_sql(resp.choices[0].message.content or "")
         return {"sql": sql, **extract_usage(resp, "generation")}
 
@@ -658,14 +659,15 @@ def build_sql_judge_scorer(
                 ),
             )
         try:
-            resp = completion_with_retry(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt},
-                ],
-                response_format=SqlJudgeResponse,
-                **completion_kwargs,
-            )
+            with role("judge"):
+                resp = completion_with_retry(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt},
+                    ],
+                    response_format=SqlJudgeResponse,
+                    **completion_kwargs,
+                )
             # Record judge usage before parsing so it survives JSON-validation
             # failures (the except branch reuses this metadata dict).
             usage = extract_usage(resp, "judge")

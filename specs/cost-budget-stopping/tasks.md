@@ -42,7 +42,7 @@ sees budget, spend (tokens + money, per role) and stop reason in the tracking UI
   `litellm_reflection_callback(meter)` recording litellm calls *without* the
   `cost_meter_role` metadata tag to the `optimizer` role (GEPA reflection seam, D1-3).
   (depends: T002)
-- [ ] T004 Wire the litellm seam in `src/experiments/text2sql/harness.py`:
+- [x] T004 Wire the litellm seam in `src/experiments/text2sql/harness.py`:
   `completion_with_retry` records usage to the active meter under the role contextvar
   (no-op when no meter is active — FR12/NFR4); a response missing usage data triggers
   `record_unmetered` + loud warning (EC2, FR11); `build_completion_kwargs` injects

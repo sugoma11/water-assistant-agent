@@ -32,7 +32,8 @@ from tenacity import (
     wait_exponential,
 )
 
-from Evaluating_prompt_optimization_techniques_for_water_management_LLM_assistant_with_RAG.text2sql.core import (
+from experiments.text2sql.cost_meter import active_meter, current_role
+from water_assistant_agent.text2sql.core import (
     SYSTEM_PROMPT_TEMPLATE,
     USER_PROMPT_TEMPLATE,
     clean_sql,
@@ -219,16 +220,45 @@ LLM_MAX_ATTEMPTS = max(1, int(os.environ.get("LLM_MAX_ATTEMPTS", "10")))
 def completion_with_retry(**kwargs: Any) -> Any:
     """``litellm.completion`` wrapped in tenacity exponential backoff so a single
     dropped connection (or rate-limit blip) doesn't waste a whole training run.
-    Only :data:`RETRYABLE_LLM_ERRORS` are retried; everything else raises at once."""
-    return litellm.completion(**kwargs)
+    Only :data:`RETRYABLE_LLM_ERRORS` are retried; everything else raises at once.
+
+    On success, usage is recorded to the active :class:`CostMeter` under the role
+    contextvar (a no-op outside ``meter.active()`` — standalone eval and the
+    test-before/after phases, FR12/NFR4). A response with no usage data is logged as an
+    unmetered call rather than silently dropped (EC2, FR11)."""
+    resp = litellm.completion(**kwargs)
+    _record_to_active_meter(resp)
+    return resp
+
+
+def _record_to_active_meter(resp: Any) -> None:
+    """Record ``resp`` usage to the active cost meter under the current role contextvar.
+    Missing usage (or a missing/unknown role, R6) becomes an unmetered call with a loud
+    warning instead of a silently missed charge (EC2)."""
+    meter = active_meter()
+    if meter is None:
+        return
+    role = current_role()
+    usage = getattr(resp, "usage", None)
+    if usage is None:
+        meter.record_unmetered(role)
+        return
+    meter.record(role, usage.prompt_tokens, usage.completion_tokens)
 
 
 def read_sampling_params(prefix: str) -> dict[str, Any]:
     """Read env-driven sampling params under ``{prefix}_*`` (e.g. ``LLM`` for
-    generation, ``JUDGE`` for the LLM-as-Judge). ``top_k`` is only included when set."""
+    generation, ``JUDGE`` for the LLM-as-Judge). ``top_k`` is only included when set.
+
+    ``max_tokens`` defaults high (300000) so a *thinking* model's long reasoning is not
+    truncated into an empty (``content=None``) completion -- TextGrad's engine otherwise
+    caps at 2000, which a reflection/backward pass can blow past easily. Override per
+    role via ``{prefix}_MAX_TOKENS`` if an endpoint rejects a value above its
+    ``max_model_len``."""
     params: dict[str, Any] = {
         "temperature": float(os.environ.get(f"{prefix}_TEMPERATURE", "0.7")),
         "top_p": float(os.environ.get(f"{prefix}_TOP_P", "0.9")),
+        "max_tokens": int(os.environ.get(f"{prefix}_MAX_TOKENS", "44000")),
         "seed": int(os.environ.get(f"{prefix}_SEED", "42")),
     }
     top_k = os.environ.get(f"{prefix}_TOP_K")
@@ -274,12 +304,22 @@ def read_endpoint_credentials(endpoint: str) -> tuple[str, str]:
     return os.environ[api_base_var], os.environ[api_key_var]
 
 
+# litellm sampling-param prefix -> cost-meter role for the metadata tag. Only ``LLM``
+# (generation/task) and ``JUDGE`` reach ``build_completion_kwargs`` today; the mapping is
+# defensive for any future prefix.
+_PARAM_PREFIX_ROLE = {"LLM": "task", "JUDGE": "judge", "OPTIMIZER": "optimizer"}
+
+
 def build_completion_kwargs(
     model: str, endpoint: str, param_prefix: str = "LLM"
 ) -> dict[str, Any]:
     """Assemble litellm.completion kwargs for the chosen endpoint and env-driven
     sampling params. ``param_prefix`` selects the env var family for the sampling
-    params: ``LLM`` for generation, ``JUDGE`` for the LLM-as-Judge."""
+    params: ``LLM`` for generation, ``JUDGE`` for the LLM-as-Judge.
+
+    Injects ``metadata={"cost_meter_role": <role>}`` so the GEPA reflection callback can
+    dedupe these already-metered task/judge calls from the library-internal reflection
+    calls it needs to attribute to ``optimizer`` (D1-3)."""
     try:
         ENDPOINTS[endpoint]
     except KeyError as exc:
@@ -288,10 +328,12 @@ def build_completion_kwargs(
         ) from exc
 
     api_base, api_key = read_endpoint_credentials(endpoint)
+    role = _PARAM_PREFIX_ROLE.get(param_prefix, param_prefix.lower())
     return {
         "model": model,
         "api_base": api_base,
         "api_key": api_key,
+        "metadata": {"cost_meter_role": role},
         **read_sampling_params(param_prefix),
     }
 

@@ -45,8 +45,13 @@ from experiments.text2sql.harness import (
     to_mlflow_model_uri,
     validate_teacher_model,
 )
+from experiments.text2sql.cost_meter import CostMeter
 from experiments.text2sql.sampler import split_dataset
-from experiments.text2sql.train_common import PROMPT_NAME, _run_optimization
+from experiments.text2sql.train_common import (
+    PROMPT_NAME,
+    _run_optimization,
+    read_price_config,
+)
 
 MAX_METRIC_CALLS = 100
 
@@ -99,6 +104,13 @@ MAX_METRIC_CALLS = 100
     help="Inference endpoint for the teacher model.",
 )
 @click.option(
+    "--budget",
+    required=True,
+    type=click.FloatRange(min=0, min_open=True),
+    help="Money budget for the optimization phase, in EUR (> 0). Optimization stops "
+    "once billable spend reaches it; prices come from the PRICE_* env vars.",
+)
+@click.option(
     "--sampler-seed",
     default=42,
     show_default=True,
@@ -122,12 +134,17 @@ def train_gepa(
     judge_endpoint: str,
     teacher_model: str,
     teacher_endpoint: str,
+    budget: float,
     sampler_seed: int,
     use_prod_questions: bool,
 ) -> None:
     """Train the text-2-SQL system prompt with GEPA and log results to MLflow."""
     validate_teacher_model(teacher_model)
     load_dotenv()
+
+    # Validate prices + construct the meter before any MLflow run exists, so a
+    # misconfigured price env refuses to start with the offending var named (EC5, SC6).
+    meter = CostMeter(budget, read_price_config())
 
     experiment_name = os.environ.get("MLFLOW_TRAIN_EXPERIMENT_NAME")
     if not experiment_name:
@@ -193,6 +210,7 @@ def train_gepa(
         test_set=test_set,
         prompt_version=prompt_version,
         sampler_seed=sampler_seed,
+        cost_meter=meter,
         extra_artifacts={"reflection_prompt_template.txt": reflection_prompt_template},
     )
 

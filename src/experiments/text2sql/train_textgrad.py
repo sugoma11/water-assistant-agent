@@ -38,9 +38,14 @@ from experiments.text2sql.harness import (
     register_prompt_if_changed,
     setup_mlflow,
 )
+from experiments.text2sql.cost_meter import CostMeter
 from experiments.text2sql.sampler import split_dataset
 from experiments.text2sql.textgrad_optimizer import TextGradPromptOptimizer
-from experiments.text2sql.train_common import PROMPT_NAME, _run_optimization
+from experiments.text2sql.train_common import (
+    PROMPT_NAME,
+    _run_optimization,
+    read_price_config,
+)
 
 
 @click.command()
@@ -124,6 +129,13 @@ from experiments.text2sql.train_common import PROMPT_NAME, _run_optimization
     "to gate on the full val set (the old, pricier behavior).",
 )
 @click.option(
+    "--budget",
+    required=True,
+    type=click.FloatRange(min=0, min_open=True),
+    help="Money budget for the optimization phase, in EUR (> 0). Optimization stops "
+    "once billable spend reaches it; prices come from the PRICE_* env vars.",
+)
+@click.option(
     "--sampler-seed",
     default=42,
     show_default=True,
@@ -152,11 +164,16 @@ def train_textgrad(
     max_steps_per_epoch: int | None,
     metric_call_budget: int,
     val_gate_size: int,
+    budget: float,
     sampler_seed: int,
     use_prod_questions: bool,
 ) -> None:
     """Train the text-2-SQL system prompt with TextGrad and log results to MLflow."""
     load_dotenv()
+
+    # Validate prices + construct the meter before any MLflow run exists, so a
+    # misconfigured price env refuses to start with the offending var named (EC5, SC6).
+    meter = CostMeter(budget, read_price_config())
 
     # Nothing in src/ configures logging, so the root logger's default WARNING threshold
     # silently dropped every `logger.info(...)` in the optimizer (baseline val eval_score,
@@ -263,6 +280,7 @@ def train_textgrad(
         test_set=test_set,
         prompt_version=prompt_version,
         sampler_seed=sampler_seed,
+        cost_meter=meter,
     )
 
 

@@ -62,7 +62,7 @@ sees budget, spend (tokens + money, per role) and stop reason in the tracking UI
   `optimization_stop_reason` param in a `finally`, recording `"failed"` when the
   optimization phase raised, so FAILED runs still carry their spend and their true
   stop reason (FR9, EC4, EC6). (depends: T003, T005)
-- [ ] T007 Add `read_price_config()` validation + required `--budget` (float, EUR, > 0,
+- [x] T007 Add `read_price_config()` validation + required `--budget` (float, EUR, > 0,
   no default) to all three CLIs — `train_gepa.py`, `train_textgrad.py`,
   `train_skillopt.py` — invoked *before* `setup_mlflow` so a misconfigured run refuses
   to start (EC5, SC6). Construct the `CostMeter` and pass it to `_run_optimization`;

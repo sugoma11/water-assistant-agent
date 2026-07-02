@@ -37,9 +37,14 @@ from experiments.text2sql.harness import (
     register_prompt_if_changed,
     setup_mlflow,
 )
+from experiments.text2sql.cost_meter import CostMeter
 from experiments.text2sql.sampler import split_dataset
 from experiments.text2sql.skillopt_optimizer import SkillOptPromptOptimizer
-from experiments.text2sql.train_common import PROMPT_NAME, _run_optimization
+from experiments.text2sql.train_common import (
+    PROMPT_NAME,
+    _run_optimization,
+    read_price_config,
+)
 
 
 @click.command()
@@ -120,6 +125,13 @@ from experiments.text2sql.train_common import PROMPT_NAME, _run_optimization
     "'off' disables thinking.",
 )
 @click.option(
+    "--budget",
+    required=True,
+    type=click.FloatRange(min=0, min_open=True),
+    help="Money budget for the optimization phase, in EUR (> 0). Optimization stops "
+    "once billable spend reaches it; prices come from the PRICE_* env vars.",
+)
+@click.option(
     "--sampler-seed",
     default=42,
     show_default=True,
@@ -148,11 +160,16 @@ def train_skillopt(
     minibatch_size: int,
     reflect_on_success: bool,
     reasoning_effort: str,
+    budget: float,
     sampler_seed: int,
     use_prod_questions: bool,
 ) -> None:
     """Train the text-2-SQL system prompt with SkillOpt and log results to MLflow."""
     load_dotenv()
+
+    # Validate prices + construct the meter before any MLflow run exists, so a
+    # misconfigured price env refuses to start with the offending var named (EC5, SC6).
+    meter = CostMeter(budget, read_price_config())
 
     experiment_name = os.environ.get("MLFLOW_TRAIN_EXPERIMENT_NAME")
     if not experiment_name:
@@ -247,6 +264,7 @@ def train_skillopt(
         test_set=test_set,
         prompt_version=prompt_version,
         sampler_seed=sampler_seed,
+        cost_meter=meter,
     )
 
 

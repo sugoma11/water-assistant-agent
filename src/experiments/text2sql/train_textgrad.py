@@ -229,6 +229,7 @@ def train_textgrad(
         optimizer_endpoint=optimizer_endpoint,
         judge_scorer=judge_scorer,
         schema_text=schema_text,
+        cost_meter=meter,
         # Drive TextGrad's gradient-step forward with the SAME LLM_* sampling params the
         # litellm eval/test path uses, so the task model is consistent across paths
         # (NFR2). These params are already logged by log_global_params.

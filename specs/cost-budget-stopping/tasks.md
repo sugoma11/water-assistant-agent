@@ -77,7 +77,7 @@ sees budget, spend (tokens + money, per role) and stop reason in the tracking UI
   `src/experiments/text2sql/prompt_skill.py` with a metered variant wrapping
   `chat.completions.create` that records usage under the construction-bound role
   (D1-2). (depends: T002)
-- [ ] T010 In `src/experiments/text2sql/textgrad_optimizer.py`: build
+- [x] T010 In `src/experiments/text2sql/textgrad_optimizer.py`: build
   `SchemaInjectingEngine` with a metered `task` client and `ReflectionEngine` with a
   metered `optimizer` client; disable the inherited `CachedEngine` disk cache in
   `_DefaultGenKwargsEngine` so every metered call pays real tokens (D3, R5).

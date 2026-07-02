@@ -86,6 +86,7 @@ from water_assistant_agent.text2sql.core import (
     USER_PROMPT_TEMPLATE,
     clean_sql,
 )
+from experiments.text2sql.cost_meter import CostMeter
 from experiments.text2sql.harness import render_system_prompt
 from experiments.text2sql.prompt_skill import (
     MIN_SPLIT_SIZE,
@@ -216,6 +217,16 @@ class _DefaultGenKwargsEngine(ChatExternalClient):
         self._gen_kwargs = {
             k: v for k, v in (gen_kwargs or {}).items() if k in _ENGINE_GEN_PARAMS
         }
+
+    # Disable the inherited ``CachedEngine`` disk cache (D3, R5): the meter can only see
+    # tokens that actually reach the endpoint, so a cache hit -- which replays a free
+    # completion -- would let a budgeted run spend nothing yet report progress. Forcing
+    # every lookup to miss and never persisting makes each metered call pay real tokens.
+    def _check_cache(self, prompt: str) -> None:
+        return None
+
+    def _save_cache(self, prompt: str, response: Any) -> None:
+        return None
 
     @retry(
         retry=retry_if_exception(_is_retryable_openai_error),
@@ -350,6 +361,9 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
             samples the same way the litellm eval path does (NFR2). Only the keys
             textgrad's engine forwards are honored (:data:`_ENGINE_GEN_PARAMS`).
         schema_text: the fixed DB schema injected into the task prompt per call.
+        cost_meter: the run's money meter. Its ``task``/``optimizer`` roles meter the
+            gradient-step forward and the reflection rewrites, and ``exhausted()`` drives
+            the per-step budget stop (D1-2).
         val_set: the seeded val split (same split GEPA uses). Used in FULL for the
             reported baseline/final ``{initial,final}_eval_score`` (GEPA's two reserved
             full passes) and subsampled to ``val_gate_size`` for the per-step keep-best.
@@ -377,6 +391,7 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         optimizer_endpoint: str,
         judge_scorer: Callable[..., Feedback],
         schema_text: str,
+        cost_meter: CostMeter,
         val_set: list[dict[str, Any]],
         epochs: int,
         metric_call_budget: int = 100,
@@ -394,6 +409,7 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         self.optimizer_endpoint = optimizer_endpoint
         self.judge_scorer = judge_scorer
         self.schema_text = schema_text
+        self.cost_meter = cost_meter
         self.task_sampling_params = task_sampling_params or {}
         self.optimizer_sampling_params = optimizer_sampling_params or {}
         self.val_set = val_set
@@ -527,9 +543,13 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
             )
 
         # Engines (R3): the task engine injects the schema per call; the backward
-        # engine stays schema-free and drives the textual gradients + the update.
+        # engine stays schema-free and drives the textual gradients + the update. Each
+        # client is metered under its construction-bound role -- the task forward as
+        # ``task``, the backward/reflection rewrite as ``optimizer`` -- so every TextGrad
+        # endpoint call charges the budget through the raw-openai seam litellm cannot see
+        # (D1-2).
         task_engine = SchemaInjectingEngine(
-            client=make_client(self.task_endpoint),
+            client=make_client(self.task_endpoint, meter=self.cost_meter, role="task"),
             model_string=self.task_model,
             schema_text=self.schema_text,
             gen_kwargs=self.task_sampling_params,
@@ -540,7 +560,9 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         # as a last resort, returns a neutral no-op gradient instead of letting a None
         # crash tg.Variable mid-backward and abort the whole run.
         backward_engine = ReflectionEngine(
-            client=make_client(self.optimizer_endpoint),
+            client=make_client(
+                self.optimizer_endpoint, meter=self.cost_meter, role="optimizer"
+            ),
             model_string=self.optimizer_model,
             gen_kwargs=self.optimizer_sampling_params,
         )

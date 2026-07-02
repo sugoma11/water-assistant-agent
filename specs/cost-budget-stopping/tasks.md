@@ -68,7 +68,7 @@ sees budget, spend (tokens + money, per role) and stop reason in the tracking UI
   to start (EC5, SC6). Construct the `CostMeter` and pass it to `_run_optimization`;
   keep the old effort caps passing through to the optimizers for now so each of
   Phases 3–5 stays independently runnable. (depends: T006)
-- [ ] T008 [P] Add the six `PRICE_*` entries to `.example.env` with an "EUR per 1M
+- [x] T008 [P] Add the six `PRICE_*` entries to `.example.env` with an "EUR per 1M
   tokens — set your endpoint's real prices" comment (D4, OQ1). (depends: T001)
 
 ## Phase 3 — TextGrad, fully project-owned (US1–US4) — depends on Phase 2

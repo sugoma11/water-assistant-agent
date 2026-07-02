@@ -22,7 +22,7 @@ sees budget, spend (tokens + money, per role) and stop reason in the tracking UI
   reading the six env vars `PRICE_{TASK,JUDGE,OPTIMIZER}_{INPUT,OUTPUT}` (EUR per 1M
   tokens); refuse absent, negative or non-numeric values with a message naming the
   offending env var (EC5, SC6, US5).
-- [ ] T002 Implement `CostMeter` in `cost_meter.py`: thread-safe
+- [x] T002 Implement `CostMeter` in `cost_meter.py`: thread-safe
   `record(role, input_tokens, output_tokens)` accumulating tokens and cost
   (`tokens/1e6 * price`) into billable/excluded buckets; contextvar-based `active()`,
   `role(name)`, `excluded()` contexts; `exhausted()` (`billable_cost >= budget`, sets
@@ -35,7 +35,7 @@ sees budget, spend (tokens + money, per role) and stop reason in the tracking UI
   `cost_total`, `cost_excluded`, `unmetered_calls`). Assert a role is set when active;
   fall back loudly rather than misattributing — role-missing calls count toward the
   same unmetered counter and threshold as missing-usage calls (R6). (depends: T001)
-- [ ] T003 Add the stop/attachment primitives to `cost_meter.py`:
+- [x] T003 Add the stop/attachment primitives to `cost_meter.py`:
   `BudgetStopper(meter)` implementing GEPA's `StopperProtocol` (`(gepa_state) -> bool`)
   with the first-call snapshot that reclassifies seed-pass spend as excluded (D3);
   `BudgetExhaustedStop(Exception)` for the SkillOpt checkpoint;
@@ -96,15 +96,48 @@ sees budget, spend (tokens + money, per role) and stop reason in the tracking UI
   exhaustion (SC1); returned prompt is best-not-last per the logged progression (SC3);
   spend metrics + stop reason present (SC2); `cost_excluded` covers exactly the two
   reserved full-val passes (SC4); a budget smaller than one step still ends honestly
-  with the seed prompt and `budget_exhausted` (EC1). (depends: T012)
+  with the seed prompt and `budget_exhausted` (EC1). (depends: T012, T027)
+  *Partial verification 2026-07-02 (budget 0.05 EUR, unit prices, kisski):* SC1 ✓
+  (budget crossed during step 2, stopped at the top of step 3), SC2 ✓
+  (`optimization_stop_reason=budget_exhausted`, per-role spend + prices logged),
+  FR8 ✓ (full-val 0.48 → 0.76, best registered as `text2sql_system/50`); SC4 ✗
+  (`cost_excluded=0.0` — gate + full-val evals unmetered, the Phase-3.5 eval-thread
+  contextvar loss). Re-verify SC3/SC4/EC1 after T027.
 
-## Phase 4 — GEPA (US1–US4) — depends on Phase 2; [P] with Phase 5
+## Phase 3.5 — Thread-safe metering seam (added 2026-07-03) — blocks T013 re-run and Phases 4–5
+
+The T013 run proved the budget stop end-to-end but exposed that
+`mlflow.genai.evaluate` runs every dataset row on `MlflowGenAIEvalPredict_N` worker
+threads that do **not** inherit ContextVars (offline probe 2026-07-02: 6/6 worker rows
+lost `_active_meter`/`_current_role`/`_excluded`; only the first-sample
+trace-validation call runs on the main thread). The contextvar-based seams therefore
+miss every `eval_fn`-flowing call — TextGrad's gate + baseline/final passes, and
+GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
+
+- [ ] T026 Rework `cost_meter.py` state: back `active()` and `excluded()` with
+  process-global meter state (module-level, lock-guarded) instead of ContextVars so
+  they survive mlflow's eval worker threads; retire the `role(name)` contextvar —
+  role attribution moves to the call-site builders (T027). Safe because exactly one
+  meter is active per process and the excluded bracketing passes are sequential.
+  Role-missing semantics unchanged (R6): an unattributable call counts toward the
+  same unmetered counter and threshold as missing-usage calls. (depends: T003)
+- [ ] T027 Bind roles at construction in `harness.py` and the call sites:
+  `build_completion_kwargs` takes the role as an explicit build-time argument
+  (`_make_predict_fn`/`create_predict_fn`/`create_optimizable_predict_fn` → `task`,
+  `build_sql_judge_scorer` → `judge`, `Text2SqlEnvAdapter._task_sql` → `task`);
+  `completion_with_retry` records under the `cost_meter_role` from its own kwargs (no
+  contextvar read); remove the now-dead `role("...")` contexts added in T005. The
+  same tag keeps deduping the GEPA reflection callback. Verify with the offline
+  thread probe that eval-worker calls are metered and `excluded()`-bracketed passes
+  land in `cost_excluded`. (depends: T026)
+
+## Phase 4 — GEPA (US1–US4) — depends on Phases 2 & 3.5; [P] with Phase 5
 
 - [ ] T014 Wire GEPA in `src/experiments/text2sql/train_gepa.py`: drop the
   `MAX_METRIC_CALLS` constant and its logged param; pass `max_metric_calls=10**9`
   sentinel and `gepa_kwargs={..., "stop_callbacks": [BudgetStopper(meter)]}`; register
   the litellm reflection callback when the meter activates and deregister after
-  (scoped to the GEPA run, D1-3). (depends: T007)
+  (scoped to the GEPA run, D1-3). (depends: T007, T027)
 - [ ] T015 Runtime-verify the GEPA seams: (a) the first `BudgetStopper` invocation
   happens *after* the seed full-val pass so the snapshot-to-excluded works — if not,
   apply a documented fallback (charge the seed pass with a named param, or snapshot at
@@ -117,7 +150,7 @@ sees budget, spend (tokens + money, per role) and stop reason in the tracking UI
   (SC3, FR8); reflection tokens appear under the `optimizer` role (FR4);
   `cost_excluded` covers the seed pass (SC4). (depends: T015)
 
-## Phase 5 — SkillOpt (US1–US4) — depends on Phase 2; [P] with Phase 4
+## Phase 5 — SkillOpt (US1–US4) — depends on Phases 2 & 3.5; [P] with Phase 4
 
 - [ ] T017 Meter the SkillOpt adapter in
   `src/experiments/text2sql/skillopt_optimizer.py`: `Text2SqlEnvAdapter` takes the
@@ -125,7 +158,7 @@ sees budget, spend (tokens + money, per role) and stop reason in the tracking UI
   (`skillopt.model.router.get_token_summary()` minus last snapshot → `optimizer` role),
   run `check_unmetered()`, and for non-excluded rollouts raise `BudgetExhaustedStop`
   when exhausted (FR7, D2); run the first eval-split rollout (baseline gate) under
-  `meter.excluded()` (FR5, D3). (depends: T007)
+  `meter.excluded()` (FR5, D3). (depends: T007, T027)
 - [ ] T018 Budget-stop lifecycle in `SkillOptPromptOptimizer.optimize`
   (`skillopt_optimizer.py`): call `reset_token_tracker()` up front; set cfg
   `num_epochs=10**6` sentinel (safe with the pinned constant-LR scheduler); catch
@@ -177,17 +210,16 @@ sees budget, spend (tokens + money, per role) and stop reason in the tracking UI
 
 ## Summary
 
-- **Total tasks:** 25
+- **Total tasks:** 27
 - **Phases:** Meter core (T001–T005) → Shared plumbing (T006–T008) → TextGrad
-  (T009–T013) → GEPA (T014–T016) ∥ SkillOpt (T017–T020) → E2E validation & docs
-  (T021–T025).
+  (T009–T013) → Thread-safe seam rework (T026–T027, added 2026-07-03) → GEPA
+  (T014–T016) ∥ SkillOpt (T017–T020) → E2E validation & docs (T021–T025).
 - **Per-story coverage:** US1 (budgeted runs) T006–T007, T011–T012, T014, T018–T019;
-  US2 (equal-cost comparison) T006, T022; US3 (reviewer sees spend) T002, T006, T021–
-  T022; US4 (budget stop keeps best) T003, T011, T013, T015–T016, T018, T020–T021;
-  US5 (price-config refusal) T001, T007–T008.
+  US2 (equal-cost comparison) T006, T022, T026–T027 (meter integrity); US3 (reviewer
+  sees spend) T002, T006, T021–T022, T026–T027; US4 (budget stop keeps best) T003,
+  T011, T013, T015–T016, T018, T020–T021; US5 (price-config refusal) T001, T007–T008.
 - **Parallel opportunities:** T008 alongside anything after T001; Phases 4 and 5 touch
-  disjoint files and can run in parallel once Phase 2 is green (Phase 3 first is a
-  de-risking preference, not a hard dependency — only T012/T013 need T011); T023/T024
+  disjoint files and can run in parallel once Phases 2 & 3.5 are green; T023/T024
   alongside T021–T022.
 - **Critical path:** T001 → T002 → T003/T004 → T006 → T007 → T009 → T010 → T011 →
-  T012 → T013 → T021 → T022 → T025.
+  T012 → T026 → T027 → T013 → T021 → T022 → T025.

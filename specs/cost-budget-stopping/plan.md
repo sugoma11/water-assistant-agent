@@ -58,6 +58,15 @@ SkillOpt's model layer).
 - **Usage availability (A1).** The litellm path already extracts `resp.usage`
   (`harness.extract_usage`); TextGrad's clients and SkillOpt's tracker surface the
   same OpenAI-style `usage` object.
+- **MLflow eval threading (verified 2026-07-02, during T013).** `mlflow.genai.evaluate`
+  executes every real dataset row on `MlflowGenAIEvalPredict_N` worker threads that do
+  **not** inherit the caller's `ContextVar`s — only the first-sample trace-validation
+  call runs on the main thread (offline probe: 6/6 worker rows saw
+  `_active_meter=None, _current_role=None, _excluded=False`). Any metering
+  gate/attribution/exclusion carried by a contextvar set around `evaluate` therefore
+  misses every `eval_fn`-flowing call: GEPA's candidate evaluations (most of its
+  spend), TextGrad's per-step gate and baseline/final passes. Thread identity — not
+  concurrency — is what breaks inheritance, so pinning workers to 1 would not help.
 
 Post-hoc trace accounting (`scripts/count_tokens.py`) stays as the independent audit
 axis for SC5/NFR2; nothing in this feature replaces it.
@@ -70,11 +79,15 @@ axis for SC5/NFR2; nothing in this feature replaces it.
 converge, rather than per-technique ad-hoc counting:
 
 1. **litellm path**: `completion_with_retry` records to the active meter after each
-   call, under a role set by a contextvar at the call site (`task` in
-   `_make_predict_fn` and `Text2SqlEnvAdapter._task_sql`, `judge` in
-   `build_sql_judge_scorer`). When no meter is active — the standalone eval CLI, the
-   test-before/after phases — this is a no-op, so evaluation paths are byte-identical
-   to today (FR12, NFR4).
+   call. **Revised 2026-07-03 (eval-thread finding above):** the master gate is
+   process-global meter state set by `meter.active()` — not a contextvar — and the
+   role is **construction-bound**: the call-site builders inject
+   `cost_meter_role="task"` (`_make_predict_fn`, `create_predict_fn`,
+   `create_optimizable_predict_fn`, `Text2SqlEnvAdapter._task_sql`) or `"judge"`
+   (`build_sql_judge_scorer`) into their completion kwargs at build time, so the tag
+   is present regardless of which thread executes the call. When no meter is active —
+   the standalone eval CLI, the test-before/after phases — this is a no-op, so
+   evaluation paths are byte-identical to today (FR12, NFR4).
 2. **project-owned OpenAI clients** (TextGrad): `make_client` grows a metered variant
    that wraps `chat.completions.create` and records usage under a role bound at
    construction (`task` for `SchemaInjectingEngine`, `optimizer` for
@@ -108,6 +121,14 @@ The test-before/after phases sit entirely outside `meter.active()` and are never
 metered (EC3). TextGrad's engine cache is disabled so every metered run pays real
 tokens.
 
+**Revised 2026-07-03:** the excluded flag is process-global meter state rather than a
+contextvar, for the same eval-worker-thread reason as D1's gate. This is safe because
+the reserved passes are sequential — nothing else is in flight while a bracketing
+full-val pass runs. Exclusion semantics re-confirmed with the experimenter: *only* the
+bracketing passes (test-before/after, baseline/final full-val) are excluded; every
+optimization-internal call is billable, **including full evaluations the optimizer
+runs as part of its search** (GEPA's candidate evals, TextGrad's per-step gate).
+
 **D4 — prices and budget follow the repo's existing configuration split.** Prices are
 env-family config like the `LLM_*`/`JUDGE_*`/`OPTIMIZER_*` sampling params:
 `PRICE_{TASK,JUDGE,OPTIMIZER}_{INPUT,OUTPUT}` in **EUR per million tokens** (A5
@@ -137,18 +158,23 @@ cost_meter.py  [new]
     PriceConfig.from_env()          # PRICE_*_{INPUT,OUTPUT}, EUR / 1M tokens
     CostMeter                       # thread-safe
         record(role, in_tok, out_tok)   / record_unmetered(role)     (EC2)
-        active() ctx  -> gates all metering (litellm seam reads a contextvar)
-        excluded() ctx -> counts to the excluded bucket, not the budget (FR5)
-        role(name) ctx -> tags litellm calls made under it
+        active() ctx   -> gates all metering (process-global state, NOT a contextvar
+                          -- must survive mlflow's eval worker threads)
+        excluded() ctx -> counts to the excluded bucket, not the budget (FR5;
+                          process-global state, same reason)
+        (role attribution is construction-bound at the call-site builders; the
+         role(name) contextvar is retired -- eval workers don't inherit it)
         exhausted() -> billable_cost >= budget ; stop_reason ; spend_summary()
         check_unmetered() -> raise if unmetered calls make spend meaningless (EC2)
     BudgetStopper(meter)            # gepa StopperProtocol; 1st-call baseline snapshot
     BudgetExhaustedStop(Exception)  # SkillOpt checkpoint signal
     litellm_reflection_callback(meter)  # untagged litellm calls -> optimizer role
 
-harness.py: completion_with_retry records to the active meter (role contextvar,
-            usage missing -> record_unmetered + loud warning); build_completion_kwargs
-            injects metadata={"cost_meter_role": <role>} for callback dedupe.
+harness.py: completion_with_retry records to the active meter, reading the role from
+            the construction-bound cost_meter_role in its own kwargs (usage missing ->
+            record_unmetered + loud warning); build_completion_kwargs takes the role as
+            an explicit build-time argument -- the same tag doubles as the reflection-
+            callback dedupe marker.
 prompt_skill.py: make_client(endpoint, meter=None, role=None) -> metered client wrapper.
 
 GEPA:     GepaPromptOptimizer(max_metric_calls=SENTINEL,
@@ -220,10 +246,16 @@ the removed knobs.
   bucket included)` — frequent enough to make the spend meaningless fails the run
   rather than reporting a misleading cost.
 - `spend_summary()`: the FR9 metric dict logged by `_run_optimization`.
-- Contexts: `active()` (master gate — everything outside is unmetered by design),
-  `role(name)` (litellm-path attribution), `excluded()` (FR5 bucket). All are
-  contextvars; MLflow eval workers are already pinned to 1 in `setup_mlflow`, and the
-  GEPA-reflection callback needs no contextvars (it captures the meter and always
+- Contexts: `active()` (master gate — everything outside is unmetered by design) and
+  `excluded()` (FR5 bucket) keep their context-manager API but are backed by
+  **process-global meter state, not contextvars** (revised 2026-07-03):
+  `mlflow.genai.evaluate` runs every row on `MlflowGenAIEvalPredict_N` worker threads
+  that don't inherit contextvars, and thread identity — not concurrency — is what
+  breaks inheritance. Global state is safe because exactly one meter is active per
+  process and the excluded bracketing passes are sequential. Role attribution is
+  **construction-bound** (an explicit role at predict-fn/judge-scorer build time,
+  carried in the completion kwargs); the `role(name)` contextvar is retired. The
+  GEPA-reflection callback needs none of this (it captures the meter and always
   records role=`optimizer`, never excluded).
 
 ### Per-technique stop/exclusion wiring
@@ -291,6 +323,14 @@ propagates, `mlflow.start_run` marks the run FAILED, and the `finally` in
    Verify with a tiny-budget run: stops within one step of exhaustion (SC1), best-not-
    last prompt (SC3), spend metrics (SC2), `cost_excluded` covers exactly the two
    full-val passes (SC4).
+3.5. **Thread-safe metering seam rework (added 2026-07-03).** The Phase-3 tiny-budget
+   run proved the stop/keep-best/spend-logging path end-to-end but exposed the
+   eval-thread contextvar loss: `cost_excluded` was 0 and every `eval_fn`-flowing
+   call went unmetered. Rework `cost_meter.py` (process-global gate/excluded state,
+   retire the role contextvar) and `harness.py` + call sites (construction-bound
+   roles), then re-verify TextGrad (T013: SC3, SC4, EC1). *Blocks Phases 4–5* — GEPA's
+   spend is mostly `eval_fn` calls, so without this rework its meter would see almost
+   nothing but the reflection callback.
 4. **GEPA**: sentinel + `BudgetStopper` via `gepa_kwargs`, reflection callback,
    seed-pass snapshot. Runtime verifications: (a) first stopper invocation happens
    *after* the seed full-val eval (engine-loop ordering) — fallback if not: charge the
@@ -336,11 +376,13 @@ propagates, `mlflow.start_run` marks the run FAILED, and the `finally` in
   runs partially rode the disk cache). Intended: a money budget requires every call
   to be a real, paid call. Noted in README; past runs remain comparable via the
   post-hoc trace accounting.
-- **R6: contextvar role attribution under future parallelism.** Workers are pinned
-  to 1 today (`setup_mlflow`); the meter asserts a role is set when active and falls
-  back loudly rather than misattributing silently — role-missing calls count toward
-  the same unmetered counter and threshold as missing-usage calls, since attribution
-  failures make per-role spend unreliable just as measurement failures do (F-007).
+- **R6 (materialized, superseded by the Phase-3.5 rework): contextvar attribution
+  does not survive even today's threading.** `mlflow.genai.evaluate` executes rows on
+  worker threads with fresh contexts, so the original mitigation ("workers pinned to
+  1") was moot — thread identity, not concurrency, breaks contextvar inheritance. The
+  rework makes the gate/exclusion process-global and the role construction-bound. The
+  meter still refuses to guess: a call whose role cannot be determined counts toward
+  the same unmetered counter and threshold as missing-usage calls (F-007).
 - **OQ1 (decision taken): currency/units** — EUR, prices per 1M tokens (A5). The
   param names carry no unit suffix; units are documented in `.example.env` and README.
 - **OQ2 (decision taken): `--max-steps-per-epoch` removed** — it was an effort cap on
@@ -382,6 +424,20 @@ propagates, `mlflow.start_run` marks the run FAILED, and the `finally` in
 | NFR2, SC5 | Phase-6 reconciliation vs `count_tokens.py`; SkillOpt optimizer role observable via its native tracker |
 | NFR3 | budget + prices are recorded params; spend-dependent stop variance documented as inherent |
 | A2, A3, A4 | confirmed seams: gepa `stop_callbacks`, project-owned TextGrad clients, SkillOpt `TokenTracker` (Technical Context) |
+
+## Revision log
+
+- **2026-07-03** — Phase-3 verification (T013, tiny-budget TextGrad run on kisski)
+  proved SC1/SC2/FR8 end-to-end (stopped within one gradient step of exhaustion,
+  spend + `budget_exhausted` logged, best prompt registered) but exposed that
+  `mlflow.genai.evaluate` executes rows on worker threads that do not inherit
+  ContextVars, so the contextvar-based gate/role/excluded seams missed every
+  `eval_fn`-flowing call (`cost_excluded` = 0; GEPA would be worse — its search *is*
+  `eval_fn` calls). D1/D3/CostMeter-contract revised to process-global gate/excluded
+  state + construction-bound roles; Phase 3.5 (tasks T026–T027) inserted; T013
+  re-verification (SC3/SC4/EC1) deferred until it lands. Exclusion semantics
+  re-confirmed with the experimenter: only the bracketing passes are excluded; all
+  optimization-internal calls are billable, including optimizer-run full evals.
 
 ## Generated Artifacts
 

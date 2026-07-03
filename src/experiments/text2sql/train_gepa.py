@@ -13,9 +13,18 @@ every accepted candidate) on the valset (gepa/core/engine.py), so the baseline a
 best-candidate val scores come straight back as ``result.initial_eval_score`` /
 ``result.final_eval_score``, which optimize_prompts already logs on this run as
 ``{initial,final}_eval_score`` (no need to re-log them). Only the test split is
-evaluated by hand (``test_quality_{before,after}``), since GEPA never sees it. The
-budget passed to GEPA is ``MAX_METRIC_CALLS + 2 * len(val)`` so the seed and
-best-candidate full valset passes don't eat into the optimization budget proper.
+evaluated by hand (``test_quality_{before,after}``), since GEPA never sees it.
+
+The only stop is the money budget (FR2): a ``BudgetStopper`` checked by the engine
+at each iteration boundary, wired through ``gepa_kwargs["stop_callbacks"]`` while
+``max_metric_calls`` becomes a never-firing sentinel. Of GEPA's valset passes, only
+the seed pass is a bracketing eval — it runs before the first stopper invocation
+and is moved to the excluded bucket by the stopper's first-call snapshot (D3); the
+best candidate's score is read back from its acceptance-time full-val pass, which
+is part of the search and therefore billable like every other candidate eval
+(exclusion semantics confirmed 2026-07-03, plan revision log). Reflection spend is
+metered to the ``optimizer`` role by a litellm success callback, since GEPA calls
+the teacher inside the library without our completion kwargs.
 
 Teacher (reflection) model note: GEPA calls litellm WITHOUT api_base/api_key, so
 ``configure_teacher_env`` points the ``OPENAI_API_BASE``/``OPENAI_API_KEY`` fallback
@@ -27,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 import click
+import litellm
 from dotenv import load_dotenv
 from gepa.strategies.instruction_proposal import InstructionProposalSignature
 from mlflow.genai.optimize import GepaPromptOptimizer
@@ -45,7 +55,11 @@ from experiments.text2sql.harness import (
     to_mlflow_model_uri,
     validate_teacher_model,
 )
-from experiments.text2sql.cost_meter import CostMeter
+from experiments.text2sql.cost_meter import (
+    BudgetStopper,
+    CostMeter,
+    litellm_reflection_callback,
+)
 from experiments.text2sql.sampler import split_dataset
 from experiments.text2sql.train_common import (
     PROMPT_NAME,
@@ -53,7 +67,11 @@ from experiments.text2sql.train_common import (
     read_price_config,
 )
 
-MAX_METRIC_CALLS = 100
+# The money budget is the only real stop (FR2): MLflow always sets max_metric_calls on
+# gepa.optimize, so it becomes a huge sentinel whose MaxMetricCallsStopper never fires
+# next to the BudgetStopper (CompositeStopper, "any" mode). Its only other use is the
+# tqdm progress-bar denominator (cosmetic, T015c).
+MAX_METRIC_CALLS_SENTINEL = 10**9
 
 
 # ---------------------------------------------------------------------------
@@ -171,48 +189,59 @@ def train_gepa(
             "registered prompt URI."
         )
 
-    gepa_kwargs: dict[str, Any] = {"valset": val_set, "seed": sampler_seed}
+    gepa_kwargs: dict[str, Any] = {
+        "valset": val_set,
+        "seed": sampler_seed,
+        # The engine checks stop callbacks at each iteration boundary, and only after
+        # the seed full-val pass (gepa/core/engine.py: seed eval precedes the main
+        # loop), so the stopper's first-call snapshot moves exactly that pass into the
+        # excluded bucket (D3, T015a). Every later full-val pass belongs to an accepted
+        # candidate — part of the search, billable.
+        "stop_callbacks": [BudgetStopper(meter)],
+    }
     reflection_prompt_template = gepa_kwargs.get(
         "reflection_prompt_template", InstructionProposalSignature.default_prompt_template
     )
-    # GEPA fully evaluates the seed prompt on the valset at iteration 0 and the
-    # accepted candidates along the way; budget two full valset passes on top of
-    # the optimization budget proper.
-    total_metric_calls = len(val_set) * 2 + MAX_METRIC_CALLS
-    click.echo(
-        f"Running GEPA ({total_metric_calls} metric calls max: "
-        f"{MAX_METRIC_CALLS} optimization + 2x{len(val_set)} full valset passes)..."
-    )
-    _run_optimization(
-        optimizer=GepaPromptOptimizer(
-            reflection_model=to_mlflow_model_uri(teacher_model),
-            max_metric_calls=total_metric_calls,
-            display_progress_bar=True,
-            gepa_kwargs=gepa_kwargs,
-        ),
-        technique="gepa",
-        extra_params={
-            "teacher_model": teacher_model,
-            "teacher_endpoint": teacher_endpoint,
-            "max_metric_calls": MAX_METRIC_CALLS,
-            "total_metric_calls": total_metric_calls,
-        },
-        model=model,
-        endpoint=endpoint,
-        judge_model=judge_model,
-        judge_endpoint=judge_endpoint,
-        questions_path=questions_path,
-        schema_path=schema_path,
-        schema_text=schema_text,
-        db_path=db_path,
-        train_set=train_set,
-        val_set=val_set,
-        test_set=test_set,
-        prompt_version=prompt_version,
-        sampler_seed=sampler_seed,
-        cost_meter=meter,
-        extra_artifacts={"reflection_prompt_template.txt": reflection_prompt_template},
-    )
+    click.echo(f"Running GEPA (budget {meter.budget} EUR)...")
+    # GEPA calls the reflection model inside the library (plain litellm.completion, no
+    # cost_meter_role tag), so a litellm success callback meters those calls to the
+    # `optimizer` role. It only records while this meter is active — the optimization
+    # phase proper — so the test-before/after phases inside this bracket stay unmetered
+    # (FR12/EC3); registration is scoped to the GEPA run because only GEPA produces
+    # untagged litellm calls.
+    reflection_callback = litellm_reflection_callback(meter)
+    litellm.success_callback.append(reflection_callback)
+    try:
+        _run_optimization(
+            optimizer=GepaPromptOptimizer(
+                reflection_model=to_mlflow_model_uri(teacher_model),
+                max_metric_calls=MAX_METRIC_CALLS_SENTINEL,
+                display_progress_bar=True,
+                gepa_kwargs=gepa_kwargs,
+            ),
+            technique="gepa",
+            extra_params={
+                "teacher_model": teacher_model,
+                "teacher_endpoint": teacher_endpoint,
+            },
+            model=model,
+            endpoint=endpoint,
+            judge_model=judge_model,
+            judge_endpoint=judge_endpoint,
+            questions_path=questions_path,
+            schema_path=schema_path,
+            schema_text=schema_text,
+            db_path=db_path,
+            train_set=train_set,
+            val_set=val_set,
+            test_set=test_set,
+            prompt_version=prompt_version,
+            sampler_seed=sampler_seed,
+            cost_meter=meter,
+            extra_artifacts={"reflection_prompt_template.txt": reflection_prompt_template},
+        )
+    finally:
+        litellm.success_callback.remove(reflection_callback)
 
 
 if __name__ == "__main__":

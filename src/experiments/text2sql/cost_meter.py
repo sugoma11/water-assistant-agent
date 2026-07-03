@@ -340,7 +340,15 @@ def litellm_reflection_callback(meter: CostMeter):
     ``optimizer`` role. Task/judge calls carry a ``cost_meter_role`` metadata tag (see
     ``harness.build_completion_kwargs``) and are already metered directly in
     ``completion_with_retry``, so this callback skips them and attributes only the
-    untagged, library-internal reflection calls (D1-3)."""
+    untagged, library-internal reflection calls (D1-3).
+
+    The callback records only while ``meter`` is the active meter, so it may be
+    registered for a window wider than the optimization phase (``train_gepa`` brackets
+    the whole ``_run_optimization``, whose test-before/after eval phases must stay
+    unmetered — FR12/EC3). litellm fires it on a background logging executor and
+    swallows exceptions, so it must never raise; a call completing right at the end of
+    optimization may land after the spend summary is read — bounded to one in-flight
+    call and harmless at iteration-boundary checkpoints (R1)."""
 
     def _callback(
         kwargs: dict[str, Any],
@@ -348,6 +356,8 @@ def litellm_reflection_callback(meter: CostMeter):
         start_time: Any,
         end_time: Any,
     ) -> None:
+        if active_meter() is not meter:
+            return  # outside this meter's optimization phase (FR12)
         metadata = (kwargs.get("litellm_params") or {}).get("metadata") or {}
         if "cost_meter_role" in metadata:
             return  # already recorded directly by the litellm seam

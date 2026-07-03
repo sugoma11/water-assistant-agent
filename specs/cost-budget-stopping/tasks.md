@@ -154,7 +154,7 @@ GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
 
 ## Phase 4 — GEPA (US1–US4) — depends on Phases 2 & 3.5; [P] with Phase 5
 
-- [ ] T014 Wire GEPA in `src/experiments/text2sql/train_gepa.py`: drop the
+- [x] T014 Wire GEPA in `src/experiments/text2sql/train_gepa.py`: drop the
   `MAX_METRIC_CALLS` constant and its logged param; pass `max_metric_calls=10**9`
   sentinel and `gepa_kwargs={..., "stop_callbacks": [BudgetStopper(meter)]}`; register
   the litellm reflection callback when the meter activates and deregister after

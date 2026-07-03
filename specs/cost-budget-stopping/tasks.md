@@ -159,13 +159,32 @@ GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
   sentinel and `gepa_kwargs={..., "stop_callbacks": [BudgetStopper(meter)]}`; register
   the litellm reflection callback when the meter activates and deregister after
   (scoped to the GEPA run, D1-3). (depends: T007, T027)
-- [ ] T015 Runtime-verify the GEPA seams: (a) the first `BudgetStopper` invocation
+- [x] T015 Runtime-verify the GEPA seams: (a) the first `BudgetStopper` invocation
   happens *after* the seed full-val pass so the snapshot-to-excluded works — if not,
   apply a documented fallback (charge the seed pass with a named param, or snapshot at
   the second invocation) (R2, D3); (b) reflection-callback threading lags are bounded
   and harmless at iteration boundaries (R1); (c) the huge `max_metric_calls` is only a
   cosmetic progress-bar denominator. Record outcomes in code comments or the spec dir.
   (depends: T014)
+  *Probe verified 2026-07-03 (offline, real `gepa.optimize` engine + stub adapter
+  charging the meter per sample, reflection through real litellm callback delivery
+  via `mock_response`):* (a) ✓ first stopper call at `total_num_evals == len(val)`
+  with excluded=0 before and exactly the seed-pass cost billable; snapshot moved
+  precisely that amount to `cost_excluded` — primary mechanism works, no fallback
+  needed (engine.py: seed eval at `run()` start, first `_should_stop` at the loop
+  top). (b) ✓ reflection calls arrive on litellm's background executor and land
+  under the `optimizer` role (polled; one-in-flight lag bounded); the
+  `cost_meter_role`-tagged dedupe skip and the inactive-meter no-op (FR12) both
+  hold — the callback was additionally gated on `active_meter() is meter` in T014
+  because train_gepa registers it around the whole `_run_optimization`, whose
+  test-before/after phases must stay unmetered. (c) ✓ with `max_metric_calls=10**9`
+  the run stopped on `budget_exhausted` one iteration after crossing (R3 overshoot
+  = one iteration: minibatch + subsample + accepted-candidate full-val), the
+  sentinel stopper never fired, and the engine returned the best candidate. Note on
+  the "two valset evals": in the installed gepa only the *seed* pass is a distinct
+  bracketing eval; there is no separate final pass — `final_eval_score` is read
+  back from the best accepted candidate's acceptance-time full-val eval, which is
+  search-internal and stays billable per the confirmed D3 semantics.
 - [ ] T016 Verify GEPA with a tiny-budget run: stops within one GEPA iteration (SC1,
   R3 overshoot visible as `cost_total - budget`); best candidate returned by the engine
   (SC3, FR8); reflection tokens appear under the `optimizer` role (FR4);

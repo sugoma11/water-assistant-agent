@@ -5,8 +5,9 @@ train/val/test split, same FLEX LLM-as-Judge and the same shared ``_run_optimiza
 routine, but the optimizer is :class:`SkillOptPromptOptimizer` so SkillOpt sits side by
 side with GEPA and TextGrad in the MLflow UI (same metric names, judge and registered
 prompt). The roles that differ from GEPA are the optimizer (reflection/edit) model that
-runs on SkillOpt's own model layer (``--optimizer-model``/``--optimizer-endpoint``) and the
-effort budget expressed as epochs/edit-budget/minibatch instead of metric calls (FR10).
+runs on SkillOpt's own model layer (``--optimizer-model``/``--optimizer-endpoint``); the
+sole stopping criterion is the money ``--budget`` shared by all techniques (FR2, C3),
+while edit-budget/minibatch remain structural knobs shaping how a round works (FR10).
 
 Model-string convention: ``--model``/``--judge-model``/``--optimizer-model`` all take the
 litellm ``openai/<name>`` form (matching ``text2sql-train``). The task and judge models run
@@ -92,12 +93,6 @@ from experiments.text2sql.train_common import (
     help="Inference endpoint for the optimizer (reflection/edit) model.",
 )
 @click.option(
-    "--epochs",
-    required=True,
-    type=int,
-    help="Number of full passes over the train split (SkillOpt num_epochs).",
-)
-@click.option(
     "--edit-budget",
     required=True,
     type=int,
@@ -155,7 +150,6 @@ def train_skillopt(
     judge_endpoint: str,
     optimizer_model: str,
     optimizer_endpoint: str,
-    epochs: int,
     edit_budget: int,
     minibatch_size: int,
     reflect_on_success: bool,
@@ -219,7 +213,6 @@ def train_skillopt(
         schema_text=schema_text,
         val_set=val_set,
         cost_meter=meter,
-        epochs=epochs,
         edit_budget=edit_budget,
         minibatch_size=minibatch_size,
         reflect_on_success=reflect_on_success,
@@ -228,7 +221,7 @@ def train_skillopt(
     )
 
     click.echo(
-        f"Running SkillOpt ({epochs} epoch(s), edit_budget={edit_budget}, "
+        f"Running SkillOpt (budget={budget} EUR, edit_budget={edit_budget}, "
         f"minibatch_size={minibatch_size}, reflect_on_success={reflect_on_success}, "
         f"reasoning_effort={reasoning_effort})..."
     )
@@ -241,7 +234,6 @@ def train_skillopt(
     extra_params: dict[str, Any] = {
         "optimizer_model": optimizer_model,
         "optimizer_endpoint": optimizer_endpoint,
-        "epochs": epochs,
         "edit_budget": edit_budget,
         "minibatch_size": minibatch_size,
         "reflect_on_success": reflect_on_success,

@@ -235,7 +235,7 @@ GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
   seed template byte-for-byte with `initial == final` from the baseline gate (EC1,
   FR8, SC3). Existing EC6 artifacts-unreadable failure stays natural-completion-only.
   (depends: T017)
-- [ ] T019 Clean up `src/experiments/text2sql/train_skillopt.py`: remove `--epochs` and
+- [x] T019 Clean up `src/experiments/text2sql/train_skillopt.py`: remove `--epochs` and
   its logged param; keep `--edit-budget`, `--minibatch-size`, `--reflect-on-success`,
   `--reasoning-effort` as structural knobs (FR2, C3). (depends: T018)
 - [ ] T020 Runtime-verify the SkillOpt seams and run a tiny-budget smoke: the baseline

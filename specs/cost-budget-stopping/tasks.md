@@ -200,6 +200,22 @@ GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
   0.362 = exactly one iteration (3-sample minibatch + reflection + 3-sample re-eval
   + 25-sample accepted full-val). `unmetered_calls=0`; `max_metric_calls`/
   `total_metric_calls` params gone (FR2).
+  *Trace audit 2026-07-03 (`count_tokens.py` + span timeline, SC5 preview):*
+  reconciles token-exact. Judge and reflection: meter == deduped traces exactly
+  (253,652 / 39,401 tokens). Billable: the 63 traced spans after the seed pass sum
+  to 362,373 tokens == `cost_total` to the token — the stop input contained only
+  iteration spend. Excluded: first 50 spans (25 task + 25 judge seed pass,
+  253,734) + one **untraced** 4,709-token task call == `cost_excluded` 258,443
+  exactly. That untraced call is mlflow's `convert_predict_fn` trace-validation
+  probe (`optimize_prompts` runs it once with tracing disabled via
+  `NoOpTracerPatcher`, before `gepa.optimize`): it fires before the first stopper
+  invocation, so the seed-pass snapshot sweeps it into the excluded bucket —
+  desirable (it is harness overhead, not search spend), but it means the audit's
+  per-role trace totals undercount the meter's `task` role by exactly one call per
+  GEPA run; T021's reconciliation should expect this named delta. Also noted while
+  auditing: the `count_tokens.py` self-check GEPA anchor still passes exactly, but
+  the `888fa7fe` TextGrad anchor now fails (actual 2,082,196 vs recorded 285,398,
+  ~7.3x) — pre-existing drift unrelated to this run, to revisit in T021.
 
 ## Phase 5 — SkillOpt (US1–US4) — depends on Phases 2 & 3.5; [P] with Phase 4
 

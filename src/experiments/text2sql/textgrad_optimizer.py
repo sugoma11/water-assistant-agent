@@ -682,9 +682,17 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
 
         # Reported final score is the best candidate's FULL-val pass -- the second
         # reserved excluded pass (D3, SC4), so it runs inside `meter.excluded()`. When
+        # the best prompt still IS the seed -- the budget stopped the run before any
+        # step (EC1) or every rewrite was reverted at the gate -- there is no
+        # improvement by definition: skip the pass and pin final == initial, because
+        # re-scoring the identical prompt only burns excluded spend and lets judge/
+        # sampling noise flip the comparison below into a phantom improvement
+        # (observed on the T013 re-run: 0.48 -> 0.60 with zero gradient steps). When
         # the gate already IS the full val set, best_gate is that score, so skip the
-        # redundant pass.
-        if gate_set is self.val_set:
+        # redundant pass too.
+        if best_prompt == instruction_block(seed_template):
+            final_eval_score = initial_eval_score
+        elif gate_set is self.val_set:
             final_eval_score = best_gate
         else:
             with self.cost_meter.excluded():

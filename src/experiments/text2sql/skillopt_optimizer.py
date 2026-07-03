@@ -311,6 +311,9 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
         minibatch_size: SkillOpt's reflection minibatch size (FR10).
         reflect_on_success: enable success reflection (failure reflection is always on);
             recorded, default off (FR11, Q3).
+        reasoning_effort: reasoning effort for SkillOpt's reflection/edit (optimizer)
+            model, applied process-wide by the trainer via ``set_reasoning_effort``;
+            ``"off"`` disables thinking. Recorded (FR10).
         seed: seeds SkillOpt's ``seed``/``split_seed`` (== sampler_seed, NFR2).
     """
 
@@ -334,6 +337,7 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
         edit_budget: int,
         minibatch_size: int,
         reflect_on_success: bool = False,
+        reasoning_effort: str = "high",
         seed: int = 42,
     ) -> None:
         self.task_model = task_model
@@ -347,6 +351,7 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
         self.edit_budget = edit_budget
         self.minibatch_size = minibatch_size
         self.reflect_on_success = reflect_on_success
+        self.reasoning_effort = reasoning_effort
         self.seed = seed
 
     def _build_cfg(
@@ -393,6 +398,10 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
             "analyst_workers": self._ANALYST_WORKERS,
             "max_analyst_rounds": self._MAX_ANALYST_ROUNDS,
             "skill_update_mode": self._SKILL_UPDATE_MODE,
+            # optimizer-side reasoning effort: the trainer applies
+            # cfg["reasoning_effort"] process-wide via set_reasoning_effort, treating
+            # "" as off -- so the CLI's explicit "off" maps to the empty string.
+            "reasoning_effort": "" if self.reasoning_effort == "off" else self.reasoning_effort,
             # full-pass epoch (Q1): batch_size == train_size, accumulation == 1
             "train_size": n_train,
             "batch_size": n_train,

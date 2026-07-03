@@ -92,7 +92,7 @@ sees budget, spend (tokens + money, per role) and stop reason in the tracking UI
 - [x] T012 Clean up `src/experiments/text2sql/train_textgrad.py`: remove `--epochs`,
   `--metric-call-budget`, `--max-steps-per-epoch` options and their logged params; keep
   `--batch-size`, `--val-gate-size` as structural knobs (FR2, C3). (depends: T007, T011)
-- [ ] T013 Verify TextGrad with a tiny-budget run: stops within one gradient step of
+- [x] T013 Verify TextGrad with a tiny-budget run: stops within one gradient step of
   exhaustion (SC1); returned prompt is best-not-last per the logged progression (SC3);
   spend metrics + stop reason present (SC2); `cost_excluded` covers exactly the two
   reserved full-val passes (SC4); a budget smaller than one step still ends honestly
@@ -103,6 +103,22 @@ sees budget, spend (tokens + money, per role) and stop reason in the tracking UI
   FR8 ✓ (full-val 0.48 → 0.76, best registered as `text2sql_system/50`); SC4 ✗
   (`cost_excluded=0.0` — gate + full-val evals unmetered, the Phase-3.5 eval-thread
   contextvar loss). Re-verify SC3/SC4/EC1 after T027.
+  *Re-verification 2026-07-03, post-Phase-3.5 (unit prices, kisski, all roles
+  qwen3.6-35b-a3b):* two runs. **EC1 run** (budget 0.05, run `c741ee4e`): with gate
+  evals now metered the baseline gate alone (0.083) exhausted the budget → 0 gradient
+  steps, seed retained, `budget_exhausted`; SC4 ✓ (`cost_excluded=0.501` = exactly the
+  two 25-sample full-val passes, billable 0.083 = the 8-sample gate, per-sample costs
+  match); `unmetered_calls=0`. Exposed a phantom improvement (final excluded pass
+  re-scored the identical seed, noise flipped 0.48 → 0.60, spurious `v52` registered)
+  — fixed: when the best prompt is still the seed the final pass is skipped and
+  `final == initial` pins the no-improvement branch. **SC3 run** (budget 0.5, run
+  `912fc4c8`): SC1 ✓ (stop at the top of step 5, overshoot 0.156 ≈ one step); SC3 ✓
+  (gate progression 0.75 → 0.75 keep → 0.875 keep → 0.875 keep → 0.75 revert; the
+  reverted step-4 rewrite was NOT returned — the step-3 best was, registered as
+  `text2sql_system/53`, full-val 0.44 → 0.60, test 0.56 → 0.80); SC4 ✓
+  (`cost_excluded=0.527` = the two full-val passes at matching per-sample cost);
+  optimizer role now visible (121k tokens via the metered backward client);
+  `unmetered_calls=0`.
 
 ## Phase 3.5 — Thread-safe metering seam (added 2026-07-03) — blocks T013 re-run and Phases 4–5
 

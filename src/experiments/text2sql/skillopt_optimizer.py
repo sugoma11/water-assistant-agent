@@ -468,7 +468,9 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
             "model_backend": "openai_chat",
             "optimizer_backend": "openai_chat",
             "target_backend": "openai_chat",
-            "optimizer_model": self.optimizer_model,
+            # both ids go straight to OpenAI-compatible endpoints, so the litellm
+            # "openai/" provider prefix must come off (the endpoint 404s on it)
+            "optimizer_model": self.optimizer_model.removeprefix("openai/"),
             "target_model": self.task_model.removeprefix("openai/"),
             # seam 1: optimizer role -> project endpoint, plain openai-compatible auth
             "optimizer_azure_openai_auth_mode": "openai_compatible",

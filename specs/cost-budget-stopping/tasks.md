@@ -219,7 +219,7 @@ GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
 
 ## Phase 5 — SkillOpt (US1–US4) — depends on Phases 2 & 3.5; [P] with Phase 4
 
-- [ ] T017 Meter the SkillOpt adapter in
+- [x] T017 Meter the SkillOpt adapter in
   `src/experiments/text2sql/skillopt_optimizer.py`: `Text2SqlEnvAdapter` takes the
   meter; at the start of every rollout fold in the optimizer-token delta
   (`skillopt.model.router.get_token_summary()` minus last snapshot → `optimizer` role),

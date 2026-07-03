@@ -218,6 +218,7 @@ def train_skillopt(
         judge_scorer=judge_scorer,
         schema_text=schema_text,
         val_set=val_set,
+        cost_meter=meter,
         epochs=epochs,
         edit_budget=edit_budget,
         minibatch_size=minibatch_size,

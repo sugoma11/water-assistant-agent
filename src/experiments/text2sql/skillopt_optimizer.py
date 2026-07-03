@@ -51,10 +51,19 @@ from skillopt.engine.trainer import ReflACTTrainer
 from skillopt.envs.base import EnvAdapter
 from skillopt.gradient.reflect import run_minibatch_reflect
 
+# SkillOpt's optimizer-side (reflection/merge/ranking) calls run on its own model
+# layer, which records every call into a module-level, thread-safe TokenTracker. The
+# package-level accessors aggregate across its backends; with our `openai_chat`
+# backend every optimizer call lands in the azure_openai module's tracker. The
+# trainer never resets the tracker, so it accumulates monotonically and per-checkpoint
+# deltas capture exactly the optimizer-role spend (A4, D1-3).
+from skillopt.model import get_token_summary
+
 from water_assistant_agent.text2sql.core import (
     USER_PROMPT_TEMPLATE,
     clean_sql,
 )
+from experiments.text2sql.cost_meter import BudgetExhaustedStop, CostMeter
 from experiments.text2sql.harness import (
     build_completion_kwargs,
     completion_with_retry,
@@ -121,7 +130,10 @@ class Text2SqlEnvAdapter(EnvAdapter):
     train batch) and the validation gate (``rollout`` on the val/selection split), so a
     single ``rollout`` produces the ``hard`` signal that drives reflection *and* the
     metric kept by the gate (seam 2, T004). The optimizer/reflection model is the only
-    role on SkillOpt's own model layer.
+    role on SkillOpt's own model layer — which is why every rollout start doubles as
+    the run's budget checkpoint (FR7, D2): task/judge calls are metered inline by the
+    litellm seam, and the optimizer-role spend is folded in as deltas of SkillOpt's
+    native ``TokenTracker`` (A4).
 
     Args:
         train_records / val_records: the seeded train and val splits (same splits GEPA /
@@ -133,6 +145,12 @@ class Text2SqlEnvAdapter(EnvAdapter):
             scorer object passed to ``optimize_prompts(scorers=...)`` so training and
             validation score with one judge (FR9, A3).
         schema_text: the fixed DB schema injected into the task prompt per call.
+        cost_meter: the run's money meter. Every rollout start is the budget
+            checkpoint (FR7, D2): the optimizer-token delta is folded in, meter
+            integrity is checked, and a non-excluded rollout raises
+            :class:`BudgetExhaustedStop` once the budget is exhausted. The first
+            eval-split rollout (the trainer's baseline val gate) is a reserved
+            bracketing pass and runs under ``meter.excluded()`` (FR5, D3).
     """
 
     def __init__(
@@ -144,12 +162,25 @@ class Text2SqlEnvAdapter(EnvAdapter):
         task_endpoint: str,
         judge_scorer: Any,
         schema_text: str,
+        cost_meter: CostMeter,
     ) -> None:
         self._train = list(train_records)
         self._val = list(val_records)
         self._task_kwargs = build_completion_kwargs(task_model, task_endpoint, role="task")
         self._judge = judge_scorer
         self._schema_text = schema_text
+        self._cost_meter = cost_meter
+        # Snapshot of SkillOpt's monotone TokenTracker totals at the last fold, so
+        # each checkpoint charges only the delta since the previous one.
+        self._opt_tokens_prompt = 0
+        self._opt_tokens_completion = 0
+        self._baseline_gate_pending = True
+        # Mean judge `hard` of the baseline gate rollout, captured here because this
+        # installed skillopt writes NO baseline row into history.json (verified
+        # against skillopt 0.1.0's trainer: the baseline block persists only
+        # runtime_state.json) -- the budget-stop read-back needs it as the initial
+        # score on the gate axis (T018, EC1).
+        self.baseline_gate_score: float | None = None
 
     # -- one-time init: expose the reflect knobs the default reflect() reads ----
     def setup(self, cfg: dict) -> None:
@@ -226,7 +257,54 @@ class Text2SqlEnvAdapter(EnvAdapter):
         )
         return system, user, clean_sql(resp.choices[0].message.content or "")
 
+    def fold_optimizer_delta(self) -> None:
+        """Fold SkillOpt's optimizer-side token usage since the last snapshot into the
+        meter under the ``optimizer`` role (A4, D1-3). The tracker is thread-safe and
+        the reflect/merge worker threads all join before their stage returns, so a
+        delta read at a rollout boundary (or after ``train()`` unwinds) is complete —
+        nothing optimizer-side is in flight at those points."""
+        total = get_token_summary()["_total"]
+        d_prompt = total["prompt_tokens"] - self._opt_tokens_prompt
+        d_completion = total["completion_tokens"] - self._opt_tokens_completion
+        if d_prompt or d_completion:
+            self._cost_meter.record("optimizer", d_prompt, d_completion)
+        self._opt_tokens_prompt = total["prompt_tokens"]
+        self._opt_tokens_completion = total["completion_tokens"]
+
     def rollout(
+        self, env_manager: Any, skill_content: str, out_dir: str, **kwargs: Any
+    ) -> list[dict[str, Any]]:
+        """Budget checkpoint + rollout (FR7, D2). At the start of every rollout the
+        optimizer-token delta accumulated since the last checkpoint (the previous
+        step's reflection/merge/ranking) is folded into the meter, then meter
+        integrity is checked (EC2, OQ3). The first eval-split rollout is the
+        trainer's baseline val gate — a reserved bracketing pass every technique pays
+        equally — so it is counted as excluded spend and never raises (FR5, D3, SC4);
+        its mean ``hard`` is kept as the gate-axis baseline for the budget-stop
+        read-back. Every other rollout raises :class:`BudgetExhaustedStop` when the
+        billable spend has reached the budget, which ``optimize()`` catches to take
+        the read-back path — so an in-flight step always finishes and the stop lands
+        between steps (FR7, C4)."""
+        self.fold_optimizer_delta()
+        self._cost_meter.check_unmetered()
+        if self._baseline_gate_pending and env_manager is self._val:
+            # First eval-split rollout == the baseline gate: skillopt 0.1.0 runs it
+            # before the first train rollout whenever the run starts fresh
+            # (current_score < 0), which is always true in our per-run temp out_root.
+            self._baseline_gate_pending = False
+            with self._cost_meter.excluded():
+                results = self._rollout(env_manager, skill_content, out_dir, **kwargs)
+            self.baseline_gate_score = float(np.mean([r["hard"] for r in results]))
+            return results
+        if self._cost_meter.exhausted():
+            raise BudgetExhaustedStop(
+                "SkillOpt rollout checkpoint: billable spend reached the money "
+                f"budget ({self._cost_meter.budget} EUR); stopping before this "
+                "rollout and reading back the best-so-far skill (FR7, FR8, D2)."
+            )
+        return self._rollout(env_manager, skill_content, out_dir, **kwargs)
+
+    def _rollout(
         self, env_manager: Any, skill_content: str, out_dir: str, **kwargs: Any
     ) -> list[dict[str, Any]]:
         """Roll out the candidate skill over a split: generate SQL with the task model,
@@ -306,6 +384,9 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
             ``optimize_prompts(scorers=...)`` (FR9, A3).
         schema_text: the fixed DB schema injected into the task prompt per call.
         val_set: the seeded val split (same split GEPA/TextGrad use) SkillOpt gates on.
+        cost_meter: the run's money meter; handed to :class:`Text2SqlEnvAdapter`,
+            whose per-rollout checkpoint stops the trainer once the budget is
+            exhausted (FR1, FR7, D2).
         epochs: full passes over the train split (``num_epochs``, FR10).
         edit_budget: max edits applied per round (constant; FR10, FR13, OQ1).
         minibatch_size: SkillOpt's reflection minibatch size (FR10).
@@ -333,6 +414,7 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
         judge_scorer: Any,
         schema_text: str,
         val_set: list[dict[str, Any]],
+        cost_meter: CostMeter,
         epochs: int,
         edit_budget: int,
         minibatch_size: int,
@@ -347,6 +429,7 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
         self.judge_scorer = judge_scorer
         self.schema_text = schema_text
         self.val_set = val_set
+        self.cost_meter = cost_meter
         self.epochs = epochs
         self.edit_budget = edit_budget
         self.minibatch_size = minibatch_size
@@ -501,6 +584,7 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
             task_endpoint=self.task_endpoint,
             judge_scorer=self.judge_scorer,
             schema_text=self.schema_text,
+            cost_meter=self.cost_meter,
         )
 
         # Drive the trainer in a temp out_root so the repo is never polluted with

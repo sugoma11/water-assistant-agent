@@ -226,7 +226,7 @@ GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
   run `check_unmetered()`, and for non-excluded rollouts raise `BudgetExhaustedStop`
   when exhausted (FR7, D2); run the first eval-split rollout (baseline gate) under
   `meter.excluded()` (FR5, D3). (depends: T007, T027)
-- [ ] T018 Budget-stop lifecycle in `SkillOptPromptOptimizer.optimize`
+- [x] T018 Budget-stop lifecycle in `SkillOptPromptOptimizer.optimize`
   (`skillopt_optimizer.py`): call `reset_token_tracker()` up front; set cfg
   `num_epochs=10**6` sentinel (safe with the pinned constant-LR scheduler); catch
   `BudgetExhaustedStop` around `trainer.train()`, fold the final tracker delta, and

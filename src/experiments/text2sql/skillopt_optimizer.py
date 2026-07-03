@@ -57,7 +57,7 @@ from skillopt.gradient.reflect import run_minibatch_reflect
 # backend every optimizer call lands in the azure_openai module's tracker. The
 # trainer never resets the tracker, so it accumulates monotonically and per-checkpoint
 # deltas capture exactly the optimizer-role spend (A4, D1-3).
-from skillopt.model import get_token_summary
+from skillopt.model import get_token_summary, reset_token_tracker
 
 from water_assistant_agent.text2sql.core import (
     USER_PROMPT_TEMPLATE,
@@ -386,8 +386,8 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
         val_set: the seeded val split (same split GEPA/TextGrad use) SkillOpt gates on.
         cost_meter: the run's money meter; handed to :class:`Text2SqlEnvAdapter`,
             whose per-rollout checkpoint stops the trainer once the budget is
-            exhausted (FR1, FR7, D2).
-        epochs: full passes over the train split (``num_epochs``, FR10).
+            exhausted (FR1, FR7, D2). The money budget is the sole stopping
+            criterion — ``num_epochs`` is pinned to a huge sentinel (FR2, C3).
         edit_budget: max edits applied per round (constant; FR10, FR13, OQ1).
         minibatch_size: SkillOpt's reflection minibatch size (FR10).
         reflect_on_success: enable success reflection (failure reflection is always on);
@@ -404,6 +404,12 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
     _MAX_ANALYST_ROUNDS = 1
     _SKILL_UPDATE_MODE = "patch"
 
+    # The money budget is the sole stop (FR2, C3): epochs no longer terminate a run,
+    # so num_epochs is pinned to a sentinel the budget always undercuts. Safe with the
+    # constant-LR scheduler pinned above (OQ1) -- the huge total_steps only feeds the
+    # scheduler denominator and the trainer's progress printout.
+    _NUM_EPOCHS_SENTINEL = 10**6
+
     def __init__(
         self,
         *,
@@ -415,7 +421,6 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
         schema_text: str,
         val_set: list[dict[str, Any]],
         cost_meter: CostMeter,
-        epochs: int,
         edit_budget: int,
         minibatch_size: int,
         reflect_on_success: bool = False,
@@ -430,7 +435,6 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
         self.schema_text = schema_text
         self.val_set = val_set
         self.cost_meter = cost_meter
-        self.epochs = epochs
         self.edit_budget = edit_budget
         self.minibatch_size = minibatch_size
         self.reflect_on_success = reflect_on_success
@@ -470,8 +474,9 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
             "optimizer_azure_openai_auth_mode": "openai_compatible",
             "optimizer_azure_openai_endpoint": str(opt_client.base_url),
             "optimizer_azure_openai_api_key": opt_client.api_key,
-            # effort knobs (FR10) + constant-LR decision (OQ1)
-            "num_epochs": self.epochs,
+            # structural knobs (FR10) + constant-LR decision (OQ1); epochs are a
+            # sentinel because the money budget is the sole stop (FR2, C3)
+            "num_epochs": self._NUM_EPOCHS_SENTINEL,
             "edit_budget": self.edit_budget,
             "min_edit_budget": self.edit_budget,
             "lr_scheduler": "constant",
@@ -572,8 +577,17 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
         # fixed context kept out of the skill doc and the reflection prompts (FR6, A6).
         seed_skill = instruction_block(seed_template)
 
+        # All optimizer-role (reflection/edit) spend is read as deltas off SkillOpt's
+        # module-level, monotonically accumulating TokenTracker; reset it up front so
+        # spend left over from an earlier run in the same process can never leak into
+        # this run's budget (A4, D1-3).
+        reset_token_tracker()
+
         # Baseline val on the eval_fn axis (initial_eval_score), same metric as GEPA.
-        initial_eval_score = self._val_score(eval_fn, name, seed_skill)
+        # One of the reserved bracketing full-val passes: counted as cost_excluded,
+        # never billable (FR5, C5, D3, SC4) -- mirrors TextGrad's excluded baseline.
+        with self.cost_meter.excluded():
+            initial_eval_score = self._val_score(eval_fn, name, seed_skill)
         self._log_eval_score(initial_eval_score, step=0, enable_tracking=enable_tracking)
         logger.info("SkillOpt baseline val eval_score=%.4f", initial_eval_score)
 
@@ -595,28 +609,95 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
         with tempfile.TemporaryDirectory() as out_root:
             cfg = self._build_cfg(out_root, train_data)
             Path(cfg["skill_init"]).write_text(seed_skill, encoding="utf-8")
-            ReflACTTrainer(cfg, adapter).train()
-            # EC6: if the trainer's result artifacts are missing/unreadable the optimized
-            # prompt cannot be recovered, so fail the run with a clear message rather than
-            # crashing on a bare FileNotFoundError/JSONDecodeError or reporting a result.
+            budget_stopped = False
             try:
-                best_skill = Path(out_root, "best_skill.md").read_text(encoding="utf-8")
-                history = json.loads(
-                    Path(out_root, "history.json").read_text(encoding="utf-8")
-                )
-            except (OSError, ValueError) as exc:
-                raise RuntimeError(
-                    "SkillOpt finished but its result artifacts could not be read back "
-                    f"from {out_root!r} (best_skill.md / history.json): {exc}. The "
-                    "optimized prompt cannot be recovered, so the run is failed rather "
-                    "than reporting a result (EC6)."
-                ) from exc
+                ReflACTTrainer(cfg, adapter).train()
+            except BudgetExhaustedStop as stop:
+                budget_stopped = True
+                logger.info("SkillOpt stopped on the money budget: %s", stop)
+            finally:
+                # Optimizer calls made since the last rollout checkpoint (the aborted
+                # step's reflection/merge/ranking, or a natural run's tail) are not
+                # yet folded; fold them so the logged spend is complete (FR9). Runs
+                # even when the trainer raises, so a FAILED run still carries its
+                # true optimizer spend (EC4, EC6).
+                adapter.fold_optimizer_delta()
 
-        # Per-epoch val progression on the eval_fn axis (SC2, F-001/F-003).
+            if budget_stopped:
+                # Budget-stop read-back (D2, FR8, SC3): the trainer persists
+                # best_skill.md + history.json incrementally at every completed step,
+                # so the best-validated skill survives the abort. Both score
+                # endpoints are read on the gate axis (the same judge over the same
+                # val split, via this adapter's own rollout -- the selection axis the
+                # kept skill actually won on): initial is the baseline gate score
+                # captured by the adapter, because skillopt 0.1.0 writes no baseline
+                # row into history.json; final is the monotone best_score of the
+                # last persisted row.
+                gate_baseline = adapter.baseline_gate_score
+                if gate_baseline is None:
+                    # Defensive only: the excluded baseline gate always precedes the
+                    # first billable rollout, so a budget stop cannot fire before it.
+                    gate_baseline = initial_eval_score
+                best_path = Path(out_root, "best_skill.md")
+                if best_path.exists():
+                    try:
+                        best_skill = best_path.read_text(encoding="utf-8")
+                        history = json.loads(
+                            Path(out_root, "history.json").read_text(encoding="utf-8")
+                        )
+                    except (OSError, ValueError) as exc:
+                        raise RuntimeError(
+                            "SkillOpt stopped on budget but its incrementally "
+                            "persisted artifacts could not be read back from "
+                            f"{out_root!r} (best_skill.md / history.json): {exc}. "
+                            "The best-so-far prompt cannot be recovered, so the run "
+                            "is failed rather than reporting a result (FR8)."
+                        ) from exc
+                    initial_eval_score = gate_baseline
+                    final_eval_score = float(history[-1]["best_score"])
+                else:
+                    # EC1: the budget ran out before even one full step was gated
+                    # (the trainer writes best_skill.md only at a completed step).
+                    # Return the seed byte-for-byte as an honest, valid (if
+                    # uninformative) result: initial == final pins the
+                    # no-improvement branch below onto the seed template.
+                    best_skill = seed_skill
+                    history = []
+                    initial_eval_score = final_eval_score = gate_baseline
+            else:
+                # EC6 (natural completion only): if the trainer's result artifacts
+                # are missing/unreadable the optimized prompt cannot be recovered, so
+                # fail the run with a clear message rather than crashing on a bare
+                # FileNotFoundError/JSONDecodeError or reporting a result.
+                try:
+                    best_skill = Path(out_root, "best_skill.md").read_text(encoding="utf-8")
+                    history = json.loads(
+                        Path(out_root, "history.json").read_text(encoding="utf-8")
+                    )
+                except (OSError, ValueError) as exc:
+                    raise RuntimeError(
+                        "SkillOpt finished but its result artifacts could not be read back "
+                        f"from {out_root!r} (best_skill.md / history.json): {exc}. The "
+                        "optimized prompt cannot be recovered, so the run is failed rather "
+                        "than reporting a result (EC6)."
+                    ) from exc
+
+        # Per-epoch val progression (SC2, F-001/F-003) -- after a budget stop these
+        # are the gate-axis rows persisted before the stop.
         self._log_history_series(history, enable_tracking=enable_tracking)
 
-        # Best candidate val on the same eval_fn axis (final_eval_score).
-        final_eval_score = self._val_score(eval_fn, name, best_skill)
+        if not budget_stopped:
+            # Best candidate val on the same eval_fn axis (final_eval_score): the
+            # reserved final bracketing full-val pass, excluded like the baseline
+            # (FR5, C5, D3). When the best skill is still the seed there is no
+            # improvement by definition: skip the pass and pin final == initial
+            # rather than letting judge/sampling noise on a re-scored identical
+            # prompt fabricate a phantom improvement (mirrors the TextGrad T013 fix).
+            if best_skill == seed_skill:
+                final_eval_score = initial_eval_score
+            else:
+                with self.cost_meter.excluded():
+                    final_eval_score = self._val_score(eval_fn, name, best_skill)
         logger.info(
             "SkillOpt final val eval_score=%.4f (baseline %.4f)",
             final_eval_score,

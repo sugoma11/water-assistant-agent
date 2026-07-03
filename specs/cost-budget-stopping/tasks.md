@@ -185,10 +185,21 @@ GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
   bracketing eval; there is no separate final pass — `final_eval_score` is read
   back from the best accepted candidate's acceptance-time full-val eval, which is
   search-internal and stays billable per the confirmed D3 semantics.
-- [ ] T016 Verify GEPA with a tiny-budget run: stops within one GEPA iteration (SC1,
+- [x] T016 Verify GEPA with a tiny-budget run: stops within one GEPA iteration (SC1,
   R3 overshoot visible as `cost_total - budget`); best candidate returned by the engine
   (SC3, FR8); reflection tokens appear under the `optimizer` role (FR4);
   `cost_excluded` covers the seed pass (SC4). (depends: T015)
+  *Verified 2026-07-03 (budget 0.3, unit prices, kisski, all roles qwen3.6-35b-a3b,
+  run `3a6d455d`):* SC1 ✓ — iteration 1 spent 0.362 ≥ 0.3, stop at the top of
+  iteration 2 (`optimization_stop_reason=budget_exhausted`, overshoot 0.062 ≈ the R3
+  iteration granularity). SC3/FR8 ✓ — the accepted candidate (full-val 0.48 → 0.68)
+  was returned and registered as `text2sql_system/55`; test 0.68 → 0.72. FR4 ✓ —
+  reflection metered via the litellm callback: 36.8k/2.6k optimizer tokens
+  (`cost_optimizer=0.039`). SC4 ✓ — `cost_excluded=0.258` = exactly the 25-sample
+  seed full-val pass (0.01034/sample vs 0.01042/sample billable evals); billable
+  0.362 = exactly one iteration (3-sample minibatch + reflection + 3-sample re-eval
+  + 25-sample accepted full-val). `unmetered_calls=0`; `max_metric_calls`/
+  `total_metric_calls` params gone (FR2).
 
 ## Phase 5 — SkillOpt (US1–US4) — depends on Phases 2 & 3.5; [P] with Phase 4
 

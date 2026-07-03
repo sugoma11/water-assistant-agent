@@ -238,12 +238,43 @@ GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
 - [x] T019 Clean up `src/experiments/text2sql/train_skillopt.py`: remove `--epochs` and
   its logged param; keep `--edit-budget`, `--minibatch-size`, `--reflect-on-success`,
   `--reasoning-effort` as structural knobs (FR2, C3). (depends: T018)
-- [ ] T020 Runtime-verify the SkillOpt seams and run a tiny-budget smoke: the baseline
+- [x] T020 Runtime-verify the SkillOpt seams and run a tiny-budget smoke: the baseline
   gate is the first eval-split rollout and precedes the first train rollout; the
   `history.json` baseline row exists after the gate; a `BudgetExhaustedStop` raised
   mid-training leaves `best_skill.md` consistent with the last gated best (R4); the
   run stops within one rollout round (SC1) with best-not-last read-back (SC3) and the
   baseline gate in `cost_excluded` (SC4). (depends: T019)
+  *Offline probe 2026-07-03 (real `ReflACTTrainer` + real meter + real SkillOpt
+  `TokenTracker`; litellm/judge/optimizer calls stubbed):* the baseline gate IS the
+  first eval-split rollout and precedes the first train rollout; **deviation from the
+  plan's assumption** — skillopt 0.1.0 writes NO baseline row into `history.json`
+  (its baseline block persists only `runtime_state.json`), so the adapter captures
+  the gate score at the rollout itself and the read-back uses it as the gate-axis
+  initial. A stop after step 1 read back the accepted best (gate 0.0 → 1.0)
+  token-exactly: billable == exactly one step, `cost_excluded` == eval_fn baseline +
+  gate; EC1 returned the seed byte-for-byte with `budget_exhausted`.
+  *Live run 2026-07-04 (budget 0.7, unit prices, all roles alias-qwen36-35b on
+  blablador, seed 42, run `c483a223`, FINISHED):* SC1 ✓ — budget crossed during
+  step 1, `BudgetExhaustedStop` at step 2's first rollout checkpoint
+  (`optimization_stop_reason=budget_exhausted`, `cost_total=0.846`, overshoot 0.146
+  ≈ the in-flight step, R3/C4). SC3/FR8 ✓ — step 1's accepted candidate (gate
+  0.48 → 0.68) was read back from `best_skill.md`/`history.json` and registered as
+  `text2sql_system/57`; val 48% → 68%, test 64% → 68%. SC4 ✓ —
+  `cost_excluded=0.494` = exactly the two 25-sample bracketing passes (eval_fn
+  baseline + baseline gate, ≈0.0099/sample matching the billable rate); per-role
+  costs sum to billable+excluded exactly (0.707+0.555+0.078 = 0.846+0.494). FR4 ✓ —
+  optimizer role via `TokenTracker` deltas: 38.5k/39.7k tokens (`cost_optimizer=
+  0.078`). EC2 ✓ — `unmetered_calls=0` despite sustained endpoint flakiness (dozens
+  of retried calls). FR2 ✓ — `epochs` param gone. Named delta for T021: mlflow's
+  `convert_predict_fn` trace-validation probe (~0.005, one task call) stays
+  *billable* on SkillOpt — GEPA's stopper snapshot sweeps the same call into the
+  excluded bucket. Bonus FR9/EC4 live evidence: an earlier attempt killed by a
+  blablador outage mid-baseline (run `0905c9b1`, FAILED) still carries
+  `optimization_stop_reason=failed` + partial spend from the `finally`. EC1 not
+  re-verified live (A7: TextGrad-only end-to-end; token-exact in the offline probe).
+  Environment note: kisski was quota-blocked (sustained 429) the whole evening, and
+  the run also surfaced two latent pre-existing bugs fixed en route (missing
+  `reasoning_effort` ctor param; unstripped `openai/` prefix on the optimizer model).
 
 ## Phase 6 — End-to-end validation & docs — depends on Phases 3–5
 

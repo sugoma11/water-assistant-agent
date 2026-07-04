@@ -299,12 +299,31 @@ GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
   meter `optimizer` ≡ audit `reflection + other` (exact on all three runs). Judge
   reconciles exactly everywhere; task differs only by the named untraced
   `convert_predict_fn` probe (0.5–1.6%, within the 5% tolerance).
-- [ ] T022 Run the same-budget triple comparison: GEPA, TextGrad and SkillOpt with one
+- [x] T022 Run the same-budget triple comparison: GEPA, TextGrad and SkillOpt with one
   budget, one price config, same split seed and judge; confirm in the MLflow UI that
   budget, prices, per-role token/cost metrics and stop reason line up under identical
   names across the three runs (SC1, SC2, NFR1, US2, US3), and that recorded totals
   reflect optimization-phase calls only (SC4). Run `scripts/verify_budget_stop.py`
   against each run. (depends: T021)
+  *Done 2026-07-04 — budget 0.7 EUR, unit prices, seed 42, Qwen3.6-35B-A3B all roles.*
+  Three runs, all `SC3+SC5 VERIFIED` by `scripts/verify_budget_stop.py`, all
+  `optimization_stop_reason=budget_exhausted`: GEPA `0cbca2b7` (val 40→72, test 60→72,
+  overshoot 0.36 = one iteration), TextGrad `fb34ae87` (val 48→56, test 68→72,
+  overshoot 0.07 = one gradient step, best-not-last: gate 1.0 at step 3 then reverted),
+  SkillOpt `ac802bb2` (val 52→56, test 56→64, overshoot 0.14 = one rollout round).
+  **NFR1 parity:** budget + all six `price_*` + `sampler_seed` + `optimization_stop_reason`
+  identical across the three, and all twelve `cost_*`/`tokens_*` spend metrics present
+  under identical names on all three (SC2/US3). **SC4:** each run's `cost_excluded`
+  (0.25/0.54/0.49) is the bracketing passes only; billable `cost_total` reflects
+  optimization-phase calls (GEPA 1.06, TextGrad 0.77, SkillOpt 0.84), and `unmetered_calls=0`
+  on all three. **US2 equal-cost comparison** is now readable side-by-side (per-role split
+  differs by technique: GEPA task+judge-heavy search, SkillOpt lightest optimizer role).
+  *Endpoint note:* GEPA+TextGrad ran on kisski; SkillOpt's kisski attempt (`b2a92b5b`)
+  was killed mid-run by kisski's evening 429 quota block and — good FR9/EC4/EC6 evidence —
+  the FAILED run still logged `optimization_stop_reason=failed` with its partial spend and
+  `unmetered_calls=0`. SkillOpt was rerun on blablador (same underlying model/budget/
+  prices/seed/judge; only the endpoint alias string differs, hence the one `judge_model`
+  string DIFF); with unit prices token counts stay directly comparable across endpoints.
 - [x] T023 [P] Regression-check evaluation-only paths (FR12): run the standalone eval
   CLI and confirm traces and params are identical to a pre-change run (meter inactive
   → byte-identical behavior, NFR4). Also start one trainer with a `PRICE_*` env var

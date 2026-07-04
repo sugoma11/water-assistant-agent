@@ -373,7 +373,7 @@ GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
 
 ## Phase 7 — Retrospective fixes (from T025) — optional follow-ups
 
-- [ ] T028 Consolidate the duplicated usage→record block (retrospective R-001) into a
+- [x] T028 Consolidate the duplicated usage→record block (retrospective R-001) into a
   single `CostMeter.record_completion(role, usage_obj)` helper that owns the
   `usage is None → record_unmetered + warn` / else `record(...)` contract, and call it
   from all three seams: `harness._record_to_active_meter`,
@@ -382,6 +382,23 @@ GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
   role-resolution / dedupe-tag / `active_meter()` guard. Re-run one tiny-budget smoke +
   `scripts/verify_budget_stop.py` to confirm token-exact reconciliation is unchanged.
   (depends: T025)
+  *Done 2026-07-04.* `CostMeter.record_completion(role, usage)` now owns the shared
+  contract; all three seams reduced to a single `meter.record_completion(role,
+  getattr(resp, "usage", None))` call keeping only their own role resolution / dedupe
+  tag / `active_meter()` guard. The TextGrad-specific extra warning (redundant with
+  `record_unmetered`'s warning) was dropped, retiring `prompt_skill`'s now-unused
+  `logging` import. **Threading unchanged:** the helper does no locking of its own — it
+  dispatches to `record`/`record_unmetered`, which each take `self._lock` as before;
+  the reflection callback's `active_meter() is meter` background-thread guard is
+  untouched. **Token count preserved:** verified token-exact offline by driving all
+  four seams (direct helper, harness litellm path, TextGrad metered client, reflection
+  callback) — present usage recorded exactly, missing usage → exactly one
+  `unmetered_calls` increment + single warning, tagged calls deduped, inactive-meter
+  no-op holds. Live smoke skipped as a pure extraction (identical dispatch, verified
+  deterministically offline) with kisski quota-blocked / blablador flaky per ops notes;
+  the offline drive isolates the exact contract more precisely than a live run would.
+  `ruff check` clean; `mypy` error count unchanged from HEAD (9 pre-existing, none in
+  the edited regions).
 
 ---
 

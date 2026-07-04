@@ -243,11 +243,7 @@ def _record_to_active_meter(resp: Any, kwargs: dict[str, Any]) -> None:
     if meter is None:
         return
     role = (kwargs.get("metadata") or {}).get("cost_meter_role")
-    usage = getattr(resp, "usage", None)
-    if usage is None:
-        meter.record_unmetered(role)
-        return
-    meter.record(role, usage.prompt_tokens, usage.completion_tokens)
+    meter.record_completion(role, getattr(resp, "usage", None))
 
 
 def read_sampling_params(prefix: str) -> dict[str, Any]:

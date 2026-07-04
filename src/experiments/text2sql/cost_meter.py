@@ -189,6 +189,19 @@ class CostMeter:
                 self._billable_cost += call_cost
             self._metered_calls += 1
 
+    def record_completion(self, role: Optional[str], usage: Any) -> None:
+        """Record one completion's ``usage`` under ``role``, owning the seam contract
+        shared by all three metering seams (the litellm path in ``harness``, TextGrad's
+        wrapped client in ``prompt_skill``, and the GEPA reflection callback below): a
+        response with no usage data (``usage is None``) becomes an unmetered call with a
+        loud warning (EC2, FR11); otherwise its prompt/completion tokens are charged via
+        :meth:`record`. Each seam keeps only its own role resolution, dedupe tag and
+        active-meter guard; the missing-usage handling lives here once (R-001)."""
+        if usage is None:
+            self.record_unmetered(role)
+            return
+        self.record(role, usage.prompt_tokens, usage.completion_tokens)
+
     def record_unmetered(self, role: Optional[str]) -> None:
         """Register a call whose spend could not be measured (missing usage data, EC2)
         or attributed (missing role, R6) and emit a prominent warning. Tracked so
@@ -361,10 +374,6 @@ def litellm_reflection_callback(meter: CostMeter):
         metadata = (kwargs.get("litellm_params") or {}).get("metadata") or {}
         if "cost_meter_role" in metadata:
             return  # already recorded directly by the litellm seam
-        usage = getattr(response_obj, "usage", None)
-        if usage is None:
-            meter.record_unmetered("optimizer")
-            return
-        meter.record("optimizer", usage.prompt_tokens, usage.completion_tokens)
+        meter.record_completion("optimizer", getattr(response_obj, "usage", None))
 
     return _callback

@@ -13,15 +13,12 @@ optimized instruction block back into the full ``SYSTEM_PROMPT_TEMPLATE`` shape 
 the registered artifact stays a complete, reusable template (FR6).
 """
 
-import logging
 from typing import Any
 
 from openai import OpenAI
 
 from experiments.text2sql.cost_meter import CostMeter
 from experiments.text2sql.harness import ENDPOINTS, read_endpoint_credentials
-
-logger = logging.getLogger(__name__)
 
 # Section marker that separates the optimizable instruction block from the fixed
 # schema context in SYSTEM_PROMPT_TEMPLATE.
@@ -73,22 +70,14 @@ def _install_cost_meter(client: OpenAI, meter: CostMeter, role: str | None) -> N
     is fixed at construction because TextGrad makes these calls with no litellm ``role``
     context around them, so the meter cannot otherwise attribute them. A response missing
     usage data is recorded as an unmetered call with a loud warning (EC2, FR11) rather
-    than silently dropped."""
+    than silently dropped — the missing-usage contract lives in
+    :meth:`CostMeter.record_completion` (R-001)."""
     completions = client.chat.completions
     original_create = completions.create
 
     def metered_create(*args: Any, **kwargs: Any) -> Any:
         response = original_create(*args, **kwargs)
-        usage = getattr(response, "usage", None)
-        if usage is None:
-            logger.warning(
-                "COST METER: TextGrad %r completion returned no usage data; recording "
-                "it as unmetered (its spend is not charged against the budget).",
-                role,
-            )
-            meter.record_unmetered(role)
-        else:
-            meter.record(role, usage.prompt_tokens, usage.completion_tokens)
+        meter.record_completion(role, getattr(response, "usage", None))
         return response
 
     completions.create = metered_create  # type: ignore[method-assign]

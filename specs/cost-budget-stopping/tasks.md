@@ -361,9 +361,27 @@ GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
   `textgrad_num_epochs`/`textgrad_metric_call_budget`/`skillopt_num_epochs`
   variables in `common.just` in favor of one `train_budget := "0.7"` default, and
   dry-ran every touched recipe (`just -n …`) to confirm the rendered CLI commands.
-- [ ] T025 Run the retrospective skill to review all implemented changes for code
+- [x] T025 Run the retrospective skill to review all implemented changes for code
   quality and architectural decisions (`specs/cost-budget-stopping/retrospective.md`).
   (depends: T022, T023, T024)
+  *Done 2026-07-04 — `retrospective.md` written.* Overall: clean and unusually
+  well-validated (meter reconciles token-exact with the trace audit on all three
+  techniques). Findings: 🔴 0 · 🟡 1 (R-001, usage→record duplicated across the three
+  seams) · 🟢 3 (R-002 phantom-improvement skip duplicated; R-003 `Optional`/`| None`
+  style; R-004 no offline unit test for the deterministic meter core). Only the 🟡
+  is turned into a follow-up task (T028); the 🟢 items are recorded as notes.
+
+## Phase 7 — Retrospective fixes (from T025) — optional follow-ups
+
+- [ ] T028 Consolidate the duplicated usage→record block (retrospective R-001) into a
+  single `CostMeter.record_completion(role, usage_obj)` helper that owns the
+  `usage is None → record_unmetered + warn` / else `record(...)` contract, and call it
+  from all three seams: `harness._record_to_active_meter`,
+  `prompt_skill._install_cost_meter.metered_create`, and
+  `cost_meter.litellm_reflection_callback`. Each seam keeps only its own
+  role-resolution / dedupe-tag / `active_meter()` guard. Re-run one tiny-budget smoke +
+  `scripts/verify_budget_stop.py` to confirm token-exact reconciliation is unchanged.
+  (depends: T025)
 
 ---
 

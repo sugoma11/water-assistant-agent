@@ -310,10 +310,15 @@ GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
   → byte-identical behavior, NFR4). Also start one trainer with a `PRICE_*` env var
   unset and confirm it refuses with the offending var named before any MLflow run is
   created (EC5, SC6, US5). (depends: T013, T016, T020)
-- [ ] T024 [P] Update docs and recipes: `README.md` (budget mechanism, EUR-per-1M price
+- [x] T024 [P] Update docs and recipes: `README.md` (budget mechanism, EUR-per-1M price
   convention, removed effort caps, TextGrad cache-off cost-profile note — R5, OQ1);
   `experiments.just` train recipes gain a `budget=` parameter and drop the removed
   knobs. (depends: T012, T014, T019)
+  *Done 2026-07-04.* Also covered the base `justfile` train recipes (they call the
+  same CLIs and still passed the removed `--epochs`), retired the dead
+  `textgrad_num_epochs`/`textgrad_metric_call_budget`/`skillopt_num_epochs`
+  variables in `common.just` in favor of one `train_budget := "0.7"` default, and
+  dry-ran every touched recipe (`just -n …`) to confirm the rendered CLI commands.
 - [ ] T025 Run the retrospective skill to review all implemented changes for code
   quality and architectural decisions (`specs/cost-budget-stopping/retrospective.md`).
   (depends: T022, T023, T024)

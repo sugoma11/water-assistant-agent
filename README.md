@@ -70,22 +70,40 @@ The text-2-SQL system prompt is optimized by one of three interchangeable techni
 `just` recipe that logs a before/after val+test eval to MLflow (experiment name and tracking
 URI come from `.env`):
 
-- `just text2sql-train-gepa …` — **GEPA**. Effort is a metric-call budget; the proposer is the
+- `just text2sql-train-gepa …` — **GEPA**. The proposer is the
   `--teacher-model`/`--teacher-endpoint` role.
-- `just text2sql-train-textgrad …` — **TextGrad**. Effort is expressed as `--epochs` (required)
-  and `--batch-size` over the train split rather than a metric-call budget; the
+- `just text2sql-train-textgrad …` — **TextGrad**. `--batch-size` sets records per gradient
+  step and `--val-gate-size` the fixed val subset scored for the per-step keep-best gate; the
   backward/proposal LLM is the `--optimizer-model`/`--optimizer-endpoint` role.
 - `just text2sql-train-…-skillopt …` — **SkillOpt** (Microsoft's ReflACT loop: rollout →
-  reflect → merge/select edits → keep-best on a hard validation gate). Effort is expressed as
-  three required knobs — `--epochs` (full passes over the train split), `--edit-budget` (max
-  prompt edits applied per round), and `--minibatch-size` (reflection batch) — rather than a
-  metric-call budget. `--reflect-on-success/--no-reflect-on-success` (default off) toggles
+  reflect → merge/select edits → keep-best on a hard validation gate). Structural knobs:
+  `--edit-budget` (max prompt edits applied per round, a textual learning rate) and
+  `--minibatch-size` (reflection batch).
+  `--reflect-on-success/--no-reflect-on-success` (default off) toggles
   success reflection; failure reflection is always on. The reflection/edit LLM is the
   `--optimizer-model`/`--optimizer-endpoint` role. Only the prompt's **instruction block** is
   the trainable skill; the DB schema stays fixed context, and `best_skill.md` is recombined
   into the full template before registration. A new prompt version is registered only when the
   best skill strictly beats the baseline on the validation gate (otherwise the seed prompt is
   kept byte-for-byte).
+
+**The only stop is a money budget.** Every trainer requires `--budget` (EUR, no default);
+the run's optimization phase stops at the technique's next natural checkpoint (GEPA
+iteration / TextGrad gradient step / SkillOpt rollout round) once billable spend reaches it,
+keeping the best-so-far prompt exactly as a natural finish would. The former effort caps are
+gone as stops: GEPA's metric-call budget, TextGrad's `--epochs`/`--metric-call-budget`/
+`--max-steps-per-epoch`, SkillOpt's `--epochs`. Spend is priced from six env vars
+`PRICE_{TASK,JUDGE,OPTIMIZER}_{INPUT,OUTPUT}` in **EUR per 1M tokens** (see `.example.env`;
+a missing/invalid price refuses to start, naming the offending variable). Every run logs the
+budget + prices as params and, per role, `tokens_*_{input,output}` / `cost_*` metrics plus
+`cost_total` (billable), `cost_excluded` (the bracketing passes: test-before/after and the
+baseline/final full-val evals, which never charge the budget), `unmetered_calls`, and an
+`optimization_stop_reason` param (`budget_exhausted` / `completed` / `failed` — logged even
+on FAILED runs). Cost-profile note: TextGrad's engine disk cache is disabled for metered
+runs, so every call pays real tokens — pre-budget TextGrad runs partially rode that cache
+and are only comparable via the post-hoc trace audit (`scripts/count_tokens.py`);
+`scripts/verify_budget_stop.py` reconciles a run's live meter against that audit and checks
+the returned prompt is the best-on-validation one.
 
 All three share the same dataset loader, the same seeded train/val/test split (`--sampler-seed`),
 the same FLEX LLM-as-Judge, the same metric names, and register the same prompt — so runs are

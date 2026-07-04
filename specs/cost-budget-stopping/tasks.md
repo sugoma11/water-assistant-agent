@@ -305,11 +305,34 @@ GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
   names across the three runs (SC1, SC2, NFR1, US2, US3), and that recorded totals
   reflect optimization-phase calls only (SC4). Run `scripts/verify_budget_stop.py`
   against each run. (depends: T021)
-- [ ] T023 [P] Regression-check evaluation-only paths (FR12): run the standalone eval
+- [x] T023 [P] Regression-check evaluation-only paths (FR12): run the standalone eval
   CLI and confirm traces and params are identical to a pre-change run (meter inactive
   → byte-identical behavior, NFR4). Also start one trainer with a `PRICE_*` env var
   unset and confirm it refuses with the offending var named before any MLflow run is
   created (EC5, SC6, US5). (depends: T013, T016, T020)
+  *Verified 2026-07-04.* **Meter no-op on eval (FR12/NFR4):** a live diff can't be
+  byte-identical against a nondeterministic/flaky endpoint, so proved it
+  deterministically offline (stubbed `litellm.completion`, drove the exact eval
+  `create_predict_fn` + judge kwargs): `active_meter()` is `None` throughout, no
+  litellm success callback is registered on the eval path (the GEPA reflection
+  callback is scoped to `train_gepa` only), a constructed-but-not-`active()` meter
+  records **nothing** (spend_summary all-zero after task+judge calls), and the only
+  footprint the feature leaves on the litellm call is the inert
+  `metadata={"cost_meter_role": ...}` tag (no callback consumes it during eval).
+  **Honest non-metering delta:** comparing `build_completion_kwargs` against the true
+  pre-feature baseline (`4c11d59`, parent of the first cost-budget harness commit)
+  shows T004 *also* bundled a `max_tokens=44000` default (env-overridable via
+  `{PREFIX}_MAX_TOKENS`) into `read_sampling_params` — a thinking-model empty-completion
+  fix, orthogonal to metering — so the eval request is not byte-identical to a
+  pre-*T004* run in that one field; it is identical modulo that documented default.
+  **Price refusal (EC5/SC6/US5):** an unset price refuses at
+  `PriceConfig.from_env` with `"Price env var PRICE_TASK_INPUT is unset; set it (EUR
+  per 1M tokens)…"`; a non-numeric price refuses through the real CLI with
+  `"Error: Price env var PRICE_JUDGE_OUTPUT='abc' is not a number…"`. Both fire from
+  `CostMeter(budget, read_price_config())`, which precedes `setup_mlflow` in all
+  three CLIs (train_gepa:165<172, train_textgrad:153<168, train_skillopt:166<173), so
+  no MLflow run is created — confirmed: the non-numeric invocation left no run in the
+  experiment.
 - [x] T024 [P] Update docs and recipes: `README.md` (budget mechanism, EUR-per-1M price
   convention, removed effort caps, TextGrad cache-off cost-profile note — R5, OQ1);
   `experiments.just` train recipes gain a `budget=` parameter and drop the removed

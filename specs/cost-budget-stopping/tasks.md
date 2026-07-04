@@ -278,13 +278,27 @@ GEPA's candidate evals, i.e. most of GEPA's spend. See plan.md revision log.
 
 ## Phase 6 — End-to-end validation & docs — depends on Phases 3–5
 
-- [ ] T021 Create `scripts/verify_budget_stop.py` (pattern:
+- [x] T021 Create `scripts/verify_budget_stop.py` (pattern:
   `scripts/verify_skillopt_sc5.py`) asserting, for a given run: SC3 — the returned
   prompt equals the best-on-validation prompt in the logged score progression; SC5 —
   the meter's per-role totals reconcile with `scripts/count_tokens.py` within 5% per
   role (mapping: meter `optimizer` ≡ audit `reflection`; the audit `other` bucket
   must be ≈0 or explained), including the optimizer-side roles previously flagged as
   untraced (NFR2). (depends: T013, T016, T020)
+  *Verified 2026-07-04 against the three Phase 3–5 runs (`912fc4c8` textgrad,
+  `3a6d455d` gepa, `c483a223` skillopt): all SC3+SC5 VERIFIED.* SC3 observables per
+  technique: run-window prompt-version resolution + improved⟺registered decision
+  everywhere; gepa additionally byte-compares the registered template against
+  `summary/best` and the max-`valset_score` `candidates.json` row and pins
+  `final_eval_score == max(eval_score)`; skillopt pins `final_eval_score ==
+  max(eval_score)` on the gate axis; textgrad reports the best-not-last revert from
+  the gate progression (912fc4c8: last 0.75 < best 0.875). SC5 refinement over the
+  task text: the audit `other` bucket is not ≈0 for skillopt/textgrad — their
+  optimizer-side prompts don't match `count_tokens.py`'s reflection markers — but it
+  reconciles **token-exactly** into the meter's optimizer role, so the mapping is
+  meter `optimizer` ≡ audit `reflection + other` (exact on all three runs). Judge
+  reconciles exactly everywhere; task differs only by the named untraced
+  `convert_predict_fn` probe (0.5–1.6%, within the 5% tolerance).
 - [ ] T022 Run the same-budget triple comparison: GEPA, TextGrad and SkillOpt with one
   budget, one price config, same split seed and judge; confirm in the MLflow UI that
   budget, prices, per-role token/cost metrics and stop reason line up under identical

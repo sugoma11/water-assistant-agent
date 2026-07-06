@@ -121,7 +121,7 @@ context · **US7** visitor reaches only sign-in.
   `@ag-ui/client`, Next.js versions in `web/package.json` against current docs (OQ1);
   add `web/.env` with `BACKEND_URL`. Confirm existing backend layout/commands untouched
   (FR14, C4, NFR4). (depends: T001)
-- [ ] T019 `web/app/login/` email+password form (no signup path, FR3) +
+- [x] T019 `web/app/login/` email+password form (no signup path, FR3) +
   `web/app/api/auth/[...]` login/logout route handlers storing the backend JWT in an
   httpOnly, `SameSite=Lax`, `Secure`-in-prod cookie mirroring `expires_at` (D2, NFR1);
   `web/middleware.ts` route guard sending unauthenticated requests to `/login` (FR5,

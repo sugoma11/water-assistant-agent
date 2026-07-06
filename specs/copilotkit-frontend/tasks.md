@@ -116,7 +116,7 @@ context · **US7** visitor reaches only sign-in.
 
 ## Phase 4 — Frontend scaffold — depends on Phases 1–2; [P]-ish with Phase 3
 
-- [ ] T018 Scaffold `web/` Next.js app (App Router, TypeScript) with its own toolchain;
+- [x] T018 Scaffold `web/` Next.js app (App Router, TypeScript) with its own toolchain;
   pin `@copilotkit/react-core`, `@copilotkit/react-ui`, `@copilotkit/runtime`,
   `@ag-ui/client`, Next.js versions in `web/package.json` against current docs (OQ1);
   add `web/.env` with `BACKEND_URL`. Confirm existing backend layout/commands untouched

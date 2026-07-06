@@ -38,14 +38,30 @@ class AssistantSettings(BaseSettings):
     # --- Text-to-SQL pipeline ---
     max_sql_retries: int = 3
 
-    # --- Conversation session store (any SQLAlchemy URL; Postgres for prod) ---
-    session_db_url: str = "postgresql://user:password@localhost:5432/mydb"
+    # --- HTTP service (FastAPI + AG-UI + ADK endpoint) ---
+    host: str = "0.0.0.0"  # noqa: S104 - bind all interfaces for container/dev use
+    port: int = 8080
+    app_name: str = "water_assistant"
 
-    # --- Auth (optional in dev) ---
+    # --- Conversation session store ---
+    # One SQLAlchemy URL (SQLite file in dev, Postgres in prod) backs ADK sessions
+    # *and* the app_users / conversations tables (A1). Required for the assistant
+    # service — ``create_bootstrap`` refuses to start when it is unset (D5). Kept
+    # nullable here so non-service callers of :func:`get_settings` still construct.
+    session_db_url: str | None = None
+
+    # --- Auth ---
+    # Required for the assistant service (mandatory JWT auth, D5); enforced at
+    # startup by ``create_bootstrap``. Nullable at the settings layer so the
+    # text2sql experiments (which never run the service) keep constructing.
     jwt_secret_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("AGENT_JWT_SECRET", "WATER_ASSISTANT_JWT_SECRET_KEY"),
     )
+    # Admin API key (FR2). Absent ⇒ the admin API fails closed with 503 (EC6).
+    admin_api_key: str | None = None
+    # Lifetime of a minted access token, in days (C8).
+    auth_token_ttl_days: int = 7
 
     def litellm_extra(self) -> dict[str, str]:
         """Extra kwargs forwarded to litellm / the LiteLlm wrapper."""

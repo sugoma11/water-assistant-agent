@@ -42,7 +42,7 @@ context · **US7** visitor reaches only sign-in.
   (EC6); 409 on duplicate email (EC4); responses never include password hashes and the
   key is never echoed in errors (NFR1, D6, FR3 — no signup path). DELETE cascades user
   → conversations → ADK sessions (EC5, C5). (depends: T003)
-- [ ] T005 Create `src/water_assistant_agent/assistant/routers/auth.py`: `POST
+- [x] T005 Create `src/water_assistant_agent/assistant/routers/auth.py`: `POST
   /auth/login` (email+password → `{access_token, expires_at}`, uniform 401 on bad
   credentials) and `GET /auth/me` (current user, session probe) (FR4, C1). (depends:
   T003)

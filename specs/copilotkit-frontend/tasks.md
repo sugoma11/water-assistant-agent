@@ -135,7 +135,7 @@ context · **US7** visitor reaches only sign-in.
   `X-Request-ID` (NFR5); streams the SSE body unbuffered (NFR2, R4). Plus a minimal
   single-conversation chat pane so a signed-in user can chat with streaming. (depends:
   T020, T012)
-- [ ] T022 Milestone smoke (SC4): signed-in user sends a message in one conversation and
+- [x] T022 Milestone smoke (SC4): signed-in user sends a message in one conversation and
   the answer's first parts render in the browser before completion — verify no buffering
   at the CopilotKit-runtime and Next-route-handler hops (R4, NFR2, US3). (depends: T021)
 

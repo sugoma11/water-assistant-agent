@@ -8,8 +8,10 @@ built directly at import time.
 
 from google.adk.agents.llm_agent import Agent
 from google.adk.models.lite_llm import LiteLlm
-from google.adk.tools.agent_tool import AgentTool
 
+from water_assistant_agent.assistant.agents.root_agent.text_to_sql_tool import (
+    TextToSqlAgentTool,
+)
 from water_assistant_agent.assistant.agents.text_to_sql.agent import text_to_sql_agent
 from water_assistant_agent.assistant.settings import get_settings
 
@@ -48,5 +50,5 @@ root_agent = Agent(
     name="root_agent",
     description="Water-Management Data Analyst.",
     static_instruction=ROOT_INSTRUCTION,
-    tools=[AgentTool(text_to_sql_agent)],
+    tools=[TextToSqlAgentTool(text_to_sql_agent)],
 )

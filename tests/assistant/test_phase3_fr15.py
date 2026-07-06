@@ -7,10 +7,15 @@ the ``TextToSqlAgentTool`` merge of the captured result into the tool result.
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
 
+from water_assistant_agent.assistant.agents.root_agent.text_to_sql_tool import (
+    TextToSqlAgentTool,
+    _enrich_tool_result,
+)
 from water_assistant_agent.assistant.tools import warehouse
 from water_assistant_agent.assistant.tools.warehouse import (
     QUERY_RESULT_STATE_KEY,
@@ -75,3 +80,56 @@ async def test_error_result_writes_no_state(monkeypatch: pytest.MonkeyPatch) -> 
 
     assert result["status"] == "error"
     assert QUERY_RESULT_STATE_KEY not in state
+
+
+# --- T016: TextToSqlAgentTool merges the captured result ----------------------
+
+
+def test_root_agent_wires_the_enriched_tool() -> None:
+    from water_assistant_agent.assistant.agents.root_agent.agent import root_agent
+
+    tool = root_agent.tools[0]
+    assert isinstance(tool, TextToSqlAgentTool)
+    # Same tool name so the root prompt is untouched (R3).
+    assert tool.name == "text_to_sql_agent"
+
+
+def test_enrich_merges_columns_and_rows() -> None:
+    raw = json.dumps({"status": "success", "sql": "SELECT 1", "reasoning": "why"})
+    captured = {
+        "columns": ["day", "mm"],
+        "rows": [{"day": "2026-01-01", "mm": 3.2}],
+        "result_is_likely_truncated": True,
+    }
+    merged = _enrich_tool_result(raw, captured)
+    assert merged == {
+        "status": "success",
+        "sql": "SELECT 1",
+        "reasoning": "why",
+        "results": {
+            "columns": ["day", "mm"],
+            "rows": [{"day": "2026-01-01", "mm": 3.2}],
+            "result_is_likely_truncated": True,
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("raw", "captured"),
+    [
+        # No captured result → plain answer passes through unchanged.
+        (json.dumps({"status": "success", "sql": "x", "reasoning": "y"}), None),
+        # Non-success status → no merge (plain fallback).
+        (json.dumps({"status": "error", "error_details": "boom"}), {"columns": [], "rows": []}),
+        # Non-JSON plain-text answer → passes through untouched.
+        ("just a chat answer", {"columns": ["a"], "rows": [{"a": 1}]}),
+    ],
+)
+def test_enrich_falls_back_to_plain(raw: str, captured: dict | None) -> None:
+    assert _enrich_tool_result(raw, captured) == raw
+
+
+def test_enrich_omits_truncation_flag_when_absent() -> None:
+    raw = json.dumps({"status": "success", "sql": "s", "reasoning": "r"})
+    merged = _enrich_tool_result(raw, {"columns": ["a"], "rows": [{"a": 1}]})
+    assert "result_is_likely_truncated" not in merged["results"]

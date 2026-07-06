@@ -13,6 +13,7 @@ import jwt
 import structlog
 from asgi_correlation_id.context import correlation_id
 from fastapi import HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.types import ASGIApp
 
@@ -105,9 +106,19 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if path in _PUBLIC_ROUTES or any(path.startswith(p) for p in _PUBLIC_PREFIXES):
             return await call_next(request)
-        authorization = self._get_authorization(request)
-        token = self._parse_bearer(authorization)
-        request.state.token_claims = self._decode_token(token)
+        # This middleware runs outside FastAPI's ExceptionMiddleware, so a raised
+        # HTTPException would surface as a 500; convert auth failures to a proper
+        # JSON 401 response here.
+        try:
+            authorization = self._get_authorization(request)
+            token = self._parse_bearer(authorization)
+            request.state.token_claims = self._decode_token(token)
+        except HTTPException as exc:
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+                headers=exc.headers,
+            )
         return await call_next(request)
 
     def _get_authorization(self, request: Request) -> str:

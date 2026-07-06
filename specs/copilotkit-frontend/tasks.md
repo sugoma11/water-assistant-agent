@@ -54,7 +54,7 @@ context · **US7** visitor reaches only sign-in.
   with a clear error naming the env var when `jwt_secret_key` or `session_db_url` is
   missing; call `create_all` at startup; register the admin and auth routers; drop the
   static demo `user_id` wiring (D5, D6). (depends: T004, T005, T006)
-- [ ] T008 API tests (pytest + httpx) for Phase 1: admin CRUD; wrong/missing key → 401,
+- [x] T008 API tests (pytest + httpx) for Phase 1: admin CRUD; wrong/missing key → 401,
   unconfigured key → 503 fail-closed (FR2, EC6, SC1); duplicate email → 409 (EC4);
   login success + login failure uniform 401; expired-token 401 (EC1 server side); no
   registration route exists (SC6). (depends: T007)

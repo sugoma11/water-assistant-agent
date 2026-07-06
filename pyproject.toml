@@ -50,6 +50,11 @@ dev = [
     "mypy>=1.11",
 ]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore"]
+
 [tool.uv.sources]
 ag-ui-adk = { git = "https://github.com/FinalystAI/ag-ui", rev = "8f01a3dbcb486094803a6cb1248dd33360226d5b", subdirectory = "integrations/adk-middleware/python" }
 

@@ -130,7 +130,7 @@ context · **US7** visitor reaches only sign-in.
   routers (copies cookie → `Authorization: Bearer`, no SSE buffering); 401 from any
   proxy call clears the cookie and redirects to `/login` without touching conversation
   state (EC1, EC5, NFR2). (depends: T019)
-- [ ] T021 `web/app/api/copilotkit/` CopilotKit runtime route: builds `HttpAgent` per
+- [x] T021 `web/app/api/copilotkit/` CopilotKit runtime route: builds `HttpAgent` per
   request pointing at FastAPI `/` with the cookie's Bearer header and forwarded/created
   `X-Request-ID` (NFR5); streams the SSE body unbuffered (NFR2, R4). Plus a minimal
   single-conversation chat pane so a signed-in user can chat with streaming. (depends:

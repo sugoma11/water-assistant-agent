@@ -1,15 +1,10 @@
 /**
- * Home. The route guard in `middleware.ts` (added in T019) sends unauthenticated
- * visitors to `/login`; a signed-in user lands here. The chat pane replaces this
- * placeholder in T021.
+ * Home = the chat. The route guard (`middleware.ts`) has already ensured a
+ * signed-in user before this renders; the client chat pane bootstraps a
+ * conversation and streams answers (T021). The full sidebar lands in Phase 5.
  */
+import { ChatPane } from "@/components/ChatPane";
+
 export default function HomePage() {
-  return (
-    <main style={{ maxWidth: 640, margin: "4rem auto", padding: "0 1.5rem" }}>
-      <h1>Water Assistant</h1>
-      <p style={{ color: "var(--wa-muted)" }}>
-        Frontend scaffold is up. Sign-in and chat land in the following tasks.
-      </p>
-    </main>
-  );
+  return <ChatPane />;
 }

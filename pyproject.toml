@@ -9,11 +9,13 @@ dependencies = [
     "ag-ui-adk",
     "argon2-cffi>=23.1",
     "asgi-correlation-id>=4.3",
+    "asyncpg>=0.30",
     "duckdb>=1.5.3",
     "fastapi>=0.115",
     "google-adk>=1.21",
     "litellm>=1.82.6",
     "pandas>=2.3.3",
+    "psycopg2-binary>=2.9.12",
     "pydantic-settings>=2.0",
     "pyjwt>=2.10",
     "python-dotenv>=1.2.2",
@@ -31,9 +33,6 @@ build-backend = "hatchling.build"
 # Dev/research: prompt-optimization experiments, labeling, tracking, and test tooling.
 # Installed by `uv sync` (default); excluded by `uv sync --no-dev`.
 [dependency-groups]
-dependencies = [
-    "psycopg2-binary>=2.9.12",
-]
 dev = [
     "argilla>=2.8",
     "boto3>=1.43.24",

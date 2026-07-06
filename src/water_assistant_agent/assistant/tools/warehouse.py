@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 import sqlglot
 import structlog
+from google.adk.tools.tool_context import ToolContext
 
 from water_assistant_agent.assistant.agents.text_to_sql.executor import (
     DuckDbQueryExecutor,
@@ -29,6 +30,14 @@ _SUCCESS = "success"
 _ERROR_DETAILS = "error_details"
 _MAX_QUERY_ROWS = 100
 _READ_ONLY_QUERY_MSG = "Read-only mode only supports SELECT query expressions."
+_TRUNCATED = "result_is_likely_truncated"
+
+# Session-state key under which a successful query stashes its executed result so
+# the ``TextToSqlAgentTool`` wrapper can merge it into the tool result surfaced to
+# the chat (D4, FR15). The ``temp:`` prefix keeps it invocation-scoped: ADK applies
+# it in-memory during the run (so the wrapper can read it) but trims it before
+# persisting, so the full rows never bloat the stored session state.
+QUERY_RESULT_STATE_KEY = "temp:text_to_sql_query_result"
 
 
 class ExecutorHolder:
@@ -70,7 +79,10 @@ def _serialize_rows(query_result: "QueryResult") -> list[dict[str, Any]]:
     ]
 
 
-async def query_database_tool(sql_query: str) -> dict[str, Any]:
+async def query_database_tool(
+    sql_query: str,
+    tool_context: ToolContext | None = None,
+) -> dict[str, Any]:
     """Run a DuckDB SQL query against the water database and return the result.
 
     Args:
@@ -79,8 +91,22 @@ async def query_database_tool(sql_query: str) -> dict[str, Any]:
     Returns:
         dict: ``status`` plus either ``columns``/``rows`` on success or
         ``error_details`` on failure. Results are capped at 100 rows.
+
+    ``tool_context`` is injected by ADK (excluded from the LLM-visible schema, so
+    the prompt is untouched) and is ``None`` for direct/eval callers, which keeps
+    this tool's behaviour identical outside the agent. On success it stashes the
+    executed query's result into session state (D4) for the ``TextToSqlAgentTool``
+    wrapper to surface to the chat (FR15).
     """
-    return await _validated_execute(sql_query)
+    result = await _validated_execute(sql_query)
+    if tool_context is not None and result.get(_STATUS) == _SUCCESS:
+        tool_context.state[QUERY_RESULT_STATE_KEY] = {
+            "sql_executed": sql_query,
+            "columns": result.get("columns", []),
+            "rows": result.get("rows", []),
+            _TRUNCATED: result.get(_TRUNCATED, False),
+        }
+    return result
 
 
 async def _validated_execute(sql_query: str) -> dict[str, Any]:
@@ -116,7 +142,7 @@ async def _execute_and_serialize(sql_query: str) -> dict[str, Any]:
         "rows": rows,
     }
     if len(query_output.rows) > _MAX_QUERY_ROWS:
-        response["result_is_likely_truncated"] = True
+        response[_TRUNCATED] = True
 
     logger.debug("DuckDB query succeeded", row_count=len(rows))
     return response

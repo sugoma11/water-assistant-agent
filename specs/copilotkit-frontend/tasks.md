@@ -26,7 +26,7 @@ context · **US7** visitor reaches only sign-in.
   (`WATER_ASSISTANT_ADMIN_API_KEY`, optional → admin API fails closed) and
   `auth_token_ttl_days` (`WATER_ASSISTANT_AUTH_TOKEN_TTL_DAYS`, default 7, C8); remove
   `user_id`/`WATER_ASSISTANT_USER_ID` (D5, D6, FR2).
-- [ ] T002 Create `src/water_assistant_agent/assistant/db.py`: SQLAlchemy engine +
+- [x] T002 Create `src/water_assistant_agent/assistant/db.py`: SQLAlchemy engine +
   sessionmaker over `session_db_url`; `app_users` and `conversations` table metadata
   (schema per plan Data Model); `metadata.create_all` helper called at startup (OQ3, no
   Alembic yet). Add `sqlalchemy` and `argon2-cffi` as explicit deps in

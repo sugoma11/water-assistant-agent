@@ -46,7 +46,7 @@ context · **US7** visitor reaches only sign-in.
   /auth/login` (email+password → `{access_token, expires_at}`, uniform 401 on bad
   credentials) and `GET /auth/me` (current user, session probe) (FR4, C1). (depends:
   T003)
-- [ ] T006 Update `src/water_assistant_agent/assistant/middlewares.py`: add
+- [x] T006 Update `src/water_assistant_agent/assistant/middlewares.py`: add
   `/auth/login` and the `/admin` prefix to `BearerTokenMiddleware`'s public routes (admin
   has its own key guard); make the middleware mandatory — no skip-with-warning when the
   secret is unset (FR5, FR6, D5). (depends: T001)

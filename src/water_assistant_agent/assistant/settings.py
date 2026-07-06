@@ -20,6 +20,9 @@ class AssistantSettings(BaseSettings):
         env_prefix="WATER_ASSISTANT_",
         env_file=".env",
         extra="ignore",
+        # Allow population by field name in addition to the env aliases, so
+        # settings_override / tests can pass e.g. jwt_secret_key= directly.
+        populate_by_name=True,
     )
 
     # --- Models (all routed through litellm via ADK's LiteLlm wrapper) ---

@@ -18,7 +18,7 @@ from datetime import datetime
 
 from fastapi import Request
 from sqlalchemy import DateTime, ForeignKey, String, create_engine, func
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -83,17 +83,38 @@ class Conversation(Base):
     user: Mapped[AppUser] = relationship(back_populates="conversations")
 
 
-def create_db_engine(db_url: str) -> Engine:
-    """Build a SQLAlchemy engine for *db_url*.
+# ADK's DatabaseSessionService drives the *same* URL with an async engine, so
+# session_db_url is configured with an async driver (sqlite+aiosqlite, asyncpg…).
+# Our ORM is synchronous, so we swap the async driver for its sync counterpart —
+# both engines then point at the same database (A1).
+_ASYNC_TO_SYNC_DRIVER: dict[str, str] = {
+    "sqlite+aiosqlite": "sqlite",
+    "postgresql+asyncpg": "postgresql",
+    "mysql+aiomysql": "mysql",
+}
 
-    ``check_same_thread=False`` is applied for SQLite so the engine is usable
-    from FastAPI's threadpool workers (dev default); it is inert for other
-    dialects.
+
+def to_sync_url(db_url: str) -> str:
+    """Return *db_url* with any known async driver swapped for its sync driver."""
+    url = make_url(db_url)
+    sync_driver = _ASYNC_TO_SYNC_DRIVER.get(url.drivername)
+    if sync_driver is not None:
+        url = url.set(drivername=sync_driver)
+    return url.render_as_string(hide_password=False)
+
+
+def create_db_engine(db_url: str) -> Engine:
+    """Build a synchronous SQLAlchemy engine for *db_url*.
+
+    Accepts the configured (possibly async-driver) URL and derives the sync
+    driver. ``check_same_thread=False`` is applied for SQLite so the engine is
+    usable from FastAPI's threadpool workers; it is inert for other dialects.
     """
+    sync_url = to_sync_url(db_url)
     connect_args: dict[str, object] = {}
-    if db_url.startswith("sqlite"):
+    if sync_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
-    return create_engine(db_url, connect_args=connect_args, future=True)
+    return create_engine(sync_url, connect_args=connect_args, future=True)
 
 
 def create_session_factory(engine: Engine) -> sessionmaker[Session]:

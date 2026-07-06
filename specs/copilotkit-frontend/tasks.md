@@ -97,18 +97,18 @@ context · **US7** visitor reaches only sign-in.
 
 ## Phase 3 — FR15 data seam (backend) — depends on Phase 2
 
-- [ ] T015 In `src/water_assistant_agent/assistant/agents/root_agent/tools/warehouse.py`:
+- [x] T015 In `src/water_assistant_agent/assistant/tools/warehouse.py`:
   add an ADK-injected `tool_context: ToolContext` param to `query_database_tool`
   (excluded from the LLM-visible schema — prompts untouched) that writes its success
   result (`sql_executed`, `columns`, `rows`, truncation flag) into session state (D4).
   Verify direct/eval callers that pass nothing still work (param inert outside ADK,
   Non-Goal regression). (depends: T012)
-- [ ] T016 Add an `AgentTool` subclass under `agents/root_agent/` (same tool name
+- [x] T016 Add an `AgentTool` subclass under `agents/root_agent/` (same tool name
   `text_to_sql_agent`, root prompt untouched) that merges the state-captured query
   result into the returned tool result:
   `{"status","sql","reasoning","results":{"columns","rows"}}`; wire it in place of the
   plain `AgentTool` (D4, FR15, R3). (depends: T015)
-- [ ] T017 Live agent-run smoke (Phase 3): one real text-to-SQL question, inspect the
+- [x] T017 Live agent-run smoke (Phase 3): one real text-to-SQL question, inspect the
   AG-UI event stream for the enriched `text_to_sql_agent` tool result carrying SQL +
   rows, and confirm it survives a history-snapshot replay (FR15, SC8). Regression: one
   standalone eval smoke run confirms the text-to-SQL pipeline itself is unchanged

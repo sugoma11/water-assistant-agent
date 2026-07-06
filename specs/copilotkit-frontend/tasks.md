@@ -31,7 +31,7 @@ context · **US7** visitor reaches only sign-in.
   (schema per plan Data Model); `metadata.create_all` helper called at startup (OQ3, no
   Alembic yet). Add `sqlalchemy` and `argon2-cffi` as explicit deps in
   `pyproject.toml`. (depends: T001)
-- [ ] T003 Create `src/water_assistant_agent/assistant/auth/` package: argon2 password
+- [x] T003 Create `src/water_assistant_agent/assistant/auth/` package: argon2 password
   hash/verify helpers; HS256 JWT mint (`sub`, `email`, `exp` = now + `auth_token_ttl`)
   and verify helpers over `jwt_secret_key`; a `current_user` FastAPI dependency that
   reads the claims `BearerTokenMiddleware` stored on `request.state.token_claims` and

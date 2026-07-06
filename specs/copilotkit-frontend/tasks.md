@@ -126,7 +126,7 @@ context · **US7** visitor reaches only sign-in.
   httpOnly, `SameSite=Lax`, `Secure`-in-prod cookie mirroring `expires_at` (D2, NFR1);
   `web/middleware.ts` route guard sending unauthenticated requests to `/login` (FR5,
   US7). (depends: T018)
-- [ ] T020 `web/app/api/backend/[...]` authenticated streaming proxy to the FastAPI REST
+- [x] T020 `web/app/api/backend/[...]` authenticated streaming proxy to the FastAPI REST
   routers (copies cookie → `Authorization: Bearer`, no SSE buffering); 401 from any
   proxy call clears the cookie and redirects to `/login` without touching conversation
   state (EC1, EC5, NFR2). (depends: T019)

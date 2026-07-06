@@ -36,7 +36,7 @@ context · **US7** visitor reaches only sign-in.
   and verify helpers over `jwt_secret_key`; a `current_user` FastAPI dependency that
   reads the claims `BearerTokenMiddleware` stored on `request.state.token_claims` and
   does the EC5 per-request user-existence check (NFR1, D2). (depends: T002)
-- [ ] T004 Create `src/water_assistant_agent/assistant/routers/admin_users.py`: FR1
+- [x] T004 Create `src/water_assistant_agent/assistant/routers/admin_users.py`: FR1
   CRUD (`POST/GET/PATCH/DELETE /admin/users`) authorized only by `X-Admin-API-Key`
   compared with `secrets.compare_digest`; 503 fail-closed when `admin_api_key` unset
   (EC6); 409 on duplicate email (EC4); responses never include password hashes and the

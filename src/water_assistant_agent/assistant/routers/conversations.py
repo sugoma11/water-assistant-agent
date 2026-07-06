@@ -9,11 +9,15 @@ and the backing ADK session (C5).
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Annotated
+import uuid
+from datetime import UTC, datetime
+from typing import Annotated, Any
 
 import structlog
+from ag_ui_adk import EventTranslator
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from google.adk.events import Event
+from google.genai import types
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -56,6 +60,14 @@ class ConversationResponse(BaseModel):
     title: str
     created_at: datetime
     last_activity_at: datetime
+
+
+class PartialAppend(BaseModel):
+    content: str
+
+
+class MessagesResponse(BaseModel):
+    messages: list[dict[str, Any]]
 
 
 def _get_owned_or_404(db: Session, user_id: str, conversation_id: str) -> Conversation:
@@ -148,3 +160,71 @@ async def delete_conversation(
     db.delete(conv)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+async def _get_adk_session(request: Request, user_id: str, session_id: str) -> Any:
+    """Fetch the backing ADK session (keyed by the verified user id), or ``None``."""
+    session_service = request.app.state.session_service
+    app_name = request.app.state.settings.app_name
+    return await session_service.get_session(
+        app_name=app_name, user_id=user_id, session_id=session_id
+    )
+
+
+@router.get("/{conversation_id}/messages", response_model=MessagesResponse)
+async def get_messages(
+    conversation_id: str,
+    request: Request,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> MessagesResponse:
+    """Return the conversation's AG-UI-shaped message history (FR9 fallback, R1).
+
+    Reuses ``ag_ui_adk``'s :meth:`EventTranslator.translate_to_messages` over the
+    stored ADK session events — the same translation the empty-run
+    ``MessagesSnapshotEvent`` uses — so the REST fallback and the streaming path
+    agree. Ownership-gated per EC3.
+    """
+    _get_owned_or_404(db, user.id, conversation_id)
+    session = await _get_adk_session(request, user.id, conversation_id)
+    adk_events = list(getattr(session, "events", []) or [])
+    messages = await EventTranslator().translate_to_messages(
+        adk_events=adk_events,
+        thread_id=conversation_id,
+        run_id=str(uuid.uuid4()),
+    )
+    return MessagesResponse(
+        messages=[m.model_dump(by_alias=True, exclude_none=True) for m in messages]
+    )
+
+
+@router.post("/{conversation_id}/partial", status_code=status.HTTP_201_CREATED)
+async def append_partial(
+    conversation_id: str,
+    payload: PartialAppend,
+    request: Request,
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    """Persist a stopped answer's received text as an assistant event (C7, R2).
+
+    When the client aborts an SSE run the in-flight assistant turn may never be
+    committed to the ADK session; this appends the partial text so it survives a
+    reload. Ownership-gated per EC3; 404 when no ADK session exists yet (EC8).
+    """
+    conv = _get_owned_or_404(db, user.id, conversation_id)
+    session = await _get_adk_session(request, user.id, conversation_id)
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
+        )
+    app_name = request.app.state.settings.app_name
+    event = Event(
+        invocation_id=str(uuid.uuid4()),
+        author=app_name,
+        content=types.Content(role="model", parts=[types.Part(text=payload.content)]),
+    )
+    await request.app.state.session_service.append_event(session, event)
+    conv.last_activity_at = datetime.now(UTC)
+    db.commit()
+    return Response(status_code=status.HTTP_201_CREATED)

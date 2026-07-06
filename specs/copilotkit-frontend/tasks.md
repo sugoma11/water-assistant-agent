@@ -61,36 +61,36 @@ context · **US7** visitor reaches only sign-in.
 
 ## Phase 2 — Conversations & verified agent identity (backend) — depends on Phase 1
 
-- [ ] T009 Create `src/water_assistant_agent/assistant/routers/conversations.py`:
+- [x] T009 Create `src/water_assistant_agent/assistant/routers/conversations.py`:
   `GET /conversations` (own only, last-activity desc, FR8); `POST /conversations`
   (`{first_message?}` → `{id, title}`, title truncated from first message or default —
   C6/OQ2, EC8); `PATCH /conversations/{id}` (rename); `DELETE /conversations/{id}`
   (row + ADK session). All queries filter by the verified user id in SQL; foreign or
   unknown id → uniform 404 (FR7, FR13, EC3, NFR3). (depends: T007)
-- [ ] T010 Add the history + partial endpoints to `conversations.py`:
+- [x] T010 Add the history + partial endpoints to `conversations.py`:
   `GET /conversations/{id}/messages` returning AG-UI-shaped history by reusing
   `ag_ui_adk`'s `EventTranslator.translate_to_messages` over the stored ADK session
   (FR9 fallback, R1); `POST /conversations/{id}/partial` appending a stopped answer's
   received text as an assistant event via `session_service.append_event` (C7, R2). Both
   ownership-gated per EC3. (depends: T009)
-- [ ] T011 Create `src/water_assistant_agent/assistant/routers/agent.py`: a custom
+- [x] T011 Create `src/water_assistant_agent/assistant/routers/agent.py`: a custom
   AG-UI endpoint replacing `add_adk_fastapi_endpoint` — ownership check on `thread_id`
   against `conversations` (uniform 404, EC3, blocks the silent-empty-session hole);
   overwrite the forwarded-props identity slot with `request.state.token_claims["sub"]`
   (client-supplied identity discarded, FR6); touch `last_activity_at`; stream SSE
   unbuffered exactly as the upstream endpoint (NFR2). Construct `ADKAgent` with a
   `user_id_extractor` reading that injected slot (raises if absent). (depends: T009)
-- [ ] T012 Wire Phase 2 routers into `bootstrap.py`: register conversations + custom
+- [x] T012 Wire Phase 2 routers into `bootstrap.py`: register conversations + custom
   agent endpoint, remove the old `add_adk_fastapi_endpoint` mount and the static
   `user_id` param on `ADKAgent`; ensure the conversations DB and ADK session service
   share the one `session_db_url` engine (D3, A1). (depends: T010, T011)
-- [ ] T013 API tests for Phase 2: two-user isolation matrix with *valid* credentials —
+- [x] T013 API tests for Phase 2: two-user isolation matrix with *valid* credentials —
   sidebar list, foreign `GET/PATCH/DELETE`, foreign `thread_id` on the agent endpoint,
   all uniform-404 (FR13, NFR3, SC2, EC3); unauthenticated rejection of every
   chat/conversation route (FR5, SC6); identity-injection unit test (client-supplied
   props overridden, stub agent) (FR6); deleted-user revocation (EC5); delete-then-repost
   proves no stale-cache resurrection (R5, EC8). (depends: T012)
-- [ ] T014 Curl SSE smoke run against the agent endpoint: confirm streaming still flows
+- [x] T014 Curl SSE smoke run against the agent endpoint: confirm streaming still flows
   unbuffered through the middleware stack (first tokens before completion) and history
   restore works on an empty-`messages` run — `MessagesSnapshotEvent` from the ADK
   session (NFR2, FR9, R4). (depends: T012)

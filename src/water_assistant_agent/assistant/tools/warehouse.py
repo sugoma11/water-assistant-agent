@@ -34,10 +34,12 @@ _TRUNCATED = "result_is_likely_truncated"
 
 # Session-state key under which a successful query stashes its executed result so
 # the ``TextToSqlAgentTool`` wrapper can merge it into the tool result surfaced to
-# the chat (D4, FR15). The ``temp:`` prefix keeps it invocation-scoped: ADK applies
-# it in-memory during the run (so the wrapper can read it) but trims it before
-# persisting, so the full rows never bloat the stored session state.
-QUERY_RESULT_STATE_KEY = "temp:text_to_sql_query_result"
+# the chat (D4, FR15). It is a plain (session-scoped) key on purpose: the wrapper
+# reads it via ``AgentTool``'s state-delta forwarding, and a ``temp:`` key would be
+# trimmed from the event delta before that forwarding runs. A single slot,
+# overwritten per query and bounded by the 100-row cap, so persistence is cheap;
+# what the chat actually replays is the enriched tool-result event, not this state.
+QUERY_RESULT_STATE_KEY = "text_to_sql_query_result"
 
 
 class ExecutorHolder:

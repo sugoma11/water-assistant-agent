@@ -117,16 +117,31 @@ def test_enrich_merges_columns_and_rows() -> None:
 @pytest.mark.parametrize(
     ("raw", "captured"),
     [
-        # No captured result → plain answer passes through unchanged.
+        # No captured result (no query ran) → plain answer passes through unchanged.
         (json.dumps({"status": "success", "sql": "x", "reasoning": "y"}), None),
-        # Non-success status → no merge (plain fallback).
+        ("just a chat answer", None),
+        # Explicit non-success JSON → the error is respected, not masked (plain fallback).
         (json.dumps({"status": "error", "error_details": "boom"}), {"columns": [], "rows": []}),
-        # Non-JSON plain-text answer → passes through untouched.
-        ("just a chat answer", {"columns": ["a"], "rows": [{"a": 1}]}),
     ],
 )
 def test_enrich_falls_back_to_plain(raw: str, captured: dict | None) -> None:
     assert _enrich_tool_result(raw, captured) == raw
+
+
+def test_enrich_synthesizes_contract_from_prose_answer() -> None:
+    # Real models often answer in prose; FR15 must still fire when a query ran.
+    captured = {
+        "sql_executed": "SELECT count(*) FROM outflow",
+        "columns": ["n"],
+        "rows": [{"n": 15867}],
+    }
+    merged = _enrich_tool_result("There are 15,867 records.", captured)
+    assert merged == {
+        "status": "success",
+        "sql": "SELECT count(*) FROM outflow",
+        "reasoning": "There are 15,867 records.",
+        "results": {"columns": ["n"], "rows": [{"n": 15867}]},
+    }
 
 
 def test_enrich_omits_truncation_flag_when_absent() -> None:

@@ -25,21 +25,34 @@ from typing_extensions import override
 from water_assistant_agent.assistant.tools.warehouse import QUERY_RESULT_STATE_KEY
 
 
-def _enrich_tool_result(raw: Any, captured: dict[str, Any] | None) -> Any:
-    """Merge the captured query result into the sub-agent's JSON tool result.
-
-    Returns *raw* unchanged when there is nothing to merge — no captured result
-    (the answer used no query, or the query failed), a non-success status, or a
-    result that is not the expected JSON object — so plain answers fall back to
-    unmodified chat text (FR15).
-    """
-    if captured is None or not isinstance(raw, str):
-        return raw
+def _try_json(raw: Any) -> Any:
+    if not isinstance(raw, str):
+        return None
     try:
-        parsed = json.loads(raw)
+        return json.loads(raw)
     except (json.JSONDecodeError, TypeError):
-        return raw
-    if not isinstance(parsed, dict) or parsed.get("status") != "success":
+        return None
+
+
+def _enrich_tool_result(raw: Any, captured: dict[str, Any] | None) -> Any:
+    """Surface the executed query's results in the tool result (D4, FR15).
+
+    Enrichment keys off the *captured query state*, not the sub-agent's output
+    format: real models often answer in prose rather than the instructed
+    ``{"status","sql","reasoning"}`` JSON, and FR15 must still fire whenever a
+    query actually ran.
+
+    * No captured result (the answer used no query, or the query failed) →
+      *raw* is returned unchanged, so plain answers stay plain chat text.
+    * Sub-agent returned success JSON → ``results`` is merged into it, preserving
+      its ``sql``/``reasoning``.
+    * Sub-agent returned an explicit non-success status → respected as a plain
+      fallback (the error is not masked by a stale capture).
+    * Sub-agent answered in prose alongside a successful query → the
+      ``{"status","sql","reasoning","results"}`` contract is synthesized from the
+      captured SQL and the prose kept as the reasoning.
+    """
+    if captured is None:
         return raw
     results: dict[str, Any] = {
         "columns": captured.get("columns", []),
@@ -47,8 +60,19 @@ def _enrich_tool_result(raw: Any, captured: dict[str, Any] | None) -> Any:
     }
     if captured.get("result_is_likely_truncated"):
         results["result_is_likely_truncated"] = True
-    parsed["results"] = results
-    return parsed
+
+    parsed = raw if isinstance(raw, dict) else _try_json(raw)
+    if isinstance(parsed, dict):
+        if parsed.get("status") != "success":
+            return raw
+        return {**parsed, "results": results}
+
+    return {
+        "status": "success",
+        "sql": captured.get("sql_executed"),
+        "reasoning": raw if isinstance(raw, str) else "",
+        "results": results,
+    }
 
 
 class TextToSqlAgentTool(AgentTool):

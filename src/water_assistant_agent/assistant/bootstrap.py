@@ -17,8 +17,7 @@ import dataclasses
 from typing import Final
 
 import structlog
-from ag_ui.core import RunAgentInput
-from ag_ui_adk import ADKAgent, add_adk_fastapi_endpoint
+from ag_ui_adk import ADKAgent
 from asgi_correlation_id import CorrelationIdMiddleware
 from fastapi import FastAPI, status
 from google.adk.agents.llm_agent import Agent
@@ -40,7 +39,11 @@ from water_assistant_agent.assistant.middlewares import (
     BearerTokenMiddleware,
     LoggingMiddleware,
 )
-from water_assistant_agent.assistant.routers import admin_users, auth
+from water_assistant_agent.assistant.routers import admin_users, auth, conversations
+from water_assistant_agent.assistant.routers.agent import (
+    add_agent_endpoint,
+    extract_verified_user_id,
+)
 from water_assistant_agent.assistant.settings import AssistantSettings, get_settings
 
 _DB_POOL_SIZE: Final[int] = 10
@@ -48,22 +51,7 @@ _DB_MAX_OVERFLOW: Final[int] = 20
 _DB_POOL_TIMEOUT: Final[int] = 30
 _DB_POOL_RECYCLE: Final[int] = 1800
 
-# Forwarded-props slot carrying the server-verified user id. The custom AG-UI
-# endpoint (Phase 2) writes ``token_claims["sub"]`` here; the extractor below
-# reads it. Until that endpoint lands the plain ADK endpoint leaves it empty, so
-# a chat run without an injected identity fails closed (FR6).
-_VERIFIED_USER_ID_PROP: Final[str] = "user_id"
-
 logger = structlog.get_logger(__name__)
-
-
-def _extract_verified_user_id(input_data: RunAgentInput) -> str:
-    """ADK ``user_id_extractor``: read the injected verified id, or raise (FR6)."""
-    props = input_data.forwarded_props
-    user_id = props.get(_VERIFIED_USER_ID_PROP) if isinstance(props, dict) else None
-    if not user_id:
-        raise ValueError("Verified user id missing from forwarded props")
-    return str(user_id)
 
 
 def _require_service_config(settings: AssistantSettings) -> None:
@@ -120,16 +108,16 @@ def _add_adk_endpoint(
     agent: Agent,
     session_service: BaseSessionService,
 ) -> None:
-    """Mount the AG-UI ADK endpoint using a verified-identity extractor (FR6)."""
+    """Mount the custom AG-UI endpoint using a verified-identity extractor (FR6)."""
     adk_agent = ADKAgent(
         adk_agent=agent,
         app_name=settings.app_name,
-        user_id_extractor=_extract_verified_user_id,
+        user_id_extractor=extract_verified_user_id,
         session_service=session_service,
         session_timeout_seconds=None,  # never expire sessions
         use_in_memory_services=True,  # in-memory artifact/memory; DB session above
     )
-    add_adk_fastapi_endpoint(app, adk_agent, path="/")
+    add_agent_endpoint(app, adk_agent, path="/")
 
 
 def create_bootstrap(
@@ -179,6 +167,7 @@ def create_bootstrap(
     )
     app.include_router(admin_users.router)
     app.include_router(auth.router)
+    app.include_router(conversations.router)
 
     _add_adk_endpoint(app, settings, root_agent, session_service)
 

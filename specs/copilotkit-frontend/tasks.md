@@ -148,7 +148,7 @@ context · **US7** visitor reaches only sign-in.
   verify against the pinned CopilotKit version whether it (re)connects per `threadId`
   and applies the snapshot — if not, fall back to `GET /conversations/{id}/messages` +
   CopilotKit's message-setting API (R1, FR9, US6). (depends: T023)
-- [ ] T025 Stop control + partial durability: stop button aborts the run (CopilotKit
+- [x] T025 Stop control + partial durability: stop button aborts the run (CopilotKit
   stop API), keeps the received partial in the UI, and persists it via
   `POST /conversations/{id}/partial`; verify stop → reload → partial present (C7, FR10,
   R2). (depends: T024)

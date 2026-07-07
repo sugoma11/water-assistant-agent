@@ -16,10 +16,10 @@
  * (not GQL `Message` instances) directly to `agent.setMessages`, so no
  * conversion is needed and the same events that stream live also restore here.
  */
-import { useEffect, useRef, useState } from "react";
-import { useCopilotChatInternal } from "@copilotkit/react-core";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { OnStopGeneration, useCopilotChatInternal } from "@copilotkit/react-core";
 import { CopilotChat } from "@copilotkit/react-ui";
-import { UnauthorizedError, fetchHistory } from "@/lib/api";
+import { UnauthorizedError, appendPartial, fetchHistory } from "@/lib/api";
 
 type ChatViewProps = {
   conversationId: string;
@@ -58,6 +58,33 @@ export function ChatView({ conversationId }: ChatViewProps) {
     };
   }, [conversationId, setMessages]);
 
+  // Stop control + partial durability (T025, C7, FR10, R2). CopilotChat's stop
+  // button calls this before aborting the run; the streamed partial stays in the
+  // UI (the agent keeps its messages), and we persist the received assistant
+  // text via POST /partial so it also survives a reload — the aborted ADK turn
+  // may never have been committed on its own.
+  const handleStop = useCallback<OnStopGeneration>(
+    ({ messages }) => {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const message = messages[i] as { role?: string; content?: unknown };
+        if (message.role !== "assistant") {
+          continue;
+        }
+        const text =
+          typeof message.content === "string" ? message.content.trim() : "";
+        if (text) {
+          void appendPartial(conversationId, text).catch((err) => {
+            if (!(err instanceof UnauthorizedError)) {
+              console.error("Failed to persist the stopped answer", err);
+            }
+          });
+        }
+        break;
+      }
+    },
+    [conversationId],
+  );
+
   return (
     <div style={{ height: "100%", minHeight: 0, position: "relative" }}>
       {restoring ? (
@@ -67,6 +94,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
       ) : null}
       <CopilotChat
         className="wa-chat"
+        onStopGeneration={handleStop}
         labels={{
           title: "Water Assistant",
           initial: "Ask about green-roof sensor data or the water warehouse.",

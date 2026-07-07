@@ -156,7 +156,7 @@ context · **US7** visitor reaches only sign-in.
   the `text_to_sql_agent` tool call — `status=success` → SQL as highlighted code block +
   results as a table (note truncation), non-success/missing results → plain markdown
   fallback (FR15, C9, SC8). (depends: T024, T017)
-- [ ] T027 Edge-case UX: EC2 clear per-message error when the agent backend is
+- [x] T027 Edge-case UX: EC2 clear per-message error when the agent backend is
   unreachable (conversation intact, retry works); EC7 refetch conversation list on
   window focus so two tabs converge; EC8 empty conversation never breaks the list or
   switching. (depends: T023)

@@ -28,9 +28,10 @@ import { TextToSqlResult } from "@/components/TextToSqlResult";
 
 type ChatViewProps = {
   conversationId: string;
+  onClearError?: () => void;
 };
 
-export function ChatView({ conversationId }: ChatViewProps) {
+export function ChatView({ conversationId, onClearError }: ChatViewProps) {
   const { setMessages } = useCopilotChatInternal();
   const restored = useRef(false);
   const [restoring, setRestoring] = useState(true);
@@ -103,7 +104,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
   );
 
   return (
-    <div style={{ height: "100%", minHeight: 0, position: "relative" }}>
+    <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
       {restoring ? (
         <div style={restoringBadgeStyle} aria-hidden>
           Restoring…
@@ -112,6 +113,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
       <CopilotChat
         className="wa-chat"
         onStopGeneration={handleStop}
+        onSubmitMessage={() => onClearError?.()}
         labels={{
           title: "Water Assistant",
           initial: "Ask about green-roof sensor data or the water warehouse.",

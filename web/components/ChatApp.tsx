@@ -41,6 +41,7 @@ export function ChatApp() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [busy, setBusy] = useState(false);
+  const [agentError, setAgentError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,6 +57,39 @@ export function ChatApp() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // EC7: refetch the list when the window regains focus so two tabs converge —
+  // a conversation created/renamed/deleted elsewhere shows up here. If the
+  // active conversation vanished, fall back to the most recent (or none, EC8).
+  useEffect(() => {
+    function refresh() {
+      if (document.visibilityState === "hidden") return;
+      void guarded(async () => {
+        const list = await listConversations();
+        setConversations(list);
+        setActiveId((current) =>
+          current && list.some((c) => c.id === current)
+            ? current
+            : (list[0]?.id ?? null),
+        );
+      }).catch(() => {
+        /* transient; the list will refresh on the next focus */
+      });
+    }
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, []);
+
+  // EC2: an agent-run failure is scoped to its conversation, so switching away
+  // clears the error banner (retrying in place clears it via onSubmitMessage).
+  const selectConversation = useCallback((id: string) => {
+    setAgentError(null);
+    setActiveId(id);
   }, []);
 
   const onNew = useCallback(async () => {
@@ -113,20 +147,44 @@ export function ChatApp() {
           conversations={conversations}
           activeId={activeId}
           busy={busy}
-          onSelect={setActiveId}
+          onSelect={selectConversation}
           onNew={() => void onNew()}
           onRename={(id, title) => void onRename(id, title)}
           onDelete={(id) => void onDelete(id)}
         />
         <main style={mainStyle}>
+          {agentError ? (
+            <div role="alert" style={bannerStyle}>
+              <span>{agentError}</span>
+              <button
+                type="button"
+                onClick={() => setAgentError(null)}
+                style={bannerDismissStyle}
+                aria-label="Dismiss error"
+              >
+                ✕
+              </button>
+            </div>
+          ) : null}
           {activeId ? (
             <CopilotKit
               key={activeId}
               runtimeUrl={COPILOTKIT_RUNTIME_URL}
               agent={AGENT_NAME}
               threadId={activeId}
+              onError={(event) => {
+                if (event.type === "error") {
+                  setAgentError(
+                    "The assistant is unavailable right now. Your conversation is " +
+                      "safe — try sending your message again.",
+                  );
+                }
+              }}
             >
-              <ChatView conversationId={activeId} />
+              <ChatView
+                conversationId={activeId}
+                onClearError={() => setAgentError(null)}
+              />
             </CopilotKit>
           ) : (
             <Centered>Select a conversation, or start a new one.</Centered>
@@ -185,6 +243,30 @@ const mainStyle: CSSProperties = {
   flex: 1,
   minWidth: 0,
   minHeight: 0,
+  display: "flex",
+  flexDirection: "column",
+};
+
+const bannerStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+  padding: "0.6rem 1rem",
+  background: "rgba(248, 113, 113, 0.12)",
+  borderBottom: "1px solid rgba(248, 113, 113, 0.4)",
+  color: "#fca5a5",
+  fontSize: "0.85rem",
+  flexShrink: 0,
+};
+
+const bannerDismissStyle: CSSProperties = {
+  background: "transparent",
+  border: "none",
+  color: "inherit",
+  cursor: "pointer",
+  fontSize: "0.85rem",
+  padding: "0.15rem 0.35rem",
 };
 
 const logoutStyle: CSSProperties = {

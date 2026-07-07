@@ -175,15 +175,35 @@ context · **US7** visitor reaches only sign-in.
   (reload-then-follow-up keeps context), SC6 (unauth rejected, no signup reachable), SC7
   (fresh user → empty list), SC8 (text-to-SQL SQL block + results table). (depends:
   T025, T026, T027, T028)
-- [ ] T030 Run the retrospective skill to review all implemented changes for code
+- [x] T030 Run the retrospective skill to review all implemented changes for code
   quality and architectural decisions
   (`specs/copilotkit-frontend/retrospective.md`). (depends: T029)
+
+## Phase 7 — Retrospective Fixes (from `retrospective.md`)
+
+- [ ] T031 [R-001, 🟡] Extract a single owned-conversation-or-404 helper and use it in
+  both `routers/conversations.py` (`_get_owned_or_404`) and the inlined ownership gate in
+  `routers/agent.py:75-84`, so the per-user isolation predicate (FR13/NFR3) lives in one
+  place. (depends: T030)
+- [ ] T032 [R-002, 🟡] Switch `routers/agent.py` from stdlib `logging` to
+  `structlog.get_logger`, and log the RUN_ERROR path with
+  `logger.exception("ADKAgent run failed", log_context="agent")` so it carries the
+  correlation-id contextvars like every other module. (depends: T030)
+- [ ] T033 [R-003, 🟢] Add a shared `web/lib/` auth-guard helper (`requireToken()` +
+  `unauthorized()`) and use it in `web/app/api/backend/[...path]/route.ts` and
+  `web/app/api/copilotkit/route.ts` to remove the duplicated cookie→Bearer / 401 boilerplate.
+  (depends: T030)
+- [ ] T034 [R-004, 🟢] Update the stale `bootstrap.py` module docstring to reflect mandatory
+  auth (D5) and the custom ownership-gated `add_agent_endpoint` (FR6). (depends: T030)
+- [ ] T035 [R-005, 🟢] Anchor `middlewares.py` `_PUBLIC_PREFIXES` matching (trailing slash
+  or first-segment check) so no future `/admin*`-prefixed route can accidentally bypass JWT.
+  (depends: T030)
 
 ---
 
 ## Summary
 
-- **Total tasks:** 30
+- **Total tasks:** 35 (30 delivered T001–T030; T031–T035 are retrospective fixes)
 - **Phases:** Auth & user foundation (T001–T008) → Conversations & verified identity
   (T009–T014) → FR15 data seam (T015–T017) → Frontend scaffold (T018–T022) → Chat UX
   (T023–T027) → E2E validation & docs (T028–T030).

@@ -9,7 +9,6 @@
  * streamed straight back through the runtime, unbuffered (NFR2).
  */
 import { randomUUID } from "node:crypto";
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import {
   CopilotRuntime,
@@ -17,20 +16,17 @@ import {
   copilotRuntimeNextJSAppRouterEndpoint,
 } from "@copilotkit/runtime";
 import { HttpAgent } from "@ag-ui/client";
-import { AUTH_COOKIE, BACKEND_URL } from "@/lib/config";
+import { BACKEND_URL } from "@/lib/config";
 import { AGENT_NAME, COPILOTKIT_RUNTIME_URL } from "@/lib/constants";
+import { requireToken } from "@/lib/route-auth";
 
 // No LLM adapter: the run is fully driven by the backend AG-UI agent.
 const serviceAdapter = new ExperimentalEmptyAdapter();
 
 export async function POST(req: NextRequest) {
-  const store = await cookies();
-  const token = store.get(AUTH_COOKIE)?.value;
-  if (!token) {
-    return NextResponse.json(
-      { error: "Not authenticated", redirect: "/login" },
-      { status: 401 },
-    );
+  const token = await requireToken();
+  if (token instanceof NextResponse) {
+    return token;
   }
 
   const requestId = req.headers.get("x-request-id") ?? randomUUID();

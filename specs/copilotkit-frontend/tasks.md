@@ -189,7 +189,7 @@ context · **US7** visitor reaches only sign-in.
   `structlog.get_logger`, and log the RUN_ERROR path with
   `logger.exception("ADKAgent run failed", log_context="agent")` so it carries the
   correlation-id contextvars like every other module. (depends: T030)
-- [ ] T033 [R-003, 🟢] Add a shared `web/lib/` auth-guard helper (`requireToken()` +
+- [x] T033 [R-003, 🟢] Add a shared `web/lib/` auth-guard helper (`requireToken()` +
   `unauthorized()`) and use it in `web/app/api/backend/[...path]/route.ts` and
   `web/app/api/copilotkit/route.ts` to remove the duplicated cookie→Bearer / 401 boilerplate.
   (depends: T030)

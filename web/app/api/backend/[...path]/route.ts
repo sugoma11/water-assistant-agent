@@ -11,21 +11,14 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { AUTH_COOKIE, BACKEND_URL } from "@/lib/config";
-import { getAuthToken } from "@/lib/auth";
+import { requireToken, unauthorized } from "@/lib/route-auth";
 
 type RouteContext = { params: Promise<{ path: string[] }> };
 
-function unauthorized(): NextResponse {
-  return NextResponse.json(
-    { error: "Not authenticated", redirect: "/login" },
-    { status: 401 },
-  );
-}
-
 async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
-  const token = await getAuthToken();
-  if (!token) {
-    return unauthorized();
+  const token = await requireToken();
+  if (token instanceof NextResponse) {
+    return token;
   }
 
   const target = `${BACKEND_URL}/${path.join("/")}${req.nextUrl.search}`;

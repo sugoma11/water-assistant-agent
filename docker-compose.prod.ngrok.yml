@@ -1,0 +1,51 @@
+# Opt-in HTTPS front for the prod stack via ngrok. Layer it onto the prod compose:
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.prod.ngrok.yml up --build
+#
+# Why: the frontend runs NODE_ENV=production, so the auth cookie is issued with
+# `Secure` (NFR1/D2) and browsers only send it over HTTPS. ngrok terminates TLS
+# on a public https URL and forwards to the `web` container, so the browser sees
+# an https origin and the cookie sticks — no local TLS proxy needed.
+#
+# Only `web` is tunneled: the browser talks solely to the frontend, which proxies
+# to the backend server-side over the compose network (NFR1). Set NGROK_AUTHTOKEN
+# in .env (https://dashboard.ngrok.com). The public URL + a request inspector are
+# shown at http://localhost:4040.
+#
+# NOTE (ngrok free): the first browser visit shows a one-time interstitial
+# ("Visit Site"); click through once and the app (including its fetch/XHR calls)
+# works for the rest of the session. A paid ngrok plan removes it.
+
+services:
+  ngrok:
+    image: ngrok/ngrok:latest
+    restart: unless-stopped
+    command:
+      - "start"
+      - "--all"
+      - "--config"
+      - "/etc/ngrok.yml"
+      - "--log"
+      - "stdout"
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    configs:
+      - source: ngrok_prod_config
+        target: /etc/ngrok.yml
+    ports:
+      # ngrok web inspector / local API (public URL is shown here).
+      - "4040:4040"
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      - water_prod
+
+configs:
+  ngrok_prod_config:
+    content: |
+      version: "2"
+      tunnels:
+        web:
+          proto: http
+          addr: web:3000

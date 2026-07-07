@@ -17,8 +17,12 @@
 # NOTE ON HTTPS: the frontend sets NODE_ENV=production, so the auth cookie is
 # issued with `Secure` (NFR1/D2) and browsers will only send it over HTTPS. Put
 # the `web` service behind a TLS-terminating reverse proxy in real prod. For a
-# quick plain-HTTP local smoke, front it with a proxy or test the backend API
-# directly.
+# quick HTTPS run without your own certs, layer on the ngrok override:
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.prod.ngrok.yml up --build
+#
+# (see docker-compose.prod.ngrok.yml). Plain http://localhost:3000 works for
+# everything except the login cookie, so probe the backend API directly there.
 
 services:
   postgres:

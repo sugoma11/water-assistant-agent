@@ -6,8 +6,11 @@ the FinTech business routers) is dropped; what remains is the wiring that turns
 the bare ADK ``root_agent`` into an HTTP service a frontend can talk to:
 
 * a health-check endpoint,
-* correlation-ID / logging / optional JWT-auth middleware,
-* the AG-UI ADK endpoint mounted at ``/``.
+* correlation-ID / logging middleware plus mandatory JWT bearer auth — the
+  service refuses to start without ``jwt_secret_key``/``session_db_url`` (D5),
+* the admin, auth and conversations routers,
+* the custom ownership-gated AG-UI endpoint (``add_agent_endpoint``, FR6)
+  mounted at ``/`` in place of ``add_adk_fastapi_endpoint``.
 
 Importing this module has no side effects; everything happens in
 :func:`create_bootstrap`.

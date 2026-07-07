@@ -193,7 +193,7 @@ context · **US7** visitor reaches only sign-in.
   `unauthorized()`) and use it in `web/app/api/backend/[...path]/route.ts` and
   `web/app/api/copilotkit/route.ts` to remove the duplicated cookie→Bearer / 401 boilerplate.
   (depends: T030)
-- [ ] T034 [R-004, 🟢] Update the stale `bootstrap.py` module docstring to reflect mandatory
+- [x] T034 [R-004, 🟢] Update the stale `bootstrap.py` module docstring to reflect mandatory
   auth (D5) and the custom ownership-gated `add_agent_endpoint` (FR6). (depends: T030)
 - [ ] T035 [R-005, 🟢] Anchor `middlewares.py` `_PUBLIC_PREFIXES` matching (trailing slash
   or first-segment check) so no future `/admin*`-prefixed route can accidentally bypass JWT.

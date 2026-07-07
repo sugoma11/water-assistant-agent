@@ -141,7 +141,7 @@ context · **US7** visitor reaches only sign-in.
 
 ## Phase 5 — Chat UX — depends on Phases 3 & 4
 
-- [ ] T023 `web/app/(chat)/` sidebar: list/new/rename/delete/switch, last-activity
+- [x] T023 `web/app/(chat)/` sidebar: list/new/rename/delete/switch, last-activity
   order, thread-per-conversation (`threadId` = conversation id); auto-title from first
   message shown, rename available (FR7, FR8, C6, US4). (depends: T022)
 - [ ] T024 History restore on switch/reload: empty-run `MessagesSnapshotEvent` path;

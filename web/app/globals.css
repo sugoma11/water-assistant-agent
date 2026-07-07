@@ -27,7 +27,7 @@ a {
   color: var(--wa-accent);
 }
 
-/* Let the CopilotKit chat fill the pane below the header. */
+/* Let the CopilotKit chat fill the pane beside the sidebar. */
 .wa-chat {
   height: 100%;
 }

@@ -163,7 +163,7 @@ context · **US7** visitor reaches only sign-in.
 
 ## Phase 6 — End-to-end validation & docs — depends on Phases 3–5
 
-- [ ] T028 Add `just assistant` / `just web` / `just chat` recipes (backend, frontend,
+- [x] T028 Add `just assistant` / `just web` / `just chat` recipes (backend, frontend,
   both together) to the justfile; update `.example.env` (add `AGENT_JWT_SECRET`,
   `WATER_ASSISTANT_SESSION_DB_URL` SQLite dev default, `WATER_ASSISTANT_ADMIN_API_KEY`,
   `WATER_ASSISTANT_AUTH_TOKEN_TTL_DAYS`; retire the demo-identity lines) and `web/.env`;

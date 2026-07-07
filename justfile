@@ -2,6 +2,25 @@ import "models.just"
 import "common.just"
 import "experiments.just"
 
+# ── Chat frontend + backend ───────────────────────────────────────────────────
+
+# Run the FastAPI backend (AG-UI ADK endpoint at "/"; auth + conversations API)
+assistant:
+    uv run water-assistant
+
+# Run the Next.js chat frontend dev server (talks to the backend via route handlers)
+web:
+    cd web && npm run dev
+
+# Run backend + frontend together for the end-to-end chat setup (Ctrl-C stops both)
+chat:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    trap 'kill 0' EXIT
+    uv run water-assistant &
+    (cd web && npm run dev) &
+    wait
+
 # Generate domain-specific questions for a water management LLM assistant
 # openai/qwen3-235b-a22b looks the best from GAIA
 generate-questions model output-dir terms-path num-questions:

@@ -13,6 +13,62 @@ With ngrok:
 docker compose up -d
 ```
 
+### Chat frontend
+
+A multi-user chat UI (Next.js + CopilotKit over AG-UI) lives in `web/`, backed by
+the FastAPI `water-assistant` service. The backend owns all auth, conversation
+metadata, and per-user isolation; the browser only ever talks to the Next.js
+route handlers (auth cookie, REST proxy, CopilotKit runtime) — never to FastAPI
+directly.
+
+#### Configure
+
+Copy `.example.env` to `.env` and set the service vars (all `WATER_ASSISTANT_*`
+plus `AGENT_JWT_SECRET`):
+
+- `AGENT_JWT_SECRET` — **required**; JWT signing secret (the service refuses to
+  start without it).
+- `WATER_ASSISTANT_SESSION_DB_URL` — **required**; one async SQLAlchemy URL backs
+  ADK sessions + users + conversations. Dev default:
+  `sqlite+aiosqlite:///./water.db`. Prod: `postgresql+asyncpg://…`.
+- `WATER_ASSISTANT_ADMIN_API_KEY` — admin API key; when unset the `/admin/*` API
+  fails closed (503). Set it to provision users.
+- `WATER_ASSISTANT_AUTH_TOKEN_TTL_DAYS` — access-token lifetime (default 7).
+
+The frontend reads `web/.env` (`BACKEND_URL`, default `http://localhost:8080`).
+Schema is created on startup (`metadata.create_all`); there are no migrations yet.
+
+#### Run
+
+```
+just chat        # backend + frontend together (Ctrl-C stops both)
+```
+
+Or run each half on its own: `just assistant` (FastAPI, port 8080) and `just web`
+(Next.js dev server, port 3000). Open http://localhost:3000 and sign in.
+
+#### Provision the first user (admin API)
+
+There is no signup page — accounts are created only through the admin API, guarded
+by `X-Admin-API-Key`. Create the first user with curl:
+
+```
+curl -X POST http://localhost:8080/admin/users \
+  -H "X-Admin-API-Key: $WATER_ASSISTANT_ADMIN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "alice@example.com", "password": "s3cret", "display_name": "Alice"}'
+```
+
+Other admin routes: `GET /admin/users`, `PATCH /admin/users/{id}`,
+`DELETE /admin/users/{id}` (cascades the user's conversations and ADK sessions).
+Then sign in from the web UI, or check credentials directly:
+
+```
+curl -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "alice@example.com", "password": "s3cret"}'
+```
+
 #### Experiments
 
 

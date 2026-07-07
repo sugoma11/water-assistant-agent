@@ -16,8 +16,8 @@ import uuid
 from collections.abc import Iterator
 from datetime import datetime
 
-from fastapi import Request
-from sqlalchemy import DateTime, ForeignKey, String, create_engine, func
+from fastapi import HTTPException, Request, status
+from sqlalchemy import DateTime, ForeignKey, String, create_engine, func, select
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -125,6 +125,29 @@ def create_session_factory(engine: Engine) -> sessionmaker[Session]:
 def create_all(engine: Engine) -> None:
     """Create the ``app_users`` and ``conversations`` tables if absent (OQ3)."""
     Base.metadata.create_all(engine)
+
+
+def get_owned_conversation_or_404(
+    db: Session, user_id: str, conversation_id: str
+) -> Conversation:
+    """Return the conversation only if *user_id* owns it; else uniform 404 (EC3).
+
+    This predicate *is* the per-user isolation boundary (FR13/NFR3): the ownership
+    filter lives in SQL, so a foreign or unknown id is indistinguishable from a
+    nonexistent one. Both the conversations router and the custom agent endpoint
+    gate on this one helper so the boundary cannot drift between them (R-001).
+    """
+    conv = db.execute(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.user_id == user_id,
+        )
+    ).scalar_one_or_none()
+    if conv is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
+        )
+    return conv
 
 
 def get_db(request: Request) -> Iterator[Session]:

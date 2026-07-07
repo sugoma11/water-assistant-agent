@@ -181,7 +181,7 @@ context · **US7** visitor reaches only sign-in.
 
 ## Phase 7 — Retrospective Fixes (from `retrospective.md`)
 
-- [ ] T031 [R-001, 🟡] Extract a single owned-conversation-or-404 helper and use it in
+- [x] T031 [R-001, 🟡] Extract a single owned-conversation-or-404 helper and use it in
   both `routers/conversations.py` (`_get_owned_or_404`) and the inlined ownership gate in
   `routers/agent.py:75-84`, so the per-user isolation predicate (FR13/NFR3) lives in one
   place. (depends: T030)

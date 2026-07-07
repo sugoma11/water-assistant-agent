@@ -27,13 +27,12 @@ from typing import Annotated, Any, Final
 from ag_ui.core import EventType, RunAgentInput, RunErrorEvent
 from ag_ui.encoder import EventEncoder
 from ag_ui_adk import ADKAgent
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from water_assistant_agent.assistant.auth import CurrentUser
-from water_assistant_agent.assistant.db import Conversation, get_db
+from water_assistant_agent.assistant.db import get_db, get_owned_conversation_or_404
 
 logger = logging.getLogger(__name__)
 
@@ -71,17 +70,9 @@ def add_agent_endpoint(app: FastAPI, agent: ADKAgent, path: str = "/") -> None:
         db: Annotated[Session, Depends(get_db)],
     ) -> StreamingResponse:
         # Ownership gate (EC3): the thread must name a conversation this user owns.
-        # Foreign or unknown ids get the same uniform 404 as a nonexistent one.
-        conv = db.execute(
-            select(Conversation).where(
-                Conversation.id == input_data.thread_id,
-                Conversation.user_id == user.id,
-            )
-        ).scalar_one_or_none()
-        if conv is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
-            )
+        # Foreign or unknown ids get the same uniform 404 as a nonexistent one. The
+        # predicate is shared with the conversations router so it cannot drift (R-001).
+        conv = get_owned_conversation_or_404(db, user.id, input_data.thread_id)
         conv.last_activity_at = datetime.now(UTC)  # FR8 recency ordering
         db.commit()
 

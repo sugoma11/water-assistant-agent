@@ -23,7 +23,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from water_assistant_agent.assistant.auth import CurrentUser
-from water_assistant_agent.assistant.db import Conversation, get_db
+from water_assistant_agent.assistant.db import (
+    Conversation,
+    get_db,
+    get_owned_conversation_or_404,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -70,21 +74,6 @@ class MessagesResponse(BaseModel):
     messages: list[dict[str, Any]]
 
 
-def _get_owned_or_404(db: Session, user_id: str, conversation_id: str) -> Conversation:
-    """Return the conversation only if *user_id* owns it; else uniform 404 (EC3)."""
-    conv = db.execute(
-        select(Conversation).where(
-            Conversation.id == conversation_id,
-            Conversation.user_id == user_id,
-        )
-    ).scalar_one_or_none()
-    if conv is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
-        )
-    return conv
-
-
 @router.get("", response_model=list[ConversationResponse])
 def list_conversations(
     user: CurrentUser,
@@ -122,7 +111,7 @@ def rename_conversation(
     db: Annotated[Session, Depends(get_db)],
 ) -> Conversation:
     """Rename a conversation the caller owns; foreign/unknown id → 404 (FR7, EC3)."""
-    conv = _get_owned_or_404(db, user.id, conversation_id)
+    conv = get_owned_conversation_or_404(db, user.id, conversation_id)
     conv.title = _derive_title(payload.title)
     db.commit()
     db.refresh(conv)
@@ -155,7 +144,7 @@ async def delete_conversation(
     db: Annotated[Session, Depends(get_db)],
 ) -> Response:
     """Delete a conversation row and its ADK session (EC3, C5)."""
-    conv = _get_owned_or_404(db, user.id, conversation_id)
+    conv = get_owned_conversation_or_404(db, user.id, conversation_id)
     await _delete_adk_session(request, user.id, conv.id)
     db.delete(conv)
     db.commit()
@@ -185,7 +174,7 @@ async def get_messages(
     ``MessagesSnapshotEvent`` uses — so the REST fallback and the streaming path
     agree. Ownership-gated per EC3.
     """
-    _get_owned_or_404(db, user.id, conversation_id)
+    get_owned_conversation_or_404(db, user.id, conversation_id)
     session = await _get_adk_session(request, user.id, conversation_id)
     adk_events = list(getattr(session, "events", []) or [])
     messages = await EventTranslator().translate_to_messages(
@@ -212,7 +201,7 @@ async def append_partial(
     committed to the ADK session; this appends the partial text so it survives a
     reload. Ownership-gated per EC3; 404 when no ADK session exists yet (EC8).
     """
-    conv = _get_owned_or_404(db, user.id, conversation_id)
+    conv = get_owned_conversation_or_404(db, user.id, conversation_id)
     session = await _get_adk_session(request, user.id, conversation_id)
     if session is None:
         raise HTTPException(

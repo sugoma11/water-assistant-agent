@@ -17,9 +17,14 @@
  * conversion is needed and the same events that stream live also restore here.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { OnStopGeneration, useCopilotChatInternal } from "@copilotkit/react-core";
+import {
+  OnStopGeneration,
+  useCopilotAction,
+  useCopilotChatInternal,
+} from "@copilotkit/react-core";
 import { CopilotChat } from "@copilotkit/react-ui";
 import { UnauthorizedError, appendPartial, fetchHistory } from "@/lib/api";
+import { TextToSqlResult } from "@/components/TextToSqlResult";
 
 type ChatViewProps = {
   conversationId: string;
@@ -29,6 +34,18 @@ export function ChatView({ conversationId }: ChatViewProps) {
   const { setMessages } = useCopilotChatInternal();
   const restored = useRef(false);
   const [restoring, setRestoring] = useState(true);
+
+  // Render the text-to-SQL tool call inside the assistant turn (T026, FR15,
+  // C9, SC8). `available: "disabled"` keeps it render-only — the frontend never
+  // offers this backend tool to the model; it only paints its result, both live
+  // and when replayed from restored history.
+  useCopilotAction({
+    name: "text_to_sql_agent",
+    available: "disabled",
+    render: ({ status, result }) => (
+      <TextToSqlResult status={status} result={result} />
+    ),
+  });
 
   useEffect(() => {
     let cancelled = false;

@@ -152,7 +152,7 @@ context · **US7** visitor reaches only sign-in.
   stop API), keeps the received partial in the UI, and persists it via
   `POST /conversations/{id}/partial`; verify stop → reload → partial present (C7, FR10,
   R2). (depends: T024)
-- [ ] T026 `web/components/` renders: markdown for plain answers; a CopilotKit render for
+- [x] T026 `web/components/` renders: markdown for plain answers; a CopilotKit render for
   the `text_to_sql_agent` tool call — `status=success` → SQL as highlighted code block +
   results as a table (note truncation), non-success/missing results → plain markdown
   fallback (FR15, C9, SC8). (depends: T024, T017)

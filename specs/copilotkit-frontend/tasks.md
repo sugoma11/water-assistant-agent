@@ -195,7 +195,7 @@ context · **US7** visitor reaches only sign-in.
   (depends: T030)
 - [x] T034 [R-004, 🟢] Update the stale `bootstrap.py` module docstring to reflect mandatory
   auth (D5) and the custom ownership-gated `add_agent_endpoint` (FR6). (depends: T030)
-- [ ] T035 [R-005, 🟢] Anchor `middlewares.py` `_PUBLIC_PREFIXES` matching (trailing slash
+- [x] T035 [R-005, 🟢] Anchor `middlewares.py` `_PUBLIC_PREFIXES` matching (trailing slash
   or first-segment check) so no future `/admin*`-prefixed route can accidentally bypass JWT.
   (depends: T030)
 

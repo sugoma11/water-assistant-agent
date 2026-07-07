@@ -25,7 +25,23 @@ _PUBLIC_ROUTES: Final[frozenset[str]] = frozenset(
 )
 # Path prefixes that skip bearer-token verification. ``/admin`` has its own key
 # guard (see ``routers.admin_users.require_admin``), so it is exempt from JWT.
+# Matched on a path-segment boundary (see :func:`_is_public`) so an unrelated
+# route like ``/administer`` can never accidentally inherit the exemption.
 _PUBLIC_PREFIXES: Final[tuple[str, ...]] = ("/admin",)
+
+
+def _is_public(path: str) -> bool:
+    """Return whether *path* skips bearer-token verification.
+
+    Prefixes match only on a segment boundary — ``/admin`` covers ``/admin`` and
+    ``/admin/users`` but not ``/administer`` — so no future ``/admin``-prefixed
+    route can bypass JWT by accident (defensive).
+    """
+    if path in _PUBLIC_ROUTES:
+        return True
+    return any(
+        path == prefix or path.startswith(prefix + "/") for prefix in _PUBLIC_PREFIXES
+    )
 
 
 def _www_auth_header() -> dict[str, str]:
@@ -103,8 +119,7 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: RequestResponseEndpoint,
     ) -> Response:
-        path = request.url.path
-        if path in _PUBLIC_ROUTES or any(path.startswith(p) for p in _PUBLIC_PREFIXES):
+        if _is_public(request.url.path):
             return await call_next(request)
         # This middleware runs outside FastAPI's ExceptionMiddleware, so a raised
         # HTTPException would surface as a 500; convert auth failures to a proper

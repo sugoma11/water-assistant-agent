@@ -20,10 +20,10 @@ keyed by the injected id and never by anything the client sent.
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 from typing import Annotated, Any, Final
 
+import structlog
 from ag_ui.core import EventType, RunAgentInput, RunErrorEvent
 from ag_ui.encoder import EventEncoder
 from ag_ui_adk import ADKAgent
@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 from water_assistant_agent.assistant.auth import CurrentUser
 from water_assistant_agent.assistant.db import get_db, get_owned_conversation_or_404
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Forwarded-props slot carrying the server-verified user id. The endpoint writes
 # ``token_claims["sub"]`` here; :func:`extract_verified_user_id` (the ADKAgent
@@ -88,7 +88,7 @@ def add_agent_endpoint(app: FastAPI, agent: ADKAgent, path: str = "/") -> None:
                 async for event in agent.run(run_input):
                     yield encoder.encode(event)
             except Exception as agent_error:  # noqa: BLE001 - surface as a RUN_ERROR
-                logger.error("ADKAgent error: %s", agent_error, exc_info=True)
+                logger.exception("ADKAgent run failed", log_context="agent")
                 error_event = RunErrorEvent(
                     type=EventType.RUN_ERROR,
                     message=f"Agent execution failed: {agent_error}",

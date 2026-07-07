@@ -185,7 +185,7 @@ context · **US7** visitor reaches only sign-in.
   both `routers/conversations.py` (`_get_owned_or_404`) and the inlined ownership gate in
   `routers/agent.py:75-84`, so the per-user isolation predicate (FR13/NFR3) lives in one
   place. (depends: T030)
-- [ ] T032 [R-002, 🟡] Switch `routers/agent.py` from stdlib `logging` to
+- [x] T032 [R-002, 🟡] Switch `routers/agent.py` from stdlib `logging` to
   `structlog.get_logger`, and log the RUN_ERROR path with
   `logger.exception("ADKAgent run failed", log_context="agent")` so it carries the
   correlation-id contextvars like every other module. (depends: T030)

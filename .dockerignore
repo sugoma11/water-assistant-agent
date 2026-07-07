@@ -1,0 +1,42 @@
+# Backend build context (repo root). Keep src/, pyproject.toml, uv.lock and
+# data/water.duckdb; drop everything the runtime service does not need so the
+# image stays small and no secrets are baked in.
+
+# Secrets & local env — provided at runtime via compose, never copied in.
+.env
+.env.*
+!.example.env
+
+# Python virtualenv / caches / build artifacts.
+.venv
+**/__pycache__
+*.py[cod]
+*.egg-info
+build/
+dist/
+
+# The frontend has its own image (web/Dockerfile, context ./web).
+web/
+
+# Experiments, research, and ops artifacts irrelevant to the prod service.
+logs/
+mlruns/
+mlartifacts/
+specs/
+tests/
+notebooks/
+data/text2sql/
+
+# VCS / tooling.
+.git
+.gitignore
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+*.md
+# …but pyproject.toml declares readme = "README.md", so hatchling needs it to
+# build the project during `uv sync`.
+!README.md
+docker-compose*.yml
+Dockerfile
+.dockerignore

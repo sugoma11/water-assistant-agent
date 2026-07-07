@@ -1,0 +1,105 @@
+# Production stack for the Water Assistant chat app: Postgres + FastAPI backend
+# + Next.js/CopilotKit frontend. Separate from docker-compose.yml (which is the
+# experiments/ops infra: Argilla, MLflow, MinIO).
+#
+#   docker compose -f docker-compose.prod.yml up --build
+#
+# Reads the repo `.env` for the backend (LLM endpoint/keys, models,
+# AGENT_JWT_SECRET, WATER_ASSISTANT_ADMIN_API_KEY); the DB URL is overridden
+# below to point at the `postgres` service. After the stack is healthy, create
+# the first user against the admin API (curl example in the README):
+#
+#   curl -X POST http://localhost:8080/admin/users \
+#     -H "X-Admin-API-Key: $WATER_ASSISTANT_ADMIN_API_KEY" \
+#     -H 'Content-Type: application/json' \
+#     -d '{"email":"a@b.c","password":"…"}'
+#
+# NOTE ON HTTPS: the frontend sets NODE_ENV=production, so the auth cookie is
+# issued with `Secure` (NFR1/D2) and browsers will only send it over HTTPS. Put
+# the `web` service behind a TLS-terminating reverse proxy in real prod. For a
+# quick plain-HTTP local smoke, front it with a proxy or test the backend API
+# directly.
+
+services:
+  postgres:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: water
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-water}
+      POSTGRES_DB: water
+    volumes:
+      - water-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U water -d water"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - water_prod
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # One async SQLAlchemy URL backs ADK sessions + app tables (A1). Overrides
+      # whatever WATER_ASSISTANT_SESSION_DB_URL is in .env to hit the service.
+      WATER_ASSISTANT_SESSION_DB_URL: postgresql+asyncpg://water:${POSTGRES_PASSWORD:-water}@postgres:5432/water
+      WATER_ASSISTANT_HOST: 0.0.0.0
+      WATER_ASSISTANT_PORT: "8080"
+    ports:
+      # Exposed for the admin API (first-user provisioning) and direct probes.
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/health').status==200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - water_prod
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # Server-side only: the browser never talks to the backend directly (NFR1).
+      # Points at the backend service on the shared network.
+      BACKEND_URL: http://backend:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - require('http').get('http://localhost:3000/login',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - water_prod
+
+networks:
+  water_prod:
+    driver: bridge
+
+volumes:
+  water-pgdata:

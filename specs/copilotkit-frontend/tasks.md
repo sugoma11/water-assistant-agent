@@ -144,7 +144,7 @@ context · **US7** visitor reaches only sign-in.
 - [x] T023 `web/app/(chat)/` sidebar: list/new/rename/delete/switch, last-activity
   order, thread-per-conversation (`threadId` = conversation id); auto-title from first
   message shown, rename available (FR7, FR8, C6, US4). (depends: T022)
-- [ ] T024 History restore on switch/reload: empty-run `MessagesSnapshotEvent` path;
+- [x] T024 History restore on switch/reload: empty-run `MessagesSnapshotEvent` path;
   verify against the pinned CopilotKit version whether it (re)connects per `threadId`
   and applies the snapshot — if not, fall back to `GET /conversations/{id}/messages` +
   CopilotKit's message-setting API (R1, FR9, US6). (depends: T023)

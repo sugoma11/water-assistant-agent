@@ -126,7 +126,7 @@ export function ChatApp() {
               agent={AGENT_NAME}
               threadId={activeId}
             >
-              <ChatView />
+              <ChatView conversationId={activeId} />
             </CopilotKit>
           ) : (
             <Centered>Select a conversation, or start a new one.</Centered>

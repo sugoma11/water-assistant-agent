@@ -222,3 +222,5 @@ __marimo__/
 data/timeseries
 
 *duckdb
+# Frontend lib/ dir — the bare Python `lib/` rule above must not swallow it
+!web/lib/

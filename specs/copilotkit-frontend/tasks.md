@@ -169,7 +169,7 @@ context · **US7** visitor reaches only sign-in.
   `WATER_ASSISTANT_AUTH_TOKEN_TTL_DAYS`; retire the demo-identity lines) and `web/.env`;
   README frontend section + admin-API quickstart (create the first user with curl)
   (NFR4, D5, FR14). (depends: T017, T022)
-- [ ] T029 End-to-end SC walk against `just chat` with two provisioned users: SC1
+- [x] T029 End-to-end SC walk against `just chat` with two provisioned users: SC1
   (admin key create/deny + sign-in), SC2 (two-user isolation incl. direct API probe),
   SC3 (restart both apps → lists + histories restored), SC4 (streaming), SC5
   (reload-then-follow-up keeps context), SC6 (unauth rejected, no signup reachable), SC7

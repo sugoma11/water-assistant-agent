@@ -46,6 +46,7 @@ from water_assistant_agent.text2sql.core import (
 ENDPOINTS: dict[str, tuple[str, str]] = {
     "kisski": ("LLM_API_BASE_KISSKI", "LLM_API_KEY_KISSKI"),
     "blablador": ("LLM_API_BASE_BLABLADOR", "LLM_API_KEY_BLABLADOR"),
+    "openrouter": ("LLM_API_BASE_OPENROUTER", "LLM_API_KEY_OPENROUTER"),
 }
 
 
@@ -192,31 +193,44 @@ logger = logging.getLogger(__name__)
 # Transient litellm/OpenAI errors worth retrying instead of aborting a whole
 # (potentially hours-long) GEPA run: server disconnects surface as
 # APIConnectionError or get mapped to InternalServerError, plus the usual
-# timeout / rate-limit / 503 blips. Non-transient errors (BadRequest, auth, ...)
-# fall through and raise immediately.
+# timeout / rate-limit / 502/503 blips. Non-transient errors (BadRequest, auth,
+# ...) fall through and raise immediately. BadGatewayError must be listed
+# explicitly: it subclasses openai's APIStatusError, not litellm.APIError, so
+# the APIError entry does not cover it.
 RETRYABLE_LLM_ERRORS: tuple[type[Exception], ...] = (
     litellm.APIConnectionError,
     litellm.InternalServerError,
     litellm.ServiceUnavailableError,
+    litellm.BadGatewayError,
     litellm.Timeout,
     litellm.RateLimitError,
     litellm.APIError,
 )
 
 # Env-tunable retry budget; 0 disables retries (raises on the first error).
-LLM_MAX_ATTEMPTS = max(1, int(os.environ.get("LLM_MAX_ATTEMPTS", "10")))
+LLM_MAX_ATTEMPTS = max(1, int(os.environ.get("LLM_MAX_ATTEMPTS", "25")))
+
+# Env-tunable per-retry wait ceiling (seconds). Defaults size the total retry
+# budget (25 attempts, waits 8..16..32..64..128..256 then 300s flat) to ~1.7h,
+# so an endpoint outage shorter than that no longer aborts an hours-long run.
+LLM_RETRY_MAX_WAIT = max(8, int(os.environ.get("LLM_RETRY_MAX_WAIT", "300")))
 
 
-# Deterministic (no-jitter) exponential backoff: ~8, 16, 32, 60, 60s. Runs on a
-# single eval worker, so there's nothing to de-sync; predictable slow retries give
-# a flaky endpoint real time to recover.
-@retry(
+# Deterministic (no-jitter) exponential backoff, capped at LLM_RETRY_MAX_WAIT.
+# Runs on a single eval worker, so there's nothing to de-sync; predictable slow
+# retries give a flaky endpoint real time to recover. A named decorator (not just
+# the @retry on completion_with_retry) so train_gepa can wrap the raw teacher call
+# GEPA makes inside the library under the identical policy — one definition, no drift.
+llm_retry = retry(
     retry=retry_if_exception_type(RETRYABLE_LLM_ERRORS),
-    wait=wait_exponential(multiplier=8, min=8, max=60),
+    wait=wait_exponential(multiplier=8, min=8, max=LLM_RETRY_MAX_WAIT),
     stop=stop_after_attempt(LLM_MAX_ATTEMPTS),
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
 )
+
+
+@llm_retry
 def completion_with_retry(**kwargs: Any) -> Any:
     """``litellm.completion`` wrapped in tenacity exponential backoff so a single
     dropped connection (or rate-limit blip) doesn't waste a whole training run.
@@ -304,6 +318,17 @@ def read_endpoint_credentials(endpoint: str) -> tuple[str, str]:
     return os.environ[api_base_var], os.environ[api_key_var]
 
 
+# Reasoning effort frozen across every model role (student, judge, teacher/optimizer)
+# and every technique so the techniques are compared at one fixed thinking budget rather
+# than each endpoint's default. Applied to the litellm calls we build (here), the GEPA
+# teacher (a scoped litellm.completion wrapper in train_gepa), TextGrad's raw-openai
+# engines (the metered create seam in prompt_skill) and SkillOpt's optimizer
+# (cfg["reasoning_effort"]). Forwarded to the endpoint as the OpenAI reasoning_effort
+# param; a passed value is not dropped, so an endpoint that rejects it fails fast (rather
+# than silently running at a different effort). Not env-tunable by design -- "frozen".
+REASONING_EFFORT = "high"
+
+
 def build_completion_kwargs(
     model: str, endpoint: str, param_prefix: str = "LLM", *, role: str
 ) -> dict[str, Any]:
@@ -331,6 +356,18 @@ def build_completion_kwargs(
         "api_base": api_base,
         "api_key": api_key,
         "metadata": {"cost_meter_role": role},
+        # Frozen thinking budget for this role's calls (student/judge/SkillOpt-task);
+        # see REASONING_EFFORT. Set explicitly so it also lands in the trace and so the
+        # GEPA teacher wrapper (which only fills the param when absent) leaves these
+        # already-set calls untouched. ``allowed_openai_params`` forces litellm to forward
+        # ``reasoning_effort`` to these OpenAI-compatible endpoints: its model map does not
+        # list our self-hosted aliases (e.g. alias-qwen36-35b) as supporting the param, so
+        # without this litellm raises UnsupportedParamsError client-side before the request
+        # ever reaches the endpoint (which does accept it -- SkillOpt/TextGrad send it via a
+        # raw openai client that skips this validation). We forward rather than drop it, so
+        # an endpoint that genuinely rejects it still fails fast.
+        "reasoning_effort": REASONING_EFFORT,
+        "allowed_openai_params": ["reasoning_effort"],
         **read_sampling_params(param_prefix),
     }
 
@@ -797,6 +834,9 @@ def log_global_params(
     mlflow.log_param("judge_endpoint", judge_endpoint)
     for key, value in read_sampling_params("JUDGE").items():
         mlflow.log_param(f"judge_{key}", value)
+    # Frozen across all roles/techniques (student, judge, teacher/optimizer); logged once
+    # here so every run records the fixed thinking budget it ran at.
+    mlflow.log_param("reasoning_effort", REASONING_EFFORT)
     mlflow.log_param("commit_hash", get_commit_hash())
     mlflow.log_param("dataset_sha256", hash_file(questions_path))
     mlflow.log_param("schema_sha256", hash_file(schema_path))

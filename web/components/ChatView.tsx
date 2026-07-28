@@ -10,11 +10,20 @@
  * History restore (T024, FR9, US6): R1 asked whether CopilotKit's pinned client
  * auto-replays the backend's empty-run `MessagesSnapshotEvent` on a thread
  * switch. Rather than depend on that, we take the plan's fully project-owned
- * fallback: on mount fetch the AG-UI-shaped history from
+ * fallback: fetch the AG-UI-shaped history from
  * `GET /conversations/{id}/messages` and hand it straight to the agent via
  * `setMessages`. The internal chat hook forwards plain AG-UI message objects
  * (not GQL `Message` instances) directly to `agent.setMessages`, so no
  * conversion is needed and the same events that stream live also restore here.
+ *
+ * The restore is gated on `isAvailable`: while the runtime is still connecting,
+ * `useAgent` hands back a throwaway *provisional* agent, and once connected it
+ * swaps in the real agent instance that `CopilotChat` actually renders. Applying
+ * history before that swap targets the provisional agent (and `connectAgent`'s
+ * initial sync), so the messages silently vanish — the ADK session still holds
+ * the turns, but the pane shows empty. `isAvailable` flips true only after
+ * `connectAgent` resolves against the real agent, so `setMessages` is then bound
+ * to the instance the UI reads from and the restore sticks.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -24,6 +33,7 @@ import {
 } from "@copilotkit/react-core";
 import { CopilotChat } from "@copilotkit/react-ui";
 import { UnauthorizedError, appendPartial, fetchHistory } from "@/lib/api";
+import { AssistantMessage } from "@/components/AssistantMessage";
 import { TextToSqlResult } from "@/components/TextToSqlResult";
 
 type ChatViewProps = {
@@ -32,7 +42,7 @@ type ChatViewProps = {
 };
 
 export function ChatView({ conversationId, onClearError }: ChatViewProps) {
-  const { setMessages } = useCopilotChatInternal();
+  const { setMessages, isAvailable } = useCopilotChatInternal();
   const restored = useRef(false);
   const [restoring, setRestoring] = useState(true);
 
@@ -49,12 +59,15 @@ export function ChatView({ conversationId, onClearError }: ChatViewProps) {
   });
 
   useEffect(() => {
-    let cancelled = false;
-    // Restore once per mount; the provider remounts (keyed) per conversation.
-    if (restored.current) {
+    // Restore once per mount, but only after the real agent has connected —
+    // `setMessages` is bound to the provisional agent until `isAvailable` flips
+    // true, and history applied to it is discarded on the agent swap. The
+    // provider remounts (keyed) per conversation, resetting the guard.
+    if (restored.current || !isAvailable) {
       return;
     }
     restored.current = true;
+    let cancelled = false;
     fetchHistory(conversationId)
       .then((messages) => {
         if (cancelled) return;
@@ -74,7 +87,7 @@ export function ChatView({ conversationId, onClearError }: ChatViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [conversationId, setMessages]);
+  }, [conversationId, isAvailable, setMessages]);
 
   // Stop control + partial durability (T025, C7, FR10, R2). CopilotChat's stop
   // button calls this before aborting the run; the streamed partial stays in the
@@ -112,6 +125,7 @@ export function ChatView({ conversationId, onClearError }: ChatViewProps) {
       ) : null}
       <CopilotChat
         className="wa-chat"
+        AssistantMessage={AssistantMessage}
         onStopGeneration={handleStop}
         onSubmitMessage={() => onClearError?.()}
         labels={{

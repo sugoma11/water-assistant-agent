@@ -35,6 +35,16 @@ class AssistantSettings(BaseSettings):
     llm_api_base: str | None = None
     llm_api_key: str | None = None
 
+    # --- GR2L green-roof water-balance API (predict_gr2l tool) ---
+    # Base URL including the deployment prefix, e.g. "https://host/api-weinbau".
+    # Unset ⇒ the GR2L tool returns an error status instead of crashing.
+    gr2l_api_base_url: str | None = None
+    # Reuses the existing unprefixed ``GR2L_MODEL_API_KEY`` in .env.
+    gr2l_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("GR2L_MODEL_API_KEY", "WATER_ASSISTANT_GR2L_API_KEY"),
+    )
+
     # --- Data warehouse (DuckDB) ---
     duckdb_path: str = "data/water.duckdb"
 

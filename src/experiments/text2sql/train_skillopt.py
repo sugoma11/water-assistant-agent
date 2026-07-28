@@ -32,6 +32,7 @@ from water_assistant_agent.text2sql.core import (
 )
 from experiments.text2sql.harness import (
     ENDPOINTS,
+    REASONING_EFFORT,
     build_sql_judge_scorer,
     load_dataset,
     read_optimizer_params_for_logging,
@@ -111,15 +112,6 @@ from experiments.text2sql.train_common import (
     help="Enable success reflection (failure reflection is always on, FR11).",
 )
 @click.option(
-    "--reasoning-effort",
-    type=click.Choice(["off", "low", "medium", "high"]),
-    default="high",
-    show_default=True,
-    help="Reasoning effort for SkillOpt's reflection/edit (optimizer) model, "
-    "forwarded to the optimizer endpoint as the OpenAI reasoning_effort param; "
-    "'off' disables thinking.",
-)
-@click.option(
     "--budget",
     required=True,
     type=click.FloatRange(min=0, min_open=True),
@@ -153,7 +145,6 @@ def train_skillopt(
     edit_budget: int,
     minibatch_size: int,
     reflect_on_success: bool,
-    reasoning_effort: str,
     budget: float,
     sampler_seed: int,
     use_prod_questions: bool,
@@ -216,28 +207,31 @@ def train_skillopt(
         edit_budget=edit_budget,
         minibatch_size=minibatch_size,
         reflect_on_success=reflect_on_success,
-        reasoning_effort=reasoning_effort,
+        # Frozen thinking budget shared with every other role/technique (REASONING_EFFORT),
+        # so SkillOpt's reflection/edit model reflects at the same effort GEPA's teacher and
+        # the student/judge run at -- no longer a per-run CLI knob.
+        reasoning_effort=REASONING_EFFORT,
         seed=sampler_seed,
     )
 
     click.echo(
         f"Running SkillOpt (budget={budget} EUR, edit_budget={edit_budget}, "
         f"minibatch_size={minibatch_size}, reflect_on_success={reflect_on_success}, "
-        f"reasoning_effort={reasoning_effort})..."
+        f"reasoning_effort={REASONING_EFFORT})..."
     )
     # Recorded on the SkillOpt run only (via extra_params, never via the shared
     # log_global_params), so GEPA/TextGrad runs keep byte-identical params (FR8, NFR3).
     # The task + judge roles/endpoints + sampler_seed + split sizes are logged by
     # _run_optimization (log_global_params + the shared log_params); here we add the
-    # optimizer role, the effort knobs, and the OPTIMIZER_* sampling params that drive
-    # SkillOpt's reflection/edit model (FR5, FR10).
+    # optimizer role and the OPTIMIZER_* sampling params that drive SkillOpt's
+    # reflection/edit model (FR5, FR10). `reasoning_effort` is now frozen and logged
+    # globally by log_global_params for every technique, so it is not repeated here.
     extra_params: dict[str, Any] = {
         "optimizer_model": optimizer_model,
         "optimizer_endpoint": optimizer_endpoint,
         "edit_budget": edit_budget,
         "minibatch_size": minibatch_size,
         "reflect_on_success": reflect_on_success,
-        "reasoning_effort": reasoning_effort,
         **read_optimizer_params_for_logging(),
     }
     _run_optimization(

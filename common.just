@@ -5,14 +5,14 @@ db_path        := "data/water.duckdb"
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 blablador := "blablador"
 kisski    := "kisski"
+openrouter := "openrouter"
 
-# Money budget (EUR) — the sole stop for every train recipe (FR1/FR2); prices come
-# from the PRICE_* env vars in .env (EUR per 1M tokens, see .example.env).
-train_budget := "0.7"
+# from the PRICE_* env vars in .env (per 1M tokens, see .example.env).
+train_budget := "5"
 
 # val_gate_size is the fixed val subset scored for the per-step keep-best
 # (0 = gate on the full val set).
-textgrad_val_gate_size := "8"
+textgrad_val_gate_size := "16"
 
 skillopt_edit_budget := "2"
 skillopt_minibatch_size := "3"

@@ -18,7 +18,7 @@ from typing import Any
 from openai import OpenAI
 
 from experiments.text2sql.cost_meter import CostMeter
-from experiments.text2sql.harness import ENDPOINTS, read_endpoint_credentials
+from experiments.text2sql.harness import ENDPOINTS, REASONING_EFFORT, read_endpoint_credentials
 
 # Section marker that separates the optimizable instruction block from the fixed
 # schema context in SYSTEM_PROMPT_TEMPLATE.
@@ -76,6 +76,13 @@ def _install_cost_meter(client: OpenAI, meter: CostMeter, role: str | None) -> N
     original_create = completions.create
 
     def metered_create(*args: Any, **kwargs: Any) -> Any:
+        # This wrapped create is the only seam that reaches TextGrad's endpoint call:
+        # its ``_generate_from_single_prompt`` has a fixed signature and forwards no extra
+        # kwargs, so sampling params handed through the engine's ``gen_kwargs`` never
+        # arrive as request params here. Inject the frozen thinking budget (REASONING_EFFORT)
+        # so TextGrad's task forward and backward/reflection engines run at the same effort
+        # as the litellm task/judge calls. ``setdefault`` keeps an explicit call-site value.
+        kwargs.setdefault("reasoning_effort", REASONING_EFFORT)
         response = original_create(*args, **kwargs)
         meter.record_completion(role, getattr(response, "usage", None))
         return response

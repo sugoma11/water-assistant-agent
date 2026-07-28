@@ -399,6 +399,8 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
     """
 
     # SkillOpt-internal knobs not exposed as spec effort knobs; pinned in the spike.
+    # _ANALYST_WORKERS is the default only; overridable via SKILLOPT_ANALYST_WORKERS
+    # (see _build_cfg) to throttle reflection concurrency against rate-limited endpoints.
     _ANALYST_WORKERS = 2
     _MERGE_BATCH_SIZE = 8
     _MAX_ANALYST_ROUNDS = 1
@@ -485,7 +487,13 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
             "lr_control_mode": "fixed",
             "minibatch_size": self.minibatch_size,
             "merge_batch_size": self._MERGE_BATCH_SIZE,
-            "analyst_workers": self._ANALYST_WORKERS,
+            # Concurrency of the reflection-minibatch ThreadPoolExecutor only (the
+            # optimizer-model reflect calls); does not change results/cost, only
+            # wall-clock and peak endpoint concurrency. Overridable via env to throttle
+            # concurrency against rate-limited endpoints; defaults to the pinned value.
+            "analyst_workers": int(
+                os.environ.get("SKILLOPT_ANALYST_WORKERS", self._ANALYST_WORKERS)
+            ),
             "max_analyst_rounds": self._MAX_ANALYST_ROUNDS,
             "skill_update_mode": self._SKILL_UPDATE_MODE,
             # optimizer-side reasoning effort: the trainer applies

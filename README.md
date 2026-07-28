@@ -4,13 +4,35 @@ Evaluating prompt optimization techniques for a water management analysis assist
 
 ### Run
 
-```
-docker compose -f docker-compose.yml up -d
+#### Development stack
+
+Experiments/ops infra: Argilla (labeling), MLflow (experiment tracking), MinIO (artifact storage).
+
+```bash
+just dev-up           # Start the stack
+just dev-down         # Stop the stack
 ```
 
-With ngrok:
+Or run directly:
+```bash
+docker compose -f docker-compose.yml up -d
+docker compose -f docker-compose.yml down
 ```
-docker compose up -d
+
+#### Production stack
+
+The production stack runs Postgres, FastAPI backend, and Next.js frontend together.
+
+```bash
+just prod-up          # Start the stack (Ctrl-C stops it)
+just prod-down        # Stop the stack
+just prod-ngrok       # Start with ngrok HTTPS front (no certs needed)
+```
+
+Or run directly:
+```bash
+docker compose -f docker-compose.prod.yml up --build
+docker compose -f docker-compose.prod.yml -f docker-compose.prod.ngrok.yml up --build
 ```
 
 ### Chat frontend

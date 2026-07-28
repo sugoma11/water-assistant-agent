@@ -9,17 +9,24 @@ text2sql-train-qwen36-qwen397-qwen397-gepa model=qwen36-35b-blablador endpoint=b
 text2sql-train-qwen36-qwen122-qwen397-gepa model=qwen36-35b-blablador endpoint=blablador judge-model=qwen-122b-kisski judge-endpoint=kisski teacher-model=qwen-397b-kisski teacher-endpoint=kisski sampler-seed="42" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path budget=train_budget:
     uv run text2sql-train-gepa --budget {{budget}} --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --teacher-model {{teacher-model}} --teacher-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
 
+
+# =========== qwen36 all roles, GEPA-openrouter, seed 41
+text2sql-train-qwen36-qwen36-qwen36-gepa-1-or model=qwen36-openrouter endpoint=openrouter judge-model=qwen36-openrouter judge-endpoint=openrouter teacher-model="openai:/qwen3.6-35b-a3b" teacher-endpoint=openrouter sampler-seed="41" use-prod-questions="true" questions-path="./data/text2sql/to_test.json" schema-path=schema_path db-path=db_path budget=train_budget:
+    uv run text2sql-train-gepa --budget {{budget}} --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --teacher-model {{teacher-model}} --teacher-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
+
+
 # =========== qwen36 all roles, GEPA, seed 41
 # http://localhost:5000/#/experiments/1/runs/b2ab55224de84de2b7669ae69aa22e32/evaluations
+# http://localhost:5000/#/experiments/3/runs/01769d8480b54670b1370dffdcf32e12/evaluations
 text2sql-train-qwen36-qwen36-qwen36-gepa-1 model=qwen36-35b-blablador endpoint=blablador judge-model=qwen36-35b-kisski judge-endpoint=kisski teacher-model=qwen36-35b-kisski teacher-endpoint=kisski sampler-seed="41" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path budget=train_budget:
     uv run text2sql-train-gepa --budget {{budget}} --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --teacher-model {{teacher-model}} --teacher-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
 
 # qwen36 all roles, GEPA, seed 42
 # http://localhost:5000/#/experiments/1/runs/51dcc72b3da149f2a9b37778cbe40d8e/evaluations
-text2sql-train-qwen36-qwen36-qwen36-gepa-2 model=qwen36-35b-blablador endpoint=blablador judge-model=qwen36-35b-kisski judge-endpoint=kisski teacher-model=qwen36-35b-kisski teacher-endpoint=kisski sampler-seed="42" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path budget=train_budget:
+text2sql-train-qwen36-qwen36-qwen36-gepa-2 model=qwen36-35b-blablador endpoint=blablador judge-model=qwen36-35b-kisski judge-endpoint=kisski teacher-model=qwen36-35b-kisski teacher-endpoint=kisski sampler-seed="42" use-prod-questions="true" questions-path="questions_path" schema-path=schema_path db-path=db_path budget=train_budget:
     uv run text2sql-train-gepa --budget {{budget}} --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --teacher-model {{teacher-model}} --teacher-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
 
-# qwen36 all roles, GEPA, seed 43 
+# qwen36 all roles, GEPA, seed 43
 # http://localhost:5000/#/experiments/1/runs/e5920c3e68724a85964381ee117edcd3
 text2sql-train-qwen36-qwen36-qwen36-gepa-3 model=qwen36-35b-blablador endpoint=blablador judge-model=qwen36-35b-kisski judge-endpoint=kisski teacher-model=qwen36-35b-kisski teacher-endpoint=kisski sampler-seed="43" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path budget=train_budget:
     uv run text2sql-train-gepa --budget {{budget}} --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --teacher-model {{teacher-model}} --teacher-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
@@ -30,26 +37,43 @@ text2sql-train-qwen36-qwen36-qwen36-gepa-4 model=qwen36-35b-blablador endpoint=b
     uv run text2sql-train-gepa --budget {{budget}} --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --teacher-model {{teacher-model}} --teacher-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
 
 
+# TG openrouter
+text2sql-train-qwen36-qwen36-qwen36-textgrad-1-or model=qwen36-openrouter endpoint=openrouter judge-model=qwen36-openrouter judge-endpoint=openrouter teacher-model=qwen36-openrouter teacher-endpoint=openrouter sampler-seed="41" use-prod-questions="true" questions-path="./data/text2sql/to_test.json" schema-path=schema_path db-path=db_path budget=train_budget val-gate-size=textgrad_val_gate_size:
+    uv run text2sql-train-textgrad --budget {{budget}} --val-gate-size {{val-gate-size}} --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --optimizer-model {{teacher-model}} --optimizer-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
+
 # =========== qwen36 all roles, TextGrad, seed 41
 # http://localhost:5000/#/experiments/1/runs/5e32c312ecaf49a284cd963978606cfe
 # http://localhost:5000/#/experiments/1/runs/52c922972cbc425fa3e83f9846bac2c8
+# http://localhost:5000/#/experiments/3/runs/61a2543360be40e9a131db68b91b810b/model-metrics
 text2sql-train-qwen36-qwen36-qwen36-textgrad-1 model=qwen36-35b-blablador endpoint=blablador judge-model=qwen36-35b-kisski judge-endpoint=kisski teacher-model=qwen36-35b-kisski teacher-endpoint=kisski sampler-seed="41" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path budget=train_budget val-gate-size=textgrad_val_gate_size:
+    uv run text2sql-train-textgrad --budget {{budget}} --val-gate-size {{val-gate-size}} --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --optimizer-model {{teacher-model}} --optimizer-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
+
+# =========== qwen36 all roles, TextGrad, seed 41, judge + teacher on openrouter
+# (same as -1 but judge AND optimizer/teacher swapped to openrouter; student stays on
+# blablador). Teacher uses the openrouter/<vendor>/<name> alias: TextGrad's raw-openai
+# engine strips only the leading provider token, leaving the qwen/... id OpenRouter wants.
+text2sql-train-qwen36-qwen36-qwen36-textgrad-1-judge-or model=qwen36-35b-blablador endpoint=blablador judge-model=qwen36-openrouter judge-endpoint=openrouter teacher-model=qwen36-openrouter teacher-endpoint=openrouter sampler-seed="41" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path budget=train_budget val-gate-size=textgrad_val_gate_size:
     uv run text2sql-train-textgrad --budget {{budget}} --val-gate-size {{val-gate-size}} --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --optimizer-model {{teacher-model}} --optimizer-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
 
 # =========== qwen36 all roles, TextGrad, seed 42
 # http://localhost:5000/#/experiments/1/runs/4ebf7f44dc44461e800d58d315b24d4a
 text2sql-train-qwen36-qwen36-qwen36-textgrad-2 model=qwen36-35b-blablador endpoint=blablador judge-model=qwen36-35b-kisski judge-endpoint=kisski teacher-model=qwen36-35b-kisski teacher-endpoint=kisski sampler-seed="42" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path budget=train_budget val-gate-size=textgrad_val_gate_size:
-    uv run text2sql-train-textgrad --budget {{budget}} --val-gate-size {{val-gate-size}} --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --optimizer-model {{teacher-model}} --optimizer-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }} 
+    uv run text2sql-train-textgrad --budget {{budget}} --val-gate-size {{val-gate-size}} --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --optimizer-model {{teacher-model}} --optimizer-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
 
 # =========== qwen36 all roles, TextGrad, seed 43
 # http://localhost:5000/#/experiments/1/runs/95315217f7d54130aeafc463adfd25f9
 text2sql-train-qwen36-qwen36-qwen36-textgrad-3 model=qwen36-35b-blablador endpoint=blablador judge-model=qwen36-35b-kisski judge-endpoint=kisski teacher-model=qwen36-35b-kisski teacher-endpoint=kisski sampler-seed="43" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path budget=train_budget val-gate-size=textgrad_val_gate_size:
-    uv run text2sql-train-textgrad --budget {{budget}} --val-gate-size {{val-gate-size}} --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --optimizer-model {{teacher-model}} --optimizer-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }} 
+    uv run text2sql-train-textgrad --budget {{budget}} --val-gate-size {{val-gate-size}} --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --optimizer-model {{teacher-model}} --optimizer-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
 
 # =========== qwen36 all roles, TextGrad, seed 44
-# 
+#
 text2sql-train-qwen36-qwen36-qwen36-textgrad-4 model=qwen36-35b-blablador endpoint=blablador judge-model=qwen36-35b-kisski judge-endpoint=kisski teacher-model=qwen36-35b-kisski teacher-endpoint=kisski sampler-seed="44" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path budget=train_budget val-gate-size=textgrad_val_gate_size:
-    uv run text2sql-train-textgrad --budget {{budget}} --val-gate-size {{val-gate-size}} --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --optimizer-model {{teacher-model}} --optimizer-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }} 
+    uv run text2sql-train-textgrad --budget {{budget}} --val-gate-size {{val-gate-size}} --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --optimizer-model {{teacher-model}} --optimizer-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
+
+
+# ========== qwen36 all roles, skillopt with budget
+text2sql-train-qwen36-qwen36-qwen36-skillopt-1-or model=qwen36-openrouter endpoint=openrouter judge-model=qwen36-openrouter judge-endpoint=openrouter teacher-model="qwen/qwen3.6-35b-a3b" teacher-endpoint=openrouter sampler-seed="41" use-prod-questions="true" questions-path="data/text2sql/to_test.json" schema-path=schema_path db-path=db_path budget=train_budget skillopt-edit-budget=skillopt_edit_budget skillopt-minibatch-size=skillopt_minibatch_size:
+    uv run text2sql-train-skillopt --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --optimizer-model {{teacher-model}} --optimizer-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }} --budget {{budget}} --edit-budget {{skillopt-edit-budget}} --minibatch-size {{skillopt-minibatch-size}}
 
 
 # =========== qwen36 all roles, SkillOpt, seed 41

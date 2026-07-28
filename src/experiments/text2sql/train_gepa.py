@@ -48,7 +48,9 @@ from water_assistant_agent.text2sql.core import (
 )
 from experiments.text2sql.harness import (
     ENDPOINTS,
+    REASONING_EFFORT,
     configure_teacher_env,
+    llm_retry,
     load_dataset,
     register_prompt_if_changed,
     setup_mlflow,
@@ -157,7 +159,7 @@ def train_gepa(
     use_prod_questions: bool,
 ) -> None:
     """Train the text-2-SQL system prompt with GEPA and log results to MLflow."""
-    validate_teacher_model(teacher_model)
+    # validate_teacher_model(teacher_model)
     load_dotenv()
 
     # Validate prices + construct the meter before any MLflow run exists, so a
@@ -211,6 +213,32 @@ def train_gepa(
     # untagged litellm calls.
     reflection_callback = litellm_reflection_callback(meter)
     litellm.success_callback.append(reflection_callback)
+    # GEPA calls the teacher as `litellm.completion(model=..., messages=...)` inside the
+    # library (gepa/api.py) with none of our sampling kwargs, so it would otherwise reflect
+    # at the endpoint's default effort AND abort the whole run on the first transient
+    # error (502/503/disconnect) — the in-library call never routes through
+    # completion_with_retry. Wrap litellm.completion for the duration of the run to give
+    # the bare teacher call the frozen REASONING_EFFORT and the harness llm_retry policy.
+    # `import litellm; litellm.completion(...)` resolves the attribute per call, so patching
+    # the module attribute intercepts the in-library teacher call too.
+    original_completion = litellm.completion
+    retrying_completion = llm_retry(original_completion)
+
+    def _completion_with_frozen_effort(*args: Any, **kwargs: Any) -> Any:
+        # Our own task/judge calls arrive here THROUGH completion_with_retry (it too
+        # resolves litellm.completion per call) already carrying reasoning_effort
+        # (build_completion_kwargs); pass them straight to the original so their retry
+        # policy isn't nested into attempts^2. The teacher call carries no
+        # reasoning_effort, so it gets the effort, the allowed_openai_params escape
+        # hatch that stops litellm rejecting the param client-side for our self-hosted
+        # aliases, and the retry policy.
+        if "reasoning_effort" in kwargs:
+            return original_completion(*args, **kwargs)
+        kwargs["reasoning_effort"] = REASONING_EFFORT
+        kwargs.setdefault("allowed_openai_params", ["reasoning_effort"])
+        return retrying_completion(*args, **kwargs)
+
+    litellm.completion = _completion_with_frozen_effort
     try:
         _run_optimization(
             optimizer=GepaPromptOptimizer(
@@ -241,6 +269,7 @@ def train_gepa(
             extra_artifacts={"reflection_prompt_template.txt": reflection_prompt_template},
         )
     finally:
+        litellm.completion = original_completion
         litellm.success_callback.remove(reflection_callback)
 
 

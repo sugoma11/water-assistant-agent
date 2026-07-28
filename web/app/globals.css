@@ -7,6 +7,25 @@
   --wa-accent: #3b82f6;
 }
 
+/*
+ * CopilotKit ships its own light theme in `@copilotkit/react-ui/styles.css`,
+ * which made the chat pane render white inside our dark shell. We opt into
+ * CopilotKit's built-in dark theme (`data-theme="dark"` on <html>, set in
+ * layout.tsx) and remap its variables onto our navy `--wa-*` palette so the
+ * chat matches the sidebar and SQL cards exactly. This block is imported after
+ * CopilotKit's CSS, so it wins the cascade at equal specificity.
+ */
+[data-theme="dark"] {
+  --copilot-kit-background-color: var(--wa-bg);
+  --copilot-kit-secondary-color: var(--wa-panel);
+  --copilot-kit-secondary-contrast-color: var(--wa-text);
+  --copilot-kit-separator-color: var(--wa-border);
+  --copilot-kit-muted-color: var(--wa-muted);
+  --copilot-kit-input-background-color: var(--wa-panel);
+  --copilot-kit-primary-color: var(--wa-accent);
+  --copilot-kit-contrast-color: #ffffff;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -30,4 +49,50 @@ a {
 /* Let the CopilotKit chat fill the pane beside the sidebar. */
 .wa-chat {
   height: 100%;
+}
+
+/*
+ * The model's thinking (reasoning) renders as a de-emphasized, collapsed
+ * disclosure so it stays available without competing with the answer. See
+ * components/AssistantMessage.tsx and lib/thinking.ts.
+ */
+.wa-thinking {
+  margin: 0.35rem 0;
+  border: 1px solid var(--wa-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--wa-panel) 60%, transparent);
+}
+
+.wa-thinking-summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--wa-muted);
+  user-select: none;
+}
+
+.wa-thinking-summary::-webkit-details-marker {
+  display: none;
+}
+
+.wa-thinking-summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 0.4rem;
+  transition: transform 0.15s ease;
+}
+
+.wa-thinking[open] > .wa-thinking-summary::before {
+  transform: rotate(90deg);
+}
+
+.wa-thinking-body {
+  padding: 0 0.75rem 0.5rem;
+  border-top: 1px solid var(--wa-border);
+  font-size: 0.85rem;
+  color: var(--wa-muted);
 }

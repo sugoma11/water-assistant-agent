@@ -6,7 +6,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { AUTH_COOKIE, BACKEND_URL } from "@/lib/config";
-import { authCookieOptions } from "@/lib/auth";
+import { authCookieOptions, isSecureRequest } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   let email: unknown;
@@ -36,7 +36,11 @@ export async function POST(req: NextRequest) {
   const data: { access_token: string; expires_at: string } = await res.json();
   const expiresAt = new Date(data.expires_at);
   const store = await cookies();
-  store.set(AUTH_COOKIE, data.access_token, authCookieOptions(expiresAt));
+  store.set(
+    AUTH_COOKIE,
+    data.access_token,
+    authCookieOptions(isSecureRequest(req), expiresAt),
+  );
 
   return NextResponse.json({ ok: true, expires_at: data.expires_at });
 }

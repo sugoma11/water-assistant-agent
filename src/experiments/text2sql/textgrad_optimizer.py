@@ -92,7 +92,11 @@ from water_assistant_agent.text2sql.core import (
     clean_sql,
 )
 from experiments.text2sql.cost_meter import CostMeter
-from experiments.text2sql.harness import render_system_prompt
+from experiments.text2sql.harness import (
+    LLM_MAX_ATTEMPTS,
+    LLM_RETRY_MAX_WAIT,
+    render_system_prompt,
+)
 from experiments.text2sql.prompt_skill import (
     MIN_SPLIT_SIZE,
     instruction_block,
@@ -146,9 +150,11 @@ _ENGINE_GEN_PARAMS = ("temperature", "top_p", "max_tokens")
 # them -- their only protection is TextGrad's own weak built-in retry (5 quick attempts,
 # <=5s backoff). That is why a brief blablador disconnect mid-`optimizer.step()` aborted
 # a whole multi-epoch run with a `tenacity.RetryError[APIConnectionError]`. Mirror the
-# litellm path's patient policy (harness.completion_with_retry: ~8,16,32,60,60s, env-
-# tunable LLM_MAX_ATTEMPTS) here so the gradient-step forward AND the backward/optimizer
-# call ride through the same transient server disconnects the GEPA path already survives.
+# litellm path's patient policy (harness.completion_with_retry: exponential backoff
+# capped at LLM_RETRY_MAX_WAIT, env-tunable LLM_MAX_ATTEMPTS — both imported from
+# harness so the two seams can't drift) here so the gradient-step forward AND the
+# backward/optimizer call ride through the same transient server disconnects the GEPA
+# path already survives.
 _RETRYABLE_OPENAI_ERRORS: tuple[type[BaseException], ...] = (
     APIConnectionError,
     APITimeoutError,
@@ -156,7 +162,19 @@ _RETRYABLE_OPENAI_ERRORS: tuple[type[BaseException], ...] = (
     RateLimitError,
 )
 
-_ENGINE_MAX_ATTEMPTS = max(1, int(os.environ.get("LLM_MAX_ATTEMPTS", "10")))
+_ENGINE_MAX_ATTEMPTS = LLM_MAX_ATTEMPTS
+
+# TextGrad's own ``ChatOpenAI.generate`` is decorated with a weak built-in ``@retry``
+# (retry on *any* exception, 5 quick <=5s attempts). Left in place it double-wraps our
+# policy: a *permanent* error like a 400 BadRequest (e.g. an invalid model id) is
+# pointlessly retried 5 times before surfacing, and a transient disconnect only gets
+# textgrad's impatient backoff instead of ours. Reach past that decorator to the
+# undecorated function (tenacity sets ``__wrapped__``) so THIS module's ``@retry`` --
+# gated on ``_is_retryable_openai_error`` (transient only) with the project's patient
+# backoff -- is the single retry authority: non-retryable errors fail fast, transient
+# ones ride the ``LLM_MAX_ATTEMPTS`` policy. Preserves textgrad's str/multimodal
+# dispatch (we call the same ``generate``, just without its retry wrapper).
+_UNRETRIED_GENERATE = ChatExternalClient.generate.__wrapped__
 
 # How many times to re-request when the endpoint returns a 200 whose `message.content`
 # is empty (None or blank). A reasoning model can spend its whole `max_tokens` budget on
@@ -235,7 +253,7 @@ class _DefaultGenKwargsEngine(ChatExternalClient):
 
     @retry(
         retry=retry_if_exception(_is_retryable_openai_error),
-        wait=wait_exponential(multiplier=8, min=8, max=60),
+        wait=wait_exponential(multiplier=8, min=8, max=LLM_RETRY_MAX_WAIT),
         stop=stop_after_attempt(_ENGINE_MAX_ATTEMPTS),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
@@ -244,7 +262,13 @@ class _DefaultGenKwargsEngine(ChatExternalClient):
         gen_kwargs = {**self._gen_kwargs, **kwargs}
         response: Any = None
         for attempt in range(1, _EMPTY_COMPLETION_MAX_ATTEMPTS + 1):
-            response = super().generate(content, system_prompt=system_prompt, **gen_kwargs)
+            # Call textgrad's generate *without* its built-in @retry (see
+            # _UNRETRIED_GENERATE) so this method's retry is the sole authority; a
+            # non-retryable error (400/auth) then propagates straight to it and fails
+            # fast instead of being retried 5 times inside textgrad first.
+            response = _UNRETRIED_GENERATE(
+                self, content, system_prompt=system_prompt, **gen_kwargs
+            )
             if not _is_empty_completion(response):
                 return response
             logger.warning(

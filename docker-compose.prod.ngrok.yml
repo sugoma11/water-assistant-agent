@@ -2,10 +2,11 @@
 #
 #   docker compose -f docker-compose.prod.yml -f docker-compose.prod.ngrok.yml up --build
 #
-# Why: the frontend runs NODE_ENV=production, so the auth cookie is issued with
-# `Secure` (NFR1/D2) and browsers only send it over HTTPS. ngrok terminates TLS
-# on a public https URL and forwards to the `web` container, so the browser sees
-# an https origin and the cookie sticks — no local TLS proxy needed.
+# Why: for a real deployment you want the browser on an https origin so the auth
+# cookie is issued `Secure` (NFR1/D2). ngrok terminates TLS on a public https URL
+# and forwards to the `web` container with `x-forwarded-proto: https`, so the app
+# marks the cookie `Secure` — no local TLS proxy or certs needed. (Plain-HTTP
+# localhost login already works; this is for exposing the app over the internet.)
 #
 # Only `web` is tunneled: the browser talks solely to the frontend, which proxies
 # to the backend server-side over the compose network (NFR1). Set NGROK_AUTHTOKEN

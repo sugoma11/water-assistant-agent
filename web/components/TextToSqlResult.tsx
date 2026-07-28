@@ -11,6 +11,7 @@
  * to plain chat (the assistant's own text renders as markdown separately).
  */
 import { CSSProperties } from "react";
+import { format as formatSql } from "sql-formatter";
 
 type RenderStatus = "inProgress" | "executing" | "complete";
 
@@ -41,6 +42,16 @@ function parseResult(result: unknown): SqlToolResult | null {
     }
   }
   return null;
+}
+
+// Pretty-print the executed query as multiline SQL. sql-formatter throws on
+// syntax it can't parse, so fall back to the raw string rather than crash.
+function prettySql(sql: string): string {
+  try {
+    return formatSql(sql, { language: "postgresql" });
+  } catch {
+    return sql;
+  }
 }
 
 function cellText(value: unknown): string {
@@ -80,7 +91,7 @@ export function TextToSqlResult({
         <div>
           <div style={captionStyle}>SQL</div>
           <pre style={codeBlockStyle}>
-            <code>{parsed.sql}</code>
+            <code>{prettySql(parsed.sql)}</code>
           </pre>
         </div>
       ) : null}

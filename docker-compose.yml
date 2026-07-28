@@ -120,8 +120,8 @@ services:
       interval: 2s
       timeout: 2s
       retries: 10
-    ports:
-      - "5432:5432"
+    # ports:
+    #   - "5432:5432"
     environment:
       - POSTGRES_USER=mlflow_user
       - POSTGRES_PASSWORD=mlflow_pass

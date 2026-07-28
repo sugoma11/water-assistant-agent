@@ -1,3 +1,9 @@
+# ── openrouter model aliases ───────────────────────────────────────────────────
+# for GEPA: qwen/qwen3.6-35b-a3b (uses litellm beneath) and semicolon for train
+# for TextGrad openrouter/qwen/qwen3.6-35b-a3
+# for SkillOpt: openrouter/qwen/qwen3.6-35b-a3b and qwen/qwen3.6-35b-a3b for optimizer 
+qwen36-openrouter := "openrouter/qwen/qwen3.6-35b-a3b" 
+
 # ── Blablador model aliases ───────────────────────────────────────────────────
 # value is the API alias id, comment shows the real underlying model
 apertus8b              := "openai/alias-apertus"             # swiss-ai/Apertus-8B-Instruct-2509 · 8B dense · MMLU ~63, GSM8K 62.9, HumanEval 44; AA Intelligence 6; 1811 langs

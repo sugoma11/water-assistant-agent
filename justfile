@@ -21,6 +21,30 @@ chat:
     (cd web && npm run dev) &
     wait
 
+# ── Development stack (Argilla, MLflow, MinIO) ───────────────────────────────
+
+# Run the development stack (Argilla, MLflow, MinIO)
+dev-up:
+    docker compose -f docker-compose.yml up -d
+
+# Stop the development stack
+dev-down:
+    docker compose -f docker-compose.yml down
+
+# ── Production stack (Postgres + FastAPI + Next.js) ──────────────────────────
+
+# Run the production stack (Postgres + backend + frontend)
+prod-up:
+    docker compose -f docker-compose.prod.yml up --build
+
+# Stop the production stack
+prod-down:
+    docker compose -f docker-compose.prod.yml down
+
+# Run the production stack with ngrok HTTPS front
+prod-ngrok:
+    docker compose -f docker-compose.prod.yml -f docker-compose.prod.ngrok.yml up --build
+
 # Generate domain-specific questions for a water management LLM assistant
 # openai/qwen3-235b-a22b looks the best from GAIA
 generate-questions model output-dir terms-path num-questions:

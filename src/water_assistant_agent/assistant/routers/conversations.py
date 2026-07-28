@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 import structlog
-from ag_ui_adk import EventTranslator
+from ag_ui_adk import adk_events_to_messages
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from google.adk.events import Event
 from google.genai import types
@@ -23,6 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from water_assistant_agent.assistant.auth import CurrentUser
+from water_assistant_agent.assistant.routers.agent import THINKING_MARKER
 from water_assistant_agent.assistant.db import (
     Conversation,
     get_db,
@@ -169,22 +170,53 @@ async def get_messages(
 ) -> MessagesResponse:
     """Return the conversation's AG-UI-shaped message history (FR9 fallback, R1).
 
-    Reuses ``ag_ui_adk``'s :meth:`EventTranslator.translate_to_messages` over the
-    stored ADK session events — the same translation the empty-run
-    ``MessagesSnapshotEvent`` uses — so the REST fallback and the streaming path
-    agree. Ownership-gated per EC3.
+    Reuses ``ag_ui_adk``'s :func:`adk_events_to_messages` over the stored ADK
+    session events — the same translation the ``MessagesSnapshotEvent`` uses — so
+    the REST fallback and the streaming path agree. Ownership-gated per EC3.
     """
     get_owned_conversation_or_404(db, user.id, conversation_id)
     session = await _get_adk_session(request, user.id, conversation_id)
     adk_events = list(getattr(session, "events", []) or [])
-    messages = await EventTranslator().translate_to_messages(
-        adk_events=adk_events,
-        thread_id=conversation_id,
-        run_id=str(uuid.uuid4()),
-    )
-    return MessagesResponse(
-        messages=[m.model_dump(by_alias=True, exclude_none=True) for m in messages]
-    )
+    messages = adk_events_to_messages(adk_events)
+    seen_thinking: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for m in messages:
+        relabeled = _relabel_reasoning_as_assistant(
+            m.model_dump(by_alias=True, exclude_none=True), seen_thinking
+        )
+        if relabeled is not None:
+            out.append(relabeled)
+    return MessagesResponse(messages=out)
+
+
+def _relabel_reasoning_as_assistant(
+    message: dict[str, Any], seen_thinking: set[str]
+) -> dict[str, Any] | None:
+    """Present a restored ``role="reasoning"`` message as a thinking assistant message.
+
+    ``adk_events_to_messages`` emits the model's stored thinking as a
+    ``ReasoningMessage``; CopilotKit's runtime (1.62) drops ``role="reasoning"``
+    messages in its agui→gql conversion, so on reload the thinking would vanish.
+    The live stream shows it as a marked assistant message (see
+    ``routers/agent._ReasoningRewriter``); we mirror that here — relabel the role
+    and prefix :data:`~...routers.agent.THINKING_MARKER` onto the content — so the
+    restored history renders as the same collapsed "Thinking" block that streamed.
+
+    Duplicate thinking blocks are suppressed the same way the live rewriter does
+    (ADK can persist the same reasoning twice; see the #1168 replay note there):
+    ``seen_thinking`` accumulates the texts already kept, and a repeat returns
+    ``None`` to be dropped by the caller. Non-reasoning messages pass through.
+    """
+    if message.get("role") != "reasoning":
+        return message
+    content = message.get("content")
+    if isinstance(content, str):
+        text = content.strip()
+        if not text or text in seen_thinking:
+            return None
+        seen_thinking.add(text)
+        content = f"{THINKING_MARKER}{content}"
+    return {**message, "role": "assistant", "content": content}
 
 
 @router.post("/{conversation_id}/partial", status_code=status.HTTP_201_CREATED)

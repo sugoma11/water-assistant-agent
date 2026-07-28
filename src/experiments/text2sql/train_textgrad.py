@@ -10,10 +10,12 @@ engine; both techniques stop on the same ``--budget`` money cap (FR2), with
 ``--batch-size``/``--val-gate-size`` left as structural knobs.
 
 Model-string convention: ``--model``/``--judge-model``/``--optimizer-model`` all take the
-litellm ``openai/<name>`` form (matching ``text2sql-train``). The task and judge models run
-through litellm so they keep the prefix; TextGrad's task and optimizer engines are plain
-``ChatExternalClient``s wrapping an OpenAI client, which send the model id straight to the
-endpoint, so the ``openai/`` prefix is stripped before they are handed to the optimizer.
+litellm provider-prefixed form (matching ``text2sql-train``): ``openai/<name>`` for the
+blablador/kisski/local endpoints, ``openrouter/<vendor>/<name>`` for OpenRouter. The task
+and judge models run through litellm so they keep the prefix; TextGrad's task and optimizer
+engines are plain ``ChatExternalClient``s wrapping an OpenAI client, which send the model id
+straight to the endpoint, so the litellm provider prefix is stripped
+(:func:`_strip_litellm_provider_prefix`) before they are handed to the optimizer.
 """
 
 import logging
@@ -47,6 +49,21 @@ from experiments.text2sql.train_common import (
     _run_optimization,
     read_price_config,
 )
+
+
+def _strip_litellm_provider_prefix(model: str) -> str:
+    """Drop the litellm provider prefix so TextGrad's ``ChatExternalClient`` sends the bare
+    model id the OpenAI-compatible endpoint expects. Two prefix forms reach here: the
+    ``openai/<name>`` aliases (blablador/kisski/local) and the ``openrouter/<vendor>/<name>``
+    aliases. OpenRouter ids keep an internal slash (``qwen/qwen3.6-35b-a3b``), so only the
+    leading provider token is stripped -- NOT everything up to the last slash. GEPA never
+    needs this because it calls through litellm, which consumes the prefix itself; that is
+    why the same ``openrouter/...`` alias worked for GEPA but 400'd ("not a valid model
+    ID") here when only ``openai/`` was stripped."""
+    for prefix in ("openai/", "openrouter/"):
+        if model.startswith(prefix):
+            return model[len(prefix) :]
+    return model
 
 
 @click.command()
@@ -195,14 +212,14 @@ def train_textgrad(
 
     # The optimizer's task + judge forward go through TextGrad's ChatExternalClient,
     # which sends the model id straight to the OpenAI-compatible endpoint, so strip the
-    # litellm `openai/` provider prefix (the judge scorer below keeps it -- it runs via
-    # litellm like GEPA's). The judge scorer is the SAME shared FLEX judge the eval
-    # phases use, so training and validation score with one judge (FR9, A3).
+    # litellm provider prefix (the judge scorer below keeps it -- it runs via litellm like
+    # GEPA's). The judge scorer is the SAME shared FLEX judge the eval phases use, so
+    # training and validation score with one judge (FR9, A3).
     judge_scorer = build_sql_judge_scorer(judge_model, judge_endpoint, schema_text, db_path)
     optimizer = TextGradPromptOptimizer(
-        task_model=model.removeprefix("openai/"),
+        task_model=_strip_litellm_provider_prefix(model),
         task_endpoint=endpoint,
-        optimizer_model=optimizer_model.removeprefix("openai/"),
+        optimizer_model=_strip_litellm_provider_prefix(optimizer_model),
         optimizer_endpoint=optimizer_endpoint,
         judge_scorer=judge_scorer,
         schema_text=schema_text,

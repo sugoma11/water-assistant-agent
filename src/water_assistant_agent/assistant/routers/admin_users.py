@@ -42,6 +42,7 @@ def require_admin(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Admin API is not configured",
         )
+    print(x_admin_api_key, settings.admin_api_key)
     if x_admin_api_key is None or not secrets.compare_digest(
         x_admin_api_key, settings.admin_api_key
     ):

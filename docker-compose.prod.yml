@@ -14,15 +14,15 @@
 #     -H 'Content-Type: application/json' \
 #     -d '{"email":"a@b.c","password":"…"}'
 #
-# NOTE ON HTTPS: the frontend sets NODE_ENV=production, so the auth cookie is
-# issued with `Secure` (NFR1/D2) and browsers will only send it over HTTPS. Put
-# the `web` service behind a TLS-terminating reverse proxy in real prod. For a
-# quick HTTPS run without your own certs, layer on the ngrok override:
+# NOTE ON HTTPS: the auth cookie's `Secure` flag tracks the request scheme, not
+# NODE_ENV — so plain http://localhost:3000 login works, and when the app is
+# fronted by a TLS-terminating reverse proxy (which sets `x-forwarded-proto:
+# https`) the cookie is issued `Secure` (NFR1/D2). Use a real proxy in prod; for
+# a quick public HTTPS run without your own certs, layer on the ngrok override:
 #
 #   docker compose -f docker-compose.prod.yml -f docker-compose.prod.ngrok.yml up --build
 #
-# (see docker-compose.prod.ngrok.yml). Plain http://localhost:3000 works for
-# everything except the login cookie, so probe the backend API directly there.
+# (see docker-compose.prod.ngrok.yml).
 
 services:
   postgres:
@@ -55,6 +55,9 @@ services:
       WATER_ASSISTANT_SESSION_DB_URL: postgresql+asyncpg://water:${POSTGRES_PASSWORD:-water}@postgres:5432/water
       WATER_ASSISTANT_HOST: 0.0.0.0
       WATER_ASSISTANT_PORT: "8080"
+      # .env carries a host-absolute WATER_ASSISTANT_DUCKDB_PATH for local runs;
+      # inside the image the DB is baked at /app/data/water.duckdb, so point there.
+      WATER_ASSISTANT_DUCKDB_PATH: /app/data/water.duckdb
     ports:
       # Exposed for the admin API (first-user provisioning) and direct probes.
       - "8080:8080"

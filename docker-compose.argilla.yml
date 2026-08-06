@@ -28,7 +28,7 @@ services:
     # or Redis gone) had this container restart 9365 times instead of failing.
     restart: on-failure:3
     ports:
-      - "6900:6900"
+      - "127.0.0.1:6900:6900"
     environment:
       <<: *argilla-common
       USERNAME: argilla

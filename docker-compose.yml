@@ -19,7 +19,7 @@ services:
     image: ghcr.io/mlflow/mlflow:v3.10.0
     container_name: mlflow
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     command: >
       /bin/sh -c "
       until (pip install psycopg2-binary boto3) do echo '...waiting...' && sleep 1; done;
@@ -72,8 +72,8 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     environment:
       - MINIO_ROOT_USER=some_access_key
       - MINIO_ROOT_PASSWORD=some_secret_key

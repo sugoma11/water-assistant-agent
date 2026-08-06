@@ -102,3 +102,25 @@ text2sql-train-qwen36-qwen36-qwen36-skillopt-3 model=qwen36-35b-blablador endpoi
 text2sql-train-qwen36-qwen36-qwen36-skillopt-4 model=qwen36-35b-blablador endpoint=blablador judge-model=qwen36-35b-kisski judge-endpoint=kisski teacher-model=qwen36-35b-kisski teacher-endpoint=kisski sampler-seed="44" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path budget=train_budget skillopt-edit-budget=skillopt_edit_budget skillopt-minibatch-size=skillopt_minibatch_size:
     uv run text2sql-train-skillopt --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --optimizer-model {{teacher-model}} --optimizer-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }} --budget {{budget}} --edit-budget {{skillopt-edit-budget}} --minibatch-size {{skillopt-minibatch-size}}
 
+
+# ==============================================================================
+# Both KISSKI keys: task/student on the second key (`kisski2`), judge + teacher on
+# the first (`kisski`). KISSKI's quota is per key, so this keeps the student's
+# throughput from competing with the judge/reflection calls. The `-k2` suffix marks
+# the two-key wiring (cf. `-or` for openrouter). One recipe per technique, seed
+# overridable per run:
+#   just text2sql-train-qwen36-qwen36-qwen36-gepa-k2 sampler-seed=42
+# ==============================================================================
+
+# =========== qwen36 all roles, GEPA, both KISSKI keys
+text2sql-train-qwen36-qwen36-qwen36-gepa-k2 model=qwen36-35b-kisski endpoint=kisski2 judge-model=qwen36-35b-kisski judge-endpoint=kisski teacher-model=qwen36-35b-kisski teacher-endpoint=kisski sampler-seed="41" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path budget=train_budget:
+    uv run text2sql-train-gepa --budget {{budget}} --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --teacher-model {{teacher-model}} --teacher-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
+
+# =========== qwen36 all roles, TextGrad, both KISSKI keys
+text2sql-train-qwen36-qwen36-qwen36-textgrad-k2 model=qwen36-35b-kisski endpoint=kisski2 judge-model=qwen36-35b-kisski judge-endpoint=kisski teacher-model=qwen36-35b-kisski teacher-endpoint=kisski sampler-seed="41" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path budget=train_budget val-gate-size=textgrad_val_gate_size:
+    uv run text2sql-train-textgrad --budget {{budget}} --val-gate-size {{val-gate-size}} --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --optimizer-model {{teacher-model}} --optimizer-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }}
+
+# =========== qwen36 all roles, SkillOpt, both KISSKI keys
+text2sql-train-qwen36-qwen36-qwen36-skillopt-k2 model=qwen36-35b-kisski endpoint=kisski2 judge-model=qwen36-35b-kisski judge-endpoint=kisski teacher-model=qwen36-35b-kisski teacher-endpoint=kisski sampler-seed="41" use-prod-questions="true" questions-path=questions_path schema-path=schema_path db-path=db_path budget=train_budget skillopt-edit-budget=skillopt_edit_budget skillopt-minibatch-size=skillopt_minibatch_size:
+    uv run text2sql-train-skillopt --questions-path {{questions-path}} --schema-path {{schema-path}} --db-path {{db-path}} --model {{model}} --endpoint {{endpoint}} --judge-model {{judge-model}} --judge-endpoint {{judge-endpoint}} --optimizer-model {{teacher-model}} --optimizer-endpoint {{teacher-endpoint}} --sampler-seed {{sampler-seed}} {{ if use-prod-questions == "true" { "--use-prod-questions" } else { "" } }} --budget {{budget}} --edit-budget {{skillopt-edit-budget}} --minibatch-size {{skillopt-minibatch-size}}
+

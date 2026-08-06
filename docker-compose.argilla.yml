@@ -1,0 +1,112 @@
+# Argilla labeling stack (Argilla server + background worker + Postgres +
+# Elasticsearch + Redis). Split out of docker-compose.yml because Elasticsearch
+# alone reserves 512 MB of heap — day-to-day work that only needs MLflow should
+# not pay for it. Layer it on the MLflow stack, or run it on its own:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.argilla.yml up -d
+#   docker compose -f docker-compose.argilla.yml up -d
+#
+# Or via just: `just dev-full-up` / `just dev-full-down`.
+#
+# Reads ARGILLA_PWD and ARGILLA_API_KEY from the repo `.env`. The UI is on
+# http://localhost:6900; to expose it publicly, layer on the ngrok override
+# (see docker-compose.argilla.ngrok.yml / `just dev-full-ngrok`).
+#
+# Same compose project as docker-compose.yml, so the volumes below keep their
+# existing `water-assistant-agent_*` names and the labeled datasets carry over.
+
+x-argilla-common: &argilla-common
+  ARGILLA_HOME_PATH: /var/lib/argilla
+  ARGILLA_ELASTICSEARCH: http://elasticsearch:9200
+  ARGILLA_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres-argilla:5432/argilla
+  ARGILLA_REDIS_URL: redis://redis:6379/0
+
+services:
+  argilla:
+    image: argilla/argilla-server:v2.8.0
+    # Bounded on purpose: with `unless-stopped` a half-down stack (Elasticsearch
+    # or Redis gone) had this container restart 9365 times instead of failing.
+    restart: on-failure:3
+    ports:
+      - "6900:6900"
+    environment:
+      <<: *argilla-common
+      USERNAME: argilla
+      PASSWORD: ${ARGILLA_PWD}
+      API_KEY: ${ARGILLA_API_KEY}
+      WORKSPACE: default
+    networks:
+      - argilla
+    volumes:
+      - argilladata:/var/lib/argilla
+    depends_on:
+      postgres-argilla:
+        condition: service_started
+      redis:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
+
+  worker:
+    image: argilla/argilla-server:v2.8.0
+    environment:
+      <<: *argilla-common
+      BACKGROUND_NUM_WORKERS: 2
+    networks:
+      - argilla
+    depends_on:
+      postgres-argilla:
+        condition: service_started
+      redis:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
+    command: sh -c 'python -m argilla_server worker --num-workers $${BACKGROUND_NUM_WORKERS}'
+
+  postgres-argilla:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: argilla
+    networks:
+      - argilla
+    volumes:
+      - postgres-argilla-data:/var/lib/postgresql
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    environment:
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - node.name=elasticsearch
+      - cluster.name=es-argilla-local
+      - discovery.type=single-node
+      - cluster.routing.allocation.disk.threshold_enabled=false
+      - xpack.security.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    networks:
+      - argilla
+    volumes:
+      - elasticdata:/usr/share/elasticsearch/data/
+
+  redis:
+    image: redis:8.6.1
+    networks:
+      - argilla
+
+networks:
+  argilla:
+    driver: bridge
+
+volumes:
+  argilladata:
+  elasticdata:
+  postgres-argilla-data:

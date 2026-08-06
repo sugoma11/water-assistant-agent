@@ -1,3 +1,12 @@
+# Public HTTPS front for the Argilla UI (port 6900) via an ngrok tunnel, for
+# handing the labeling UI to remote annotators without certs. Layer it on top of
+# the Argilla stack; needs NGROK_AUTHTOKEN in the repo `.env`:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.argilla.yml \
+#     -f docker-compose.argilla.ngrok.yml up -d
+#
+# Or via just: `just dev-full-ngrok`. The public URL shows up in the ngrok
+# inspector on http://localhost:4040.
 services:
   ngrok:
     image: ngrok/ngrok:latest

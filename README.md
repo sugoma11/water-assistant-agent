@@ -4,20 +4,35 @@ Evaluating prompt optimization techniques for a water management analysis assist
 
 ### Run
 
-#### Development stack
+#### Development stacks
 
-Experiments/ops infra: Argilla (labeling), MLflow (experiment tracking), MinIO (artifact storage).
+Experiments/ops infra, split in two so the light half can run on its own:
+
+- **MLflow** (experiment tracking) + its Postgres + MinIO (artifact storage) — `docker-compose.yml`
+- **Argilla** (labeling) + Elasticsearch + Redis + its Postgres — `docker-compose.argilla.yml`
+
+Argilla is opt-in: Elasticsearch alone reserves 512 MB of heap, so leave it down
+unless you are actually labeling.
 
 ```bash
-just dev-up           # Start the stack
-just dev-down         # Stop the stack
+just dev-up           # MLflow only (the usual case)
+just dev-down         # Stop it
+
+just dev-full-up      # MLflow + Argilla
+just dev-full-down    # Stop both
+just dev-full-ngrok   # + ngrok HTTPS front for the Argilla UI (needs NGROK_AUTHTOKEN)
 ```
 
 Or run directly:
 ```bash
 docker compose -f docker-compose.yml up -d
-docker compose -f docker-compose.yml down
+docker compose -f docker-compose.yml -f docker-compose.argilla.yml up -d
 ```
+
+Both files share one compose project, so `just dev-down` only stops the MLflow
+half (a running Argilla half is reported as an orphan and left alone) — use
+`just dev-full-down` to take everything down. MLflow is on http://localhost:5000,
+MinIO console on http://localhost:9001, Argilla on http://localhost:6900.
 
 #### Production stack
 

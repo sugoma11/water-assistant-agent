@@ -38,6 +38,8 @@ import json
 import logging
 import os
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +60,7 @@ from skillopt.gradient.reflect import run_minibatch_reflect
 # trainer never resets the tracker, so it accumulates monotonically and per-checkpoint
 # deltas capture exactly the optimizer-role spend (A4, D1-3).
 from skillopt.model import get_token_summary, reset_token_tracker
+from skillopt.model import azure_openai as skillopt_azure_openai
 
 from water_assistant_agent.text2sql.core import (
     USER_PROMPT_TEMPLATE,
@@ -71,12 +74,44 @@ from experiments.text2sql.harness import (
 )
 from experiments.text2sql.prompt_skill import (
     MIN_SPLIT_SIZE,
+    install_openrouter_provider,
     instruction_block,
     make_client,
     recombine,
 )
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _pinned_optimizer_client() -> Iterator[None]:
+    """Carry the run's OpenRouter provider pin into SkillOpt's own optimizer client.
+
+    The optimizer role is the one seam the pin cannot reach the usual way: SkillOpt
+    takes only ``(endpoint, api_key)`` from us (see ``_build_cfg``) and builds its own
+    ``openai.OpenAI`` in ``skillopt.model.azure_openai._make_client``, caching it in a
+    module global, so the reflect/merge/ranking calls never touch a client we
+    constructed. Patch that factory for the duration of ``train()`` and drop the cached
+    client so it is rebuilt through the patch.
+
+    ``install_openrouter_provider`` gates on the client's ``base_url``, so this stays a
+    no-op for a kisski/blablador optimizer endpoint — and for SkillOpt's target client,
+    which our runs never use (the task rollout runs on the litellm path inside
+    ``rollout``) but which would be pinned correctly anyway if it ever were.
+    """
+    original_make_client = skillopt_azure_openai._make_client
+    cached_client = skillopt_azure_openai._optimizer_client
+
+    def make_pinned_client(role: str) -> Any:
+        return install_openrouter_provider(original_make_client(role))
+
+    skillopt_azure_openai._make_client = make_pinned_client
+    skillopt_azure_openai._optimizer_client = None
+    try:
+        yield
+    finally:
+        skillopt_azure_openai._make_client = original_make_client
+        skillopt_azure_openai._optimizer_client = cached_client
 
 # Single-scorer name shared with the FLEX judge (build_sql_judge_scorer) and GEPA's /
 # TextGrad's per-scorer eval metric, so the SkillOpt run's `eval_score.sql_is_correct`
@@ -621,7 +656,8 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
             Path(cfg["skill_init"]).write_text(seed_skill, encoding="utf-8")
             budget_stopped = False
             try:
-                ReflACTTrainer(cfg, adapter).train()
+                with _pinned_optimizer_client():
+                    ReflACTTrainer(cfg, adapter).train()
             except BudgetExhaustedStop as stop:
                 budget_stopped = True
                 logger.info("SkillOpt stopped on the money budget: %s", stop)

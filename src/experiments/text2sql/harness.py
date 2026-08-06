@@ -41,10 +41,20 @@ from water_assistant_agent.text2sql.core import (
 
 
 
-# Endpoint name -> (api_base env var, api_key env var). Both endpoints are
+# Endpoint name -> (api_base env var, api_key env var). Every endpoint is
 # OpenAI-compatible, so the model identifier must carry an ``openai/`` prefix.
+#
+# An entry is a (base_url, credential) pair, both read from their own env var -- two
+# entries may point at the same URL, a different one, or anything in between; nothing
+# here assumes they match. KISSKI rate-limits per API key, so ``kisski``/``kisski2``/
+# ``kisski3`` exist to spread roles across independent quotas (e.g. task/student on
+# ``kisski2`` while judge + teacher stay on ``kisski``) without the roles contending for
+# one key; each has its own ``LLM_API_BASE_KISSKI_<N>`` in case a key is ever issued
+# against a different KISSKI host.
 ENDPOINTS: dict[str, tuple[str, str]] = {
-    "kisski": ("LLM_API_BASE_KISSKI", "LLM_API_KEY_KISSKI"),
+    "kisski": ("LLM_API_BASE_KISSKI_1", "LLM_API_KEY_KISSKI_1"),
+    "kisski2": ("LLM_API_BASE_KISSKI_2", "LLM_API_KEY_KISSKI_2"),
+    "kisski3": ("LLM_API_BASE_KISSKI_3", "LLM_API_KEY_KISSKI_3"),
     "blablador": ("LLM_API_BASE_BLABLADOR", "LLM_API_KEY_BLABLADOR"),
     "openrouter": ("LLM_API_BASE_OPENROUTER", "LLM_API_KEY_OPENROUTER"),
 }
@@ -329,6 +339,72 @@ def read_endpoint_credentials(endpoint: str) -> tuple[str, str]:
 REASONING_EFFORT = "high"
 
 
+# ---------------------------------------------------------------------------
+# OpenRouter provider pinning
+# ---------------------------------------------------------------------------
+# OpenRouter is a router, not a server: one model id (e.g. qwen/qwen3.6-35b-a3b) is
+# served by many providers that differ in quantization, throughput and price, and an
+# unpinned run silently mixes them across iterations -- the exact confound a
+# technique-vs-technique comparison must not carry. Setting this env var to a provider
+# slug (as listed by https://openrouter.ai/api/v1/models/<model>/endpoints, e.g.
+# "parasail") pins every openrouter-endpoint call of the run to that provider.
+#
+# The pin only travels as the ``provider`` request-body block: appending the slug to the
+# model id (``<model>:parasail``) is NOT a pin -- OpenRouter ignores unknown model
+# suffixes and routes wherever it likes, i.e. it fails open, silently.
+#
+# The pin is applied per role, gated on that role's endpoint, so mixed-endpoint runs
+# (e.g. student on blablador, judge + teacher on openrouter) never send the field to a
+# non-OpenRouter server. Unset => OpenRouter's own routing, and no request anywhere
+# changes shape.
+OPENROUTER_PROVIDER_ENV = "LLM_OPENROUTER_PROVIDER"
+
+
+def openrouter_provider_body(endpoint: str) -> dict[str, Any] | None:
+    """The OpenRouter ``provider`` request-body block for a role running on ``endpoint``.
+
+    ``None`` -- meaning "add nothing to this request" -- for every non-openrouter
+    endpoint and whenever the pin is unset, which is what keeps the field off the
+    kisski/blablador servers in mixed-endpoint runs. ``allow_fallbacks=False`` makes the
+    pin hard: a run either gets the pinned provider or fails loudly, rather than quietly
+    drifting onto another provider mid-optimization.
+    """
+    slug = (os.environ.get(OPENROUTER_PROVIDER_ENV) or "").strip()
+    if endpoint != "openrouter" or not slug:
+        return None
+    return {"only": [slug], "allow_fallbacks": False}
+
+
+def openrouter_provider_kwargs(endpoint: str) -> dict[str, Any]:
+    """The pin as completion kwargs to splat into a litellm call (``{}`` when unpinned).
+
+    litellm forwards ``extra_body`` verbatim into the request body for both the
+    ``openrouter/`` and the ``openai/`` provider prefix -- the latter matters because the
+    GEPA teacher reaches OpenRouter through the ``openai`` provider's
+    OPENAI_API_BASE fallback (see ``configure_teacher_env``).
+    """
+    body = openrouter_provider_body(endpoint)
+    return {"extra_body": {"provider": body}} if body else {}
+
+
+def apply_openrouter_provider(
+    kwargs: dict[str, Any], endpoint: str
+) -> dict[str, Any]:
+    """Merge the pin into an existing completion/create kwargs dict, in place.
+
+    Used where the kwargs are not ours to build from scratch: the in-library GEPA
+    teacher call and the raw-openai clients. An ``extra_body["provider"]`` the caller set
+    explicitly always wins, mirroring how the sampling params treat call-site values.
+    """
+    body = openrouter_provider_body(endpoint)
+    if body is None:
+        return kwargs
+    extra_body = dict(kwargs.get("extra_body") or {})
+    extra_body.setdefault("provider", body)
+    kwargs["extra_body"] = extra_body
+    return kwargs
+
+
 def build_completion_kwargs(
     model: str, endpoint: str, param_prefix: str = "LLM", *, role: str
 ) -> dict[str, Any]:
@@ -368,6 +444,10 @@ def build_completion_kwargs(
         # an endpoint that genuinely rejects it still fails fast.
         "reasoning_effort": REASONING_EFFORT,
         "allowed_openai_params": ["reasoning_effort"],
+        # OpenRouter provider pin for this role's endpoint; empty for kisski/blablador
+        # and when unpinned, so those requests keep their current shape byte-for-byte
+        # (see OPENROUTER_PROVIDER_ENV).
+        **openrouter_provider_kwargs(endpoint),
         **read_sampling_params(param_prefix),
     }
 
@@ -837,6 +917,12 @@ def log_global_params(
     # Frozen across all roles/techniques (student, judge, teacher/optimizer); logged once
     # here so every run records the fixed thinking budget it ran at.
     mlflow.log_param("reasoning_effort", REASONING_EFFORT)
+    # Which OpenRouter provider actually served the run's openrouter-endpoint roles --
+    # they differ in quantization and throughput, so a comparison across runs is only
+    # sound if this matches (or no role ran on openrouter). "" = OpenRouter's own routing.
+    mlflow.log_param(
+        "openrouter_provider", os.environ.get(OPENROUTER_PROVIDER_ENV, "").strip()
+    )
     mlflow.log_param("commit_hash", get_commit_hash())
     mlflow.log_param("dataset_sha256", hash_file(questions_path))
     mlflow.log_param("schema_sha256", hash_file(schema_path))

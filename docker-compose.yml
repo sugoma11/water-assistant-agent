@@ -1,88 +1,19 @@
-x-argilla-common: &argilla-common
-  ARGILLA_HOME_PATH: /var/lib/argilla
-  ARGILLA_ELASTICSEARCH: http://elasticsearch:9200
-  ARGILLA_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres-argilla:5432/argilla
-  ARGILLA_REDIS_URL: redis://redis:6379/0
+# MLflow dev stack: MLflow tracking server + its Postgres backend store + MinIO
+# artifact store. This is the lightweight half of the dev infra and the one you
+# want running by default:
+#
+#   docker compose -f docker-compose.yml up -d      (or `just dev-up`)
+#
+# The Argilla labeling stack (Argilla + Elasticsearch + Redis + its own
+# Postgres) is heavy and lives in docker-compose.argilla.yml; layer it on when
+# you actually need to label:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.argilla.yml up -d
+#
+# Or via just: `just dev-full-up`. The chat app's production stack is separate
+# again (docker-compose.prod.yml).
 
 services:
-  argilla:
-    image: argilla/argilla-server:v2.8.0
-    restart: unless-stopped
-    ports:
-      - "6900:6900"
-    environment:
-      <<: *argilla-common
-      USERNAME: argilla
-      PASSWORD: ${ARGILLA_PWD}
-      API_KEY: ${ARGILLA_API_KEY}
-      WORKSPACE: default
-    networks:
-      - argilla
-    volumes:
-      - argilladata:/var/lib/argilla
-    depends_on:
-      postgres-argilla:
-        condition: service_started
-      redis:
-        condition: service_started
-      elasticsearch:
-        condition: service_healthy
-
-  worker:
-    image: argilla/argilla-server:v2.8.0
-    environment:
-      <<: *argilla-common
-      BACKGROUND_NUM_WORKERS: 2
-    networks:
-      - argilla
-    depends_on:
-      postgres-argilla:
-        condition: service_started
-      redis:
-        condition: service_started
-      elasticsearch:
-        condition: service_healthy
-    command: sh -c 'python -m argilla_server worker --num-workers $${BACKGROUND_NUM_WORKERS}'
-
-  postgres-argilla:
-    image: postgres:18
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: argilla
-    networks:
-      - argilla
-    volumes:
-      - postgres-argilla-data:/var/lib/postgresql
-
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
-    environment:
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
-      - node.name=elasticsearch
-      - cluster.name=es-argilla-local
-      - discovery.type=single-node
-      - cluster.routing.allocation.disk.threshold_enabled=false
-      - xpack.security.enabled=false
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
-      interval: 10s
-      timeout: 10s
-      retries: 10
-    networks:
-      - argilla
-    volumes:
-      - elasticdata:/usr/share/elasticsearch/data/
-
-  redis:
-    image: redis:8.6.1
-    networks:
-      - argilla
-
   mlflow:
     restart: always
     image: ghcr.io/mlflow/mlflow:v3.10.0
@@ -172,14 +103,9 @@ services:
     restart: "no"
 
 networks:
-  argilla:
-    driver: bridge
   mlflow_network:
     driver: bridge
 
 volumes:
-  argilladata:
-  elasticdata:
-  postgres-argilla-data:
   postgres-mlflow-data:
   minio-data:

@@ -128,7 +128,12 @@ tool docstring says, and it is the *opposite* of the endpoint's rule):
   Windows starting more than ~92 days ago go to the Open-Meteo Archive backend;
   anything more recent (including future days, up to the 16-day forecast horizon)
   goes to the Forecast backend. The agent just names the dates the question is
-  about.
+  about. (🔜 Planned, architecture D26: windows the site's own station record
+  covers entirely will be forced from the DB instead of Open-Meteo — same
+  `DailyWeatherRow` shape, same units, resolved in code, still no agent-facing
+  source argument. A retrospective run and a forecast run will then be forced by
+  different instruments, and the response will echo which. See
+  [weather tool](./weather_tool.md).)
 
 **Day-to-day state and cold starts.** The only thing GR2L carries between days is
 the roof's **internal water state** (`Ssub`, `Sret`), seeded on day 1 from
@@ -377,8 +382,8 @@ async def predict_green_roof_water_balance_tool(
 | Argument | Required | Meaning |
 | -------- | -------- | ------- |
 | `roof_type` | yes | `wetland`, `non_irrigated_extensive`, `irrigated_extensive`, `semi_intensive` — selects the preset from the roof-type table. Gravel → `not_available` |
-| `start_date` / `end_date` | one of the two pairs | Explicit window, `YYYY-MM-DD` |
-| `past_days` / `forecast_days` | one of the two pairs | Relative window: 0–92 back, 0–16 ahead |
+| `start_date` / `end_date` | one of the two pairs | Explicit window, `YYYY-MM-DD`. Both dates, or neither |
+| `past_days` / `forecast_days` | one of the two pairs | Relative window: 0–92 back, 0–16 ahead. `past_days` is complete past days ending **yesterday** and carries no forecast tail; the two forms are exclusive. Resolved to absolute dates before the weather fetch — see [weather § Relative windows are resolved first](./weather_tool.md#relative-windows-are-resolved-first) |
 | `initial_soil_moisture_pct` | no | Day-1 soil moisture in **%θ**. Omitted → read from the roof's sensor for the window's first day — see "[Where day 1's soil moisture comes from](#where-day-1s-soil-moisture-comes-from)" |
 | `albedo` | no | Override the roof's default albedo, `0.0–1.0`. Omit unless explicitly asked — see "[Overriding `albedo`](#overriding-albedo)" |
 
@@ -482,10 +487,12 @@ A key whose `allowed_predict_endpoints` does not include `predict_gr2l` (or
   %θ before sending it; do not fall back to the generic 20) and `albedo`
   (roof-type default unless the user explicitly asked for a different surface —
   see "[Overriding `albedo`](#overriding-albedo)").
-- ⚠️ **`w` is km/h and `gs` is J/cm²/day**, *not* the "m/s" / "W/m²" the schema
-  labels (and the R comments) claim. The model core does `u2 = w/3.6` (km/h→m/s)
-  and `Rs = gs × 0.01` MJ/m² (i.e. `gs` in J/cm²/day) — see
-  `gr2l_model/R/GR2L_function.R:40` and `:53-54`. Trust the math, not the label.
+- ⚠️ **`w` is km/h and `gs` is J/cm²/day.** The model core does `u2 = w/3.6`
+  (km/h→m/s) and `Rs = gs × 0.01` MJ/m² (i.e. `gs` in J/cm²/day) — see
+  `gr2l_model/R/GR2L_function.R:42` and `:56`; the schema field descriptions
+  (`api_gateway/prediction_models/gr2l.py:13-14`) name the same conversions.
+  (Earlier revisions of this file warned that the schema labels and R comments
+  said "m/s" / "W/m²" and contradicted the core; both were fixed upstream.)
   The [weather tool](./weather_tool.md) already emits these correct units.
 
 ### Response body

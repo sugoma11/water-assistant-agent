@@ -46,6 +46,16 @@ export function ChatView({ conversationId, onClearError }: ChatViewProps) {
   const restored = useRef(false);
   const [restoring, setRestoring] = useState(true);
 
+  // `setMessages` is rebuilt whenever the underlying agent identity changes, so
+  // keeping it in the restore effect's dependency list would let a re-render
+  // tear down an in-flight restore — and because the `restored` guard is already
+  // set by then, the retry would be skipped and the history lost for good. Hold
+  // it in a ref and depend only on what actually invalidates the restore.
+  const setMessagesRef = useRef(setMessages);
+  useEffect(() => {
+    setMessagesRef.current = setMessages;
+  }, [setMessages]);
+
   // Render the text-to-SQL tool call inside the assistant turn (T026, FR15,
   // C9, SC8). `available: "disabled"` keeps it render-only — the frontend never
   // offers this backend tool to the model; it only paints its result, both live
@@ -73,10 +83,13 @@ export function ChatView({ conversationId, onClearError }: ChatViewProps) {
         if (cancelled) return;
         if (messages.length > 0) {
           // Plain AG-UI objects → forwarded straight to agent.setMessages.
-          setMessages(messages as never);
+          setMessagesRef.current(messages as never);
         }
       })
       .catch((err) => {
+        // Let a failed restore be retried rather than latching the guard on an
+        // error — otherwise a transient blip leaves the pane permanently empty.
+        restored.current = false;
         if (!(err instanceof UnauthorizedError)) {
           console.error("Failed to restore conversation history", err);
         }
@@ -87,7 +100,7 @@ export function ChatView({ conversationId, onClearError }: ChatViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [conversationId, isAvailable, setMessages]);
+  }, [conversationId, isAvailable]);
 
   // Stop control + partial durability (T025, C7, FR10, R2). CopilotChat's stop
   // button calls this before aborting the run; the streamed partial stays in the

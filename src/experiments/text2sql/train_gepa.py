@@ -49,6 +49,7 @@ from water_assistant_agent.text2sql.core import (
 from experiments.text2sql.harness import (
     ENDPOINTS,
     REASONING_EFFORT,
+    apply_openrouter_provider,
     configure_teacher_env,
     llm_retry,
     load_dataset,
@@ -236,6 +237,12 @@ def train_gepa(
             return original_completion(*args, **kwargs)
         kwargs["reasoning_effort"] = REASONING_EFFORT
         kwargs.setdefault("allowed_openai_params", ["reasoning_effort"])
+        # ...and, on an OpenRouter teacher, the run's provider pin. This patch is
+        # process-wide, but only the teacher branch is pinned and only against the
+        # *teacher's* endpoint, so a student/judge on kisski/blablador (whose calls
+        # returned above already carrying their own endpoint's pin, or none) can never
+        # be handed an OpenRouter-only body field.
+        apply_openrouter_provider(kwargs, teacher_endpoint)
         return retrying_completion(*args, **kwargs)
 
     litellm.completion = _completion_with_frozen_effort

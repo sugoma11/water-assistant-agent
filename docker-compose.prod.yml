@@ -1,6 +1,6 @@
 # Production stack for the Water Assistant chat app: Postgres + FastAPI backend
-# + Next.js/CopilotKit frontend. Separate from docker-compose.yml (which is the
-# experiments/ops infra: Argilla, MLflow, MinIO).
+# + Next.js/CopilotKit frontend. Separate from the experiments/ops infra
+# (docker-compose.yml = MLflow + MinIO, docker-compose.argilla.yml = Argilla).
 #
 #   docker compose -f docker-compose.prod.yml up --build
 #

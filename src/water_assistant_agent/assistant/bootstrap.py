@@ -17,6 +17,7 @@ Importing this module has no side effects; everything happens in
 """
 
 import dataclasses
+import math
 from typing import Final
 
 import structlog
@@ -53,6 +54,19 @@ _DB_POOL_SIZE: Final[int] = 10
 _DB_MAX_OVERFLOW: Final[int] = 20
 _DB_POOL_TIMEOUT: Final[int] = 30
 _DB_POOL_RECYCLE: Final[int] = 1800
+
+# Conversations are durable user data (they back ``/conversations``), so no ADK
+# session may ever be expired. ag-ui-adk's signature types the timeout as
+# ``Optional[int]``, but its cleanup pass compares ``age > self._timeout``
+# unguarded — ``None`` therefore raises ``TypeError: '>' not supported between
+# instances of 'float' and 'NoneType'`` once per live session on every pass,
+# logged as "Error checking session <app>:<id>". ``inf`` says "never" in a form
+# the comparison accepts.
+_SESSION_TIMEOUT_NEVER: Final[float] = math.inf
+# With nothing to expire, the pass is pure overhead: it reloads every tracked
+# session (events included) from the database each interval. Keep the task alive
+# — it also untracks sessions deleted out-of-band — but run it rarely.
+_SESSION_CLEANUP_INTERVAL_SECONDS: Final[int] = 24 * 60 * 60
 
 logger = structlog.get_logger(__name__)
 
@@ -117,8 +131,22 @@ def _add_adk_endpoint(
         app_name=settings.app_name,
         user_id_extractor=extract_verified_user_id,
         session_service=session_service,
-        session_timeout_seconds=None,  # never expire sessions
+        session_timeout_seconds=_SESSION_TIMEOUT_NEVER,  # never expire sessions
+        cleanup_interval_seconds=_SESSION_CLEANUP_INTERVAL_SECONDS,
+        # Belt and braces on the two lines above: cleanup is the only path in
+        # ag-ui-adk that deletes sessions, and it deletes by default. User-driven
+        # deletion goes straight to the session service (``routers.conversations``)
+        # and is unaffected.
+        delete_session_on_cleanup=False,
         use_in_memory_services=True,  # in-memory artifact/memory; DB session above
+        # D3/FR11: the conversation id *is* the ADK session id. Without this flag
+        # ag-ui-adk defaults to generating its own session id and only records the
+        # thread id in session state (``_ag_ui_thread_id``) — which silently breaks
+        # every route that looks a session up by conversation id (history restore,
+        # partial append, session delete). Safe here because DatabaseSessionService
+        # honours a caller-supplied session_id (the default exists for backends like
+        # VertexAI that mint their own).
+        use_thread_id_as_session_id=True,
     )
     add_agent_endpoint(app, adk_agent, path="/")
 

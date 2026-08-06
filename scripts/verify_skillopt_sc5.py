@@ -20,7 +20,7 @@ The same failure is reproducible live through the real CLI by pointing the optim
 role at an endpoint whose credentials are unset (task/judge on a reachable endpoint),
 e.g.::
 
-    LLM_API_KEY_KISSKI= LLM_API_BASE_KISSKI= \
+    LLM_API_KEY_KISSKI_1= LLM_API_BASE_KISSKI_1= \
       uv run text2sql-train-skillopt --model openai/<task> --endpoint blablador \
         --judge-model openai/<judge> --judge-endpoint blablador \
         --optimizer-model <opt> --optimizer-endpoint kisski \

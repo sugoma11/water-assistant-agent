@@ -14,11 +14,17 @@ the registered artifact stays a complete, reusable template (FR6).
 """
 
 from typing import Any
+from urllib.parse import urlsplit
 
 from openai import OpenAI
 
 from experiments.text2sql.cost_meter import CostMeter
-from experiments.text2sql.harness import ENDPOINTS, REASONING_EFFORT, read_endpoint_credentials
+from experiments.text2sql.harness import (
+    ENDPOINTS,
+    REASONING_EFFORT,
+    apply_openrouter_provider,
+    read_endpoint_credentials,
+)
 
 # Section marker that separates the optimizable instruction block from the fixed
 # schema context in SYSTEM_PROMPT_TEMPLATE.
@@ -59,8 +65,44 @@ def make_client(
         )
     base_url, api_key = read_endpoint_credentials(endpoint)
     client = OpenAI(base_url=base_url, api_key=api_key)
+    install_openrouter_provider(client)
     if meter is not None:
         _install_cost_meter(client, meter, role)
+    return client
+
+
+def install_openrouter_provider(client: OpenAI) -> OpenAI:
+    """Pin the OpenRouter provider on every completion ``client`` makes (R3, NFR2).
+
+    The raw-openai seam's half of the pin: litellm calls carry it as a completion kwarg
+    (``harness.openrouter_provider_kwargs``), but TextGrad's task/backward engines and
+    SkillOpt's optimizer reach the endpoint through an ``openai.OpenAI`` client whose
+    per-call kwargs are fixed by the library, so the pin has to be installed on the
+    client itself.
+
+    Gated on the client's own ``base_url`` rather than on an endpoint name, because this
+    also wraps clients built inside SkillOpt (see ``skillopt_optimizer``), whose role is
+    not ours to know. A kisski/blablador client is returned untouched, so a
+    mixed-endpoint run never sends the field to a non-OpenRouter server.
+
+    Both API surfaces are wrapped: SkillOpt picks between ``chat.completions`` and
+    ``responses`` per deployment name (``_needs_responses_api``), and a pin that silently
+    stopped applying because a role took the other branch would be worse than no pin.
+    """
+    host = urlsplit(str(client.base_url)).hostname or ""
+    if host != "openrouter.ai" and not host.endswith(".openrouter.ai"):
+        return client
+
+    def pin(create: Any) -> Any:
+        def pinned_create(*args: Any, **kwargs: Any) -> Any:
+            return create(*args, **apply_openrouter_provider(kwargs, "openrouter"))
+
+        return pinned_create
+
+    completions = client.chat.completions
+    completions.create = pin(completions.create)  # type: ignore[method-assign]
+    responses = client.responses
+    responses.create = pin(responses.create)  # type: ignore[method-assign]
     return client
 
 

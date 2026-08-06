@@ -21,15 +21,27 @@ chat:
     (cd web && npm run dev) &
     wait
 
-# ── Development stack (Argilla, MLflow, MinIO) ───────────────────────────────
+# ── Development stacks (MLflow; + Argilla on demand) ─────────────────────────
 
-# Run the development stack (Argilla, MLflow, MinIO)
+# Run the MLflow stack only (MLflow, its Postgres, MinIO) — the light default
 dev-up:
     docker compose -f docker-compose.yml up -d
 
-# Stop the development stack
+# Stop the MLflow stack (leaves a running Argilla half alone; see dev-full-down)
 dev-down:
     docker compose -f docker-compose.yml down
+
+# Run the full dev stack: MLflow + Argilla (Elasticsearch, Redis, Postgres) — heavy
+dev-full-up:
+    docker compose -f docker-compose.yml -f docker-compose.argilla.yml up -d
+
+# Stop the full dev stack (both halves)
+dev-full-down:
+    docker compose -f docker-compose.yml -f docker-compose.argilla.yml down
+
+# Run the full dev stack with an ngrok HTTPS front for the Argilla UI
+dev-full-ngrok:
+    docker compose -f docker-compose.yml -f docker-compose.argilla.yml -f docker-compose.argilla.ngrok.yml up -d
 
 # ── Production stack (Postgres + FastAPI + Next.js) ──────────────────────────
 

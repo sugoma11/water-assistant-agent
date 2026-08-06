@@ -5,6 +5,8 @@ db_path        := "data/water.duckdb"
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 blablador := "blablador"
 kisski    := "kisski"
+kisski2   := "kisski2"      # KISSKI, second API key (own quota, own base URL var)
+kisski3   := "kisski3"      # KISSKI, third API key (own quota, own base URL var)
 openrouter := "openrouter"
 
 # from the PRICE_* env vars in .env (per 1M tokens, see .example.env).

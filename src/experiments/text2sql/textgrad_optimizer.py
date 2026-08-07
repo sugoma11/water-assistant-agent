@@ -547,12 +547,14 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         (name, seed_template), = target_prompts.items()
 
         # Refuse a degenerate split up front (EC3), before any engine is built or any
-        # LLM call is made. This is the same seeded ``split_dataset`` split GEPA uses,
-        # so a too-small split is a dataset/seed problem, not a TextGrad one.
+        # LLM call is made. This is the same seeded ``split_dataset`` split GEPA uses --
+        # under the 20 / 0 / 55 scheme val *is* a copy of that train split -- so a
+        # too-small split is a dataset/seed problem, not a TextGrad one.
         if len(train_data) < MIN_SPLIT_SIZE or len(self.val_set) < MIN_SPLIT_SIZE:
             raise ValueError(
                 "TextGrad needs a non-empty train and val split (the same seeded "
-                f"split_dataset split GEPA uses); got train={len(train_data)}, "
+                "split_dataset split GEPA uses; val is a copy of train under the "
+                f"20 / 0 / 55 scheme); got train={len(train_data)}, "
                 f"val={len(self.val_set)} (minimum {MIN_SPLIT_SIZE} each). Enlarge "
                 "the dataset or adjust the sampler split before optimizing."
             )

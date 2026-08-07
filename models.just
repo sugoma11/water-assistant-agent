@@ -1,8 +1,10 @@
 # ── openrouter model aliases ───────────────────────────────────────────────────
 # for GEPA: qwen/qwen3.6-35b-a3b (uses litellm beneath) and semicolon for train
-# for TextGrad openrouter/qwen/qwen3.6-35b-a3
-# for SkillOpt: openrouter/qwen/qwen3.6-35b-a3b and qwen/qwen3.6-35b-a3b for optimizer 
-qwen36-openrouter := "openrouter/qwen/qwen3.6-35b-a3b" 
+# for TextGrad openrouter/qwen/qwen3.6-35b-a3b
+# for SkillOpt: openrouter/qwen/qwen3.6-35b-a3b and qwen/qwen3.6-35b-a3b for optimizer
+qwen36-openrouter-tg := "openrouter/qwen/qwen3.6-35b-a3b"
+qwen36-openrouter-so := "openrouter/qwen/qwen3.6-35b-a3b"
+qwen36-openrouter-ge := "openrouter/qwen/qwen3.6-35b-a3b"
 
 # ── Blablador model aliases ───────────────────────────────────────────────────
 # value is the API alias id, comment shows the real underlying model

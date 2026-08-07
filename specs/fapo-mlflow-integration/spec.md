@@ -288,6 +288,8 @@ The remaining clarifications (Q2–Q6) are scoped to that decision and are liste
   message rather than producing an unreliable result. The split is the same seeded
   `split_dataset` split the other techniques use (same seed, same validation set), so the
   per-round keep-best stays comparable (FR3, NFR2; reuse `MIN_SPLIT_SIZE`).
+  *Amended:* that split is now 20 train / 55 test with val a copy of train, not equal
+  thirds — see [`specs/sampling_refactoring/spec.md`](../sampling_refactoring/spec.md).
 - EC4. **Quality judge unavailable mid-run** — surface the judge failure; do not score an
   example as passing or failing by default, since a fabricated grade would corrupt both
   the attribution partition and the reported metric (FR11) — mirror SkillOpt/TextGrad

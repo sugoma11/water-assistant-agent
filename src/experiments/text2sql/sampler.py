@@ -13,6 +13,14 @@ split, so paraphrases and shape-twins never leak from train into val/test.
 Question embeddings are cached to disk per question; with a warm cache no API
 calls are made.
 
+The split is a two-way seeded, group-aware target split (:func:`split_indices`):
+:data:`TRAIN_SIZE` records for train, all the rest held out as test — 20 / 55 on the
+75-record set — with ``val`` a copy of ``train`` (D1). Every technique keeps its
+val-driven machinery (Pareto scoring, keep-best gates) running, but on training data,
+so ``test_quality_{before,after}`` is the only generalization signal. The earlier
+equal-thirds (25 / 25 / 25) regime is gone; runs recorded under it are not comparable
+(``specs/sampling_refactoring/spec.md``, C1).
+
 Exposed as ``split_dataset`` (drop-in for the train script, MLflow-format records)
 and the ``text2sql-sample`` CLI (raw records in, train/val/test JSON files out).
 """
@@ -38,6 +46,12 @@ EMB_API_KEY_VAR = "LLM_API_KEY_BLABLADOR"
 EMB_BATCH_SIZE = 16
 
 Q_THRESHOLD = 0.10  # cosine distance: ≈ bottom 1% of pairs, wording-level paraphrases only
+
+# Target train size of the split: on the 75-record set this is 20 train / 55 test, and
+# ``val`` is a copy of the train split (D1) — every technique keeps its val-driven
+# machinery (Pareto scoring, keep-best gates) but validates on train data, so only
+# ``test_quality_{before,after}`` measures generalization.
+TRAIN_SIZE = 20
 
 
 # ---------------------------------------------------------------------------
@@ -280,12 +294,13 @@ def assign_groups(questions: list[str], sqls: list[str], cache_path: Path) -> li
 
 
 def split_indices(
-    group_ids: list[int], seed: int, ratios: tuple[float, float, float] = (1 / 3, 1 / 3, 1 / 3)
-) -> tuple[list[int], list[int], list[int]]:
-    """Deterministic group-aware split: shuffle the groups with the seed, then
-    assign each group to the split with the largest remaining record-count
-    deficit (ties broken train -> val -> test), so groups never straddle splits
-    and sizes stay close to the targets even with large groups."""
+    group_ids: list[int], seed: int, train_size: int = TRAIN_SIZE
+) -> tuple[list[int], list[int]]:
+    """Deterministic group-aware train/test split: shuffle the groups with the seed,
+    then assign each group to the bucket with the largest remaining record-count
+    deficit — ``[train_size, len(group_ids) - train_size]``, ties broken train -> test
+    — so groups never straddle the split and train lands on ``train_size`` records
+    with test taking the remainder."""
     members: dict[int, list[int]] = {}
     for idx, gid in enumerate(group_ids):
         members.setdefault(gid, []).append(idx)
@@ -293,30 +308,31 @@ def split_indices(
     groups = sorted(members)
     random.Random(seed).shuffle(groups)
 
-    n = len(group_ids)
-    deficits = [r * n for r in ratios]
-    splits: tuple[list[int], list[int], list[int]] = ([], [], [])
+    deficits = [float(train_size), float(len(group_ids) - train_size)]
+    splits: tuple[list[int], list[int]] = ([], [])
     for gid in groups:
-        s = max(range(3), key=lambda k: (deficits[k], -k))
+        s = max(range(2), key=lambda k: (deficits[k], -k))
         splits[s].extend(members[gid])
         deficits[s] -= len(members[gid])
     return tuple(sorted(part) for part in splits)
 
 
 def split_dataset(
-    data: list[dict], seed: int, cache_path: Path
+    data: list[dict], seed: int, cache_path: Path, *, train_size: int = TRAIN_SIZE
 ) -> tuple[list[dict], list[dict], list[dict]]:
     """Group-aware seeded train/val/test split of MLflow-format records
-    (``{"inputs": {"question"}, "expectations": {"sql", ...}}``)."""
+    (``{"inputs": {"question"}, "expectations": {"sql", ...}}``).
+
+    ``train_size`` records go to train, all the rest to test, and ``val`` is a *new
+    list object* holding the same record dicts as ``train`` (D1) — so ``val == train``
+    while no optimizer can alias-mutate one split through the other.
+    """
     questions = [rec["inputs"]["question"] for rec in data]
     sqls = [rec["expectations"]["sql"] for rec in data]
     group_ids = assign_groups(questions, sqls, cache_path)
-    train_idx, val_idx, test_idx = split_indices(group_ids, seed)
-    return (
-        [data[i] for i in train_idx],
-        [data[i] for i in val_idx],
-        [data[i] for i in test_idx],
-    )
+    train_idx, test_idx = split_indices(group_ids, seed, train_size)
+    train = [data[i] for i in train_idx]
+    return (train, list(train), [data[i] for i in test_idx])
 
 
 # ---------------------------------------------------------------------------
@@ -348,7 +364,20 @@ def split_dataset(
     default=None,
     help="npz cache for question embeddings [default: <questions dir>/question_embeddings.npz].",
 )
-def sample(questions_path: Path, seed: int, out_dir: Path | None, cache_path: Path | None) -> None:
+@click.option(
+    "--train-size",
+    type=int,
+    default=TRAIN_SIZE,
+    show_default=True,
+    help="Target train size; val.json is a copy of train.json and the rest goes to test.",
+)
+def sample(
+    questions_path: Path,
+    seed: int,
+    out_dir: Path | None,
+    cache_path: Path | None,
+    train_size: int,
+) -> None:
     """Split a text-2-SQL dataset into train/val/test JSON files, keeping every
     near-duplicate group (same SQL shape or paraphrased question) in one split."""
     load_dotenv()
@@ -366,7 +395,8 @@ def sample(questions_path: Path, seed: int, out_dir: Path | None, cache_path: Pa
     )
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    parts = split_indices(group_ids, seed)
+    train_idx, test_idx = split_indices(group_ids, seed, train_size)
+    parts = (train_idx, list(train_idx), test_idx)  # val.json == train.json (D1)
     for name, idx in zip(("train", "val", "test"), parts):
         path = out_dir / f"{name}.json"
         path.write_text(json.dumps([records[i] for i in idx], indent=2, ensure_ascii=False))

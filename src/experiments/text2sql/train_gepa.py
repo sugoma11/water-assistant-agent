@@ -6,20 +6,26 @@ building blocks from ``experiments.text2sql.harness``: the dataset loader, the
 litellm predict_fn and the FLEX-style LLM-as-Judge scorer (its boolean Feedback is
 auto-converted to 1.0/0.0 by MLflow's metric aggregation).
 
-The dataset is split train/val/test with a seeded sampler: GEPA reflects on
-minibatches from the train split and Pareto-scores candidates on the val split.
+The dataset is split by the seeded sampler under the 20 / 0 / 55 scheme
+(``specs/sampling_refactoring/spec.md``): GEPA reflects on minibatches from the
+20-record train split and Pareto-scores candidates on a val split that **is** that
+same train split (``split_dataset`` returns a copy of train as val, D1), so all
+val-driven machinery runs unchanged — on training data.
 There are no explicit val eval phases: GEPA fully evaluates the seed prompt (and
 every accepted candidate) on the valset (gepa/core/engine.py), so the baseline and
 best-candidate val scores come straight back as ``result.initial_eval_score`` /
 ``result.final_eval_score``, which optimize_prompts already logs on this run as
-``{initial,final}_eval_score`` (no need to re-log them). Only the test split is
-evaluated by hand (``test_quality_{before,after}``), since GEPA never sees it.
+``{initial,final}_eval_score`` (no need to re-log them). Those two are therefore
+*training* scores and measure no generalization (C4); the only generalization signal
+is the held-out test split, evaluated by hand on 55 records
+(``test_quality_{before,after}``), which GEPA never sees.
 
 The only stop is the money budget (FR2): a ``BudgetStopper`` checked by the engine
 at each iteration boundary, wired through ``gepa_kwargs["stop_callbacks"]`` while
 ``max_metric_calls`` becomes a never-firing sentinel. Of GEPA's valset passes, only
 the seed pass is a bracketing eval — it runs before the first stopper invocation
-and is moved to the excluded bucket by the stopper's first-call snapshot (D3); the
+and is moved to the excluded bucket by the stopper's first-call snapshot (D3), and
+under the 20 / 0 / 55 split it covers 20 records rather than 25; the
 best candidate's score is read back from its acceptance-time full-val pass, which
 is part of the search and therefore billable like every other candidate eval
 (exclusion semantics confirmed 2026-07-03, plan revision log). Reflection spend is
@@ -178,7 +184,9 @@ def train_gepa(
     schema_text = format_schema_for_prompt(load_schema(schema_path))
     data = load_dataset(questions_path, use_prod_questions)
     train_set, val_set, test_set = split_dataset(
-        data, sampler_seed, cache_path=Path(questions_path).with_name("question_embeddings.npz")
+        data,
+        sampler_seed,
+        cache_path=Path(questions_path).with_name("question_embeddings.npz"),
     )
     click.echo(
         f"Split {len(data)} samples (seed={sampler_seed}): "

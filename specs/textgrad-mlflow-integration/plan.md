@@ -82,6 +82,8 @@ Reused unchanged: `sampler.split_dataset`, `load_dataset`, `create_optimizable_p
 - **Train/val/test split** — `sampler.split_dataset(data, seed, cache_path)`, identical seed
   and cache as GEPA (FR3, NFR2). TextGrad uses train for steps, val for keep-best, test for
   the after metric only.
+  *Amended:* the split is now 20 train / 55 test with val a copy of train, not equal
+  thirds — see [`specs/sampling_refactoring/spec.md`](../sampling_refactoring/spec.md).
 - **Optimizable prompt** — single prompt `text2sql_system` (`PROMPT_NAME`). Per the working
   notebook, only the **instruction block** (`SYSTEM_PROMPT_TEMPLATE.split("Schema:")[0]`) is the
   optimizable `tg.Variable`; the schema is fixed context the task engine (`SchemaInjectingEngine`)

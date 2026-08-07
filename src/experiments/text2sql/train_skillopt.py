@@ -9,6 +9,18 @@ runs on SkillOpt's own model layer (``--optimizer-model``/``--optimizer-endpoint
 sole stopping criterion is the money ``--budget`` shared by all techniques (FR2, C3),
 while edit-budget/minibatch remain structural knobs shaping how a round works (FR10).
 
+The split follows the 20 / 0 / 55 scheme (``specs/sampling_refactoring/spec.md``), the
+same one GEPA and TextGrad use: ``split_dataset`` yields a 20-record train split and
+a val split that **is** a copy of it (D1), with the remaining
+55 records held out as test. Two ``SkillOptPromptOptimizer._build_cfg`` values follow
+from it: the full-pass epoch (``train_size == batch_size == len(train_set)``) is now 20
+records rather than 25, and the hard val gate ``sel_env_num = len(val_set)`` is 20 --
+scored over the very records the round just trained on. ``minibatch_size`` (3) and
+``edit_budget`` (2) are structural knobs and unchanged. Because the gate and the
+excluded full-val baseline both run on train data, ``{initial,final}_eval_score`` are
+*training* scores (C4); only ``test_quality_{before,after}``, judged on the 55 held-out
+records, measures generalization.
+
 Model-string convention: ``--model``/``--judge-model``/``--optimizer-model`` all take the
 litellm ``openai/<name>`` form (matching ``text2sql-train``). The task and judge models run
 through litellm so they keep the prefix; SkillOpt's optimizer engine is a plain
@@ -175,7 +187,9 @@ def train_skillopt(
     schema_text = format_schema_for_prompt(load_schema(schema_path))
     data = load_dataset(questions_path, use_prod_questions)
     train_set, val_set, test_set = split_dataset(
-        data, sampler_seed, cache_path=Path(questions_path).with_name("question_embeddings.npz")
+        data,
+        sampler_seed,
+        cache_path=Path(questions_path).with_name("question_embeddings.npz"),
     )
     click.echo(
         f"Split {len(data)} samples (seed={sampler_seed}): "

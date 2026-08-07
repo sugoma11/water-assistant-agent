@@ -607,13 +607,15 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
         ((name, seed_template),) = target_prompts.items()
 
         # Refuse a degenerate split up front (EC3), before any LLM call or trainer
-        # construction. This is the same seeded ``split_dataset`` split GEPA/TextGrad use,
-        # so a too-small train or val split is a dataset/seed problem, not a SkillOpt one;
-        # the per-round keep-best gate also needs a non-empty val split to be meaningful.
+        # construction. This is the same seeded ``split_dataset`` split GEPA/TextGrad use --
+        # under the 20 / 0 / 55 scheme val *is* a copy of that train split -- so a too-small
+        # train or val split is a dataset/seed problem, not a SkillOpt one; the per-round
+        # keep-best gate also needs a non-empty val split to be meaningful.
         if len(train_data) < MIN_SPLIT_SIZE or len(self.val_set) < MIN_SPLIT_SIZE:
             raise ValueError(
                 "SkillOpt needs a non-empty train and val split (the same seeded "
-                f"split_dataset split GEPA/TextGrad use); got train={len(train_data)}, "
+                "split_dataset split GEPA/TextGrad use; val is a copy of train under "
+                f"the 20 / 0 / 55 scheme); got train={len(train_data)}, "
                 f"val={len(self.val_set)} (minimum {MIN_SPLIT_SIZE} each). Enlarge the "
                 "dataset or adjust the sampler split before optimizing."
             )

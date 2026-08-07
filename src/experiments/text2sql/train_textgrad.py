@@ -9,6 +9,19 @@ registered prompt). The only knobs that differ from GEPA are the optimizer-model
 engine; both techniques stop on the same ``--budget`` money cap (FR2), with
 ``--batch-size``/``--val-gate-size`` left as structural knobs.
 
+The split follows the 20 / 0 / 55 scheme (``specs/sampling_refactoring/spec.md``), the
+same one GEPA uses: ``split_dataset`` yields a 20-record train split and a val
+split that **is** a copy of it (D1), with the remaining 55
+records held out as test. Gradient steps batch over train, the keep-best gate and the
+excluded full-val baseline score val — i.e. the same 20 records — so
+``{initial,final}_eval_score`` are *training* scores (C4) and only
+``test_quality_{before,after}``, judged on the 55 held-out records, measures
+generalization. Consequence for the gate (C5): ``--val-gate-size`` is now a subset of
+20, not 25, so the recipe default ``textgrad_val_gate_size := "12"`` (``common.just``)
+gates on 60% of the val/train split (it was 48% of the old 25-record val set), and
+``--val-gate-size 0`` -- or any value ``>= 20`` -- degenerates to the full val set via
+:meth:`TextGradPromptOptimizer._build_gate_set`.
+
 Model-string convention: ``--model``/``--judge-model``/``--optimizer-model`` all take the
 litellm provider-prefixed form (matching ``text2sql-train``): ``openai/<name>`` for the
 blablador/kisski/local endpoints, ``openrouter/<vendor>/<name>`` for OpenRouter. The task
@@ -196,7 +209,9 @@ def train_textgrad(
     schema_text = format_schema_for_prompt(load_schema(schema_path))
     data = load_dataset(questions_path, use_prod_questions)
     train_set, val_set, test_set = split_dataset(
-        data, sampler_seed, cache_path=Path(questions_path).with_name("question_embeddings.npz")
+        data,
+        sampler_seed,
+        cache_path=Path(questions_path).with_name("question_embeddings.npz"),
     )
     click.echo(
         f"Split {len(data)} samples (seed={sampler_seed}): "

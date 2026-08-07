@@ -170,6 +170,8 @@ not to change how the assistant itself answers questions.
   message rather than producing an unreliable result. The train/validation/test split is
   the same seeded `split_dataset` split GEPA uses (same seed, same validation set), so the
   per-epoch keep-best stays comparable across techniques (FR3, NFR2).
+  *Amended:* that split is now 20 train / 55 test with val a copy of train, not equal
+  thirds — see [`specs/sampling_refactoring/spec.md`](../sampling_refactoring/spec.md).
 - EC4. **Quality judge unavailable mid-run** — surface the judge failure; do not score the
   candidate as zero or as passing by default.
 - EC5. **Optimized prompt fails to save/version** — treat the run as failed for

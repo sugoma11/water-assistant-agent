@@ -28,6 +28,12 @@ from experiments.text2sql.harness import (
 
 PROMPT_NAME = "text2sql_system"
 
+# Logged as the ``split_scheme`` param on every run: 20 train / 55 test with val a copy
+# of train (``specs/sampling_refactoring/spec.md``). Runs recorded before the refactor
+# lack the param entirely and were tested on a 25-record split, so their
+# test_quality_{before,after} is not comparable with these (C1).
+SPLIT_SCHEME = "20-0-55-val-eq-train"
+
 
 def read_price_config() -> PriceConfig:
     """Validate the six ``PRICE_*`` env vars before a run starts, turning the
@@ -98,6 +104,12 @@ def _run_optimization(
     predict_fns here (rather than in each CLI) guarantees both techniques score with the
     exact same judge under the same metric names.
 
+    Every run records :data:`SPLIT_SCHEME` as the ``split_scheme`` param, so the UI
+    separates these runs from pre-refactor ones without reading split sizes (C1). Under
+    this scheme ``val`` is a copy of ``train``, which makes
+    ``{initial,final}_eval_score`` *training* scores measuring no generalization (C4) --
+    only ``test_quality_{before,after}``, judged on the held-out test split, does.
+
     ``cost_meter`` carries the money budget and prices: the budget + the six prices are
     logged up front under identical names for every technique (FR10, NFR1), only the
     ``optimize_prompts`` optimization phase runs inside ``meter.active()`` so the
@@ -123,6 +135,7 @@ def _run_optimization(
         mlflow.log_params(
             {
                 "sampler_seed": sampler_seed,
+                "split_scheme": SPLIT_SCHEME,
                 "train_size": len(train_set),
                 "val_size": len(val_set),
                 "test_size": len(test_set),

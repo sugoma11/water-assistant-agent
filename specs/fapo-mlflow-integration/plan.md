@@ -152,7 +152,9 @@ all of `prompt_skill.py` (`instruction_block`, `recombine`, `make_client`,
 - **Train/val/test split** — `split_dataset(data, seed, cache_path)`, identical seed and
   embedding cache as the other three (FR3, NFR2, EC3). FAPO attributes on train, gates on
   a fixed val subset, reports endpoints on full val; test is the after-metric only,
-  evaluated by `_run_optimization`. Native dataset adapter: the project's
+  evaluated by `_run_optimization`.
+  *Amended:* the split is now 20 train / 55 test with val a copy of train, not equal
+  thirds — see [`specs/sampling_refactoring/spec.md`](../sampling_refactoring/spec.md). Native dataset adapter: the project's
   `{inputs:{question}, expectations:{sql, argilla_link}}` shape is used directly by the
   task rollout + judge; FAPO's JSONL `case_id/context/expected` shape is **not** persisted
   (we replace `eval_runner`/`datasets` per Q6).

@@ -146,6 +146,8 @@ in `textgrad_optimizer.py` are **lifted into a small shared module**
 - **Train/val/test split** — `sampler.split_dataset(data, seed, cache_path)`, identical
   seed and embedding cache as GEPA/TextGrad (FR3, NFR2, EC3). SkillOpt rolls out on train,
   gates on val; test is the after-metric only, evaluated by `_run_optimization`.
+  *Amended:* the split is now 20 train / 55 test with val a copy of train, not equal
+  thirds — see [`specs/sampling_refactoring/spec.md`](../sampling_refactoring/spec.md).
 - **Optimizable prompt / skill document** — single prompt `text2sql_system` (`PROMPT_NAME`).
   Only the **instruction block** (`SYSTEM_PROMPT_TEMPLATE` before `Schema:`) is the SkillOpt
   skill document; the DB schema is fixed context the task `predict_fn` injects per call

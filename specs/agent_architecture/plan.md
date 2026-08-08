@@ -3,7 +3,7 @@
 Architecture: [`agent_architecture.md`](./agent_architecture.md) ·
 Catalog: [`questions.md`](./questions.md)
 
-Decisions referenced as **D1–D28** live in architecture §10 and are not restated
+Decisions referenced as **D1–D31** live in architecture §10 and are not restated
 here; entries whose mechanism is stated in the architecture body are one-line
 pointers there, so follow the section reference rather than expecting the
 argument in §10. This file is the task-level order of work.
@@ -162,12 +162,22 @@ in one process and neither sees the other's data or clock.
 
 ### P3 — Rules single source of truth
 
+The deployed controller (`~/Downloads/smart_irrigation.py`, extracted from the
+site's `temp/smart_irrigation.py`) is now in hand, which retires R7 and adds
+T045–T049. Its model is **not** GR2L (D29) and it runs local (D30), so this
+phase gained a second water-balance core but lost every network dependency.
+
 | # | Task |
 |---|---|
-| T040 | `assistant/rules_constants.py`: irrigation threshold(s) per roof, wilting point, heat-wave definition, retention target, priority order, **per-roof irrigation dose = p90 of historical ET (D22)** — one module, versioned, no duplication anywhere else |
-| T041 | `assistant/irrigation.py`: `irrigation_decision(...)` as fixed priority rules (never below wilting point → minimize expected runoff → pre-heat-day cooling); returns **bool + the fixed dose constant** (D22), never a computed volume; pure, no LLM. **Signature blocked on R7** (input set unconfirmed) → T040 |
-| T042 | `calc_irrigation` ADK tool + factory; callable with stated values (T16b) or chain outputs (T11), both bool templates (D22) → T041, T016 |
-| T043 | Renderer: `rules_constants.py` → ops-manual markdown sections with stable IDs (`#irrigation_rule`, `#heatwave_definition`, `#retention_target`, priority logic). Rendered, never hand-edited; a test asserts the rendered text matches the constants → T040 |
+| T045 | `assistant/tools/roofs.py`: one roof table — canonical name, DE/EN labels, EGR1/EGR2/IGR/WGR site ids, `swc` column, `SH_cm`, lysimeter area (1 m²), valve presence, alias set. Repoint `swc.ROOF_SWC_COLUMNS` and `gr2l_client.ROOF_PRESETS` at it with **no value changes**, so §5's pins are untouched. Subsumes T036 — normalization happens once, at the table |
+| T046 | `assistant/et_fao56.py`: FAO-56 Penman-Monteith ET0, a verbatim port of `GR2L_function.R:35-74` at **albedo 0.23** (reference crop, not the roof's — throttling is the stress coefficient's job). The R source's fixed `Pressure = 100 kPa` is carried over deliberately and documented as a scope limit (<1 % of ET0 at 142 m) so the two languages agree |
+| T040 | `assistant/rules_constants.py`: per-roof wilting / dry / capacity / residual **authored in %θ and kg, converted to mm once** through `swc.theta_pct_to_mm` and `kg / area_m²`; horizons in hours (48 / 168); heat threshold; outflow epsilon; **both dose fields** — D22's p90-ET (unset until derived) and the deployed valve minutes. One module, versioned, no duplication anywhere else → T045 |
+| T041 | `assistant/irrigation.py`: `simulate_store` / `summarize` / `irrigation_decision`, pure, no LLM, no numpy. Fixed priority rules (never below wilting point → minimize expected runoff → pre-heat-day cooling) returning **bool + reason code + the fixed dose constant** (D22), never a computed volume. The two `will_reach_capacity` adapters (modelled outflow; stated rain total) keep the ladder single. Preserves the original's semantics exactly — stress coefficient from the *previous* step, no lower floor, seed-day initialisation only, SWC window including index 0 and outflow window excluding it → T040, T046 |
+| T047 | **Faithfulness before correctness.** A golden-series test asserting the port reproduces `smart_irrigation.py` element-for-element *in the original %θ/kg mode*, landing **before** the unit fix — so every later difference is attributable to the fix rather than the port → T041 |
+| T042 | `calc_irrigation` ADK tool + factory, self-contained per §3.5 (own seed via `swc`, own forcing via `ctx.weather`); the stated-value path does no I/O at all (T16b). Three outcomes with D16 `error_type`; gravel and seedless windows → `not_available` → T041, T016, T031a, T031b |
+| T048 | Decision-diff harness (D31): replay a historical window from the pinned DuckDB and the station source through **both** unit regimes with the *same* Python ET0, so unit handling is the only variable; emit a markdown table of every date/roof where the decision flips, with the driving feature values. This is the evidence for whether the site re-tunes → T047, T031a |
+| T049 | **Cross-repo, non-evaluation** (`~/work/weinbau-api-v1`): `R/et_fao56.R` extracted from `GR2L_function.R` **gated on the GR2L canary**; `R/GreenRoofSWB_function.R`; `POST /predict_greenroof_swb` on the *existing* `gr2l_model` container; gateway route + schema + `allowed_predict_endpoints` `Literal` + auth-matrix cases; `docs/greenroof_swb_tool.md`; the irrigation canary into `eval/pins.json` marked non-evaluation. All thresholds arrive in the request — no site policy in R. Also guard or delete the top-level demo block at `GR2L_function.R:124-141`, which runs on every container start because `plumber.R` sources the file → T041 |
+| T043 | Renderer: `rules_constants.py` + `roofs.py` → ops-manual markdown sections with stable IDs (`#irrigation_rule`, `#heatwave_definition`, `#retention_target`, `#irrigation_dose`, `#roof_reference_ranges`, `#data_freshness`, priority logic). Rendered, never hand-edited; a test asserts the rendered text matches the constants. `#irrigation_rule` must be answerable without the calculator (T16a's must-not, D24), and `#roof_reference_ranges` must state that the wetland has **no** soil-moisture threshold or it silently answers T06c → T040, T045 |
 | T044 | Reference-ranges pages (normal/low/high per roof segment) derived from the `swc` record, same rendering discipline → T043 |
 
 ### P4 — Retrieval
@@ -207,7 +217,7 @@ as the standalone tools. Nothing here re-implements a fetch path.
 | T071 | Answer-contract parsing + the eval-only candidate instruction carrying it (D10); the production instruction is untouched. The candidate **must** carry an explicit no-clarification clause (D15) — the production instruction's clarification rule would otherwise leak in and fire on a paraphrase. A message parsing to neither status value is recorded as a `parse_failure` diagnostic, never as answer=0 |
 | T072 | `harness/scoring.py`: answer (exact/tolerance, **skipped with coverage reported where the contract answer is `null`** — family H, D14), trajectory (**binary per case, D21**: gold ⊆ called ∧ no must-not called ∧ argument checks; no partial credit, no extra-call penalty), retrieval recall@k, abstention accuracy **and** false-abstention rate reported separately, `harness_error` cases excluded from every aggregate and counted separately **per arm, broken down by source** (service, cache-miss reason, terminal sub-agent failure) (D16), diagnostics incl. `parse_failure` and mean extra calls per arm (D21). Structure it as **per-case metric functions plus an aggregation layer**: T098 wraps the same per-case functions as MLflow `Scorer`s for the search, while the aggregates (exclusions, coverage, per-arm breakdowns) stay here, on the measurement path (D28) → T004 |
 | T073 | Case files as the source of truth, emitted through T004's schema: one **pretty-printed JSON array per split** (`eval/cases/{train,val,test_seen,test_unseen}.json`) of `{"inputs": …, "expectations": …}` elements, loadable **directly** as MLflow `train_data` by both the search (T092) and the measurement run — one format, no projection step. Array over JSONL for reviewability (a JSONL diff hides which field changed); the emitter must be **deterministic** — fixed key order, cases sorted by `case_id`, `indent=2`, trailing newline — and the files are generated, never hand-edited, or a case silently loses its derivation from the template and its `pins` stamp. **No ADK evalset** (D27): dropped, not deferred. Oracle materialization stamps `expectations.pins` with the surface the answer was computed against (DB sha256, GR2L canary, station-derivation version, resolved weather source), so a later pin change invalidates loudly instead of silently → T004, T021 |
-| T074 | Oracles for the three pilot templates only: T01 (SQL sum), T07 (rule chain), T09 (model chain, `import run_gr2l`) → T041, T013 |
+| T074 | Oracles for the three pilot templates only: T01 (SQL sum), T07 (`import irrigation_decision` — local, no HTTP, D30), T09 (model chain, `import run_gr2l`) → T041, T013. **T07's phrasing must be settled in T002 first**: its gold set moved to `{calc_irrigation}` (§8) while its wording still cues the docs route, and T076 cannot freeze a pilot whose route is ambiguous |
 | T075 | Harness assertions: T19-style windows end ≤ `as_of`; no live call in `replay` mode; roof pool respected per family |
 | T076 | **Pilot run** on T01/T07/T09 with the handwritten instruction, 3 seeds, paired — then **freeze the testbed** (architecture §9.8). Everything after this point may change only the optimizable text → T077, T078 |
 | T077 | Lysimeter collection areas in the text2SQL semantic layer (architecture §9.6, catalog §4.2): per-roof areas in the frozen sub-agent's prompt, unblocking T12 and L↔mm conversions — must land before the T076 freeze because the sub-agent text is byte-stable thereafter |
@@ -278,14 +288,33 @@ what the retired single-task "GEPA adapter" was.
 - **R5 — Frontend regression.** D6/D10 keep `root_agent` and the prose format
   intact, but T016–T019 and T024 touch modules the service imports. One smoke
   run of the chat UI after P1 closes.
-- **R7 — `calc_irrigation`'s input set is unconfirmed.** The rule returns a
-  bool with a fixed p90-ET dose (D22), but which inputs the deployed algorithm
-  actually consumes is pending clarification from its authors (preliminary:
-  SWC, precipitation, air temperature, radiation components, wind speed, air
-  humidity). Blocks freezing T041/T042, T11's gold trajectory (whether
-  `get_weather_forecast_tool` joins the chain or the GR2L payload must echo the
-  inputs) and the T11/T16b oracles — clarify before P3, and before the T002
-  sweep finalizes T11/T16a/T16b phrasing.
+- **R7 — retired.** `calc_irrigation`'s input set was unconfirmed; the deployed
+  controller resolves it (soil moisture, precipitation, ET0, air temperature —
+  radiation, wind and humidity enter only through ET0). T041/T042 and the
+  T11/T16b oracles are unblocked; architecture §3.5 and D22 record the
+  resolution. What survives is not a blocker but T002's phrasing sweep for T07,
+  whose "according to the operations manual" wording now collides with T16a.
+- **R9 — the thresholds were tuned against the defective dynamics.** The
+  deployed trigger levels (5/10, 4/10, 10/16 %θ) were set against a model that
+  added mm to a %θ store, so the mm fix moves them relative to the dynamics by
+  `100/SH_mm` per roof (D31). T048 measures the decision flips; whether to
+  re-tune is the site's call, not ours, and until they do, the answers this
+  system gives can differ from what the roof's own controller did that day.
+  Mitigation is disclosure, not correction — the deviation list in
+  `irrigation_tool.md` is part of the thesis's scope limits.
+- **R10 — cross-language drift.** The bucket and the ladder exist in both
+  `irrigation.py` and the R endpoint (D30), and nothing links the two
+  repositories' CI. The committed canary detects drift on the next run that
+  touches it; it does not prevent drift, and a stale canary is indistinguishable
+  from an unchanged service. Mitigation: the canary is checked in the same pass
+  as GR2L's, and D30 makes explicit that no case's answer depends on the R side,
+  so drift is a deliverable defect rather than an evaluation defect.
+- **R11 — extracting `et_fao56.R` touches a canary-pinned file.** T049 refactors
+  `GR2L_function.R`, whose request/response hash is a §5 pin. Mitigation: the
+  extraction is gated on the canary being unchanged, and the stated fallback is
+  a standalone copy for the new model with GR2L left untouched — three ET
+  implementations instead of two, which is worse DRY but zero risk to a pinned
+  surface the whole suite rests on.
 - **R8 — the optimizer entry point is `@experimental`.**
   `mlflow.genai.optimize_prompts` and `GepaPromptOptimizer` are marked
   experimental (mlflow 3.13.0), and candidate injection rests on an internal
@@ -324,14 +353,17 @@ what the retired single-task "GEPA adapter" was.
 | §3.4 forcings / evaluate, D8 | T033, T034 |
 | §1.3 bounded series, D9 | T035 |
 | §3.2 search_docs | T050–T054 |
-| §3.5 calc_irrigation | T040–T044 |
+| §3.5 calc_irrigation | T040–T049 |
+| §3.5 own bucket model, D29 | T041, T046, T047, T002 |
+| §3.5 local execution, D30 | T041, T042, T049 |
+| §3.5 unit fix + kept thresholds, D31 | T040, T047, T048 |
 | §3.6 plot_timeseries, D14, D20 | T060–T069 |
 | §6 harness, §7 scoring | T070–T075, T094, T095 |
 | §6/§6.1 optimizer entry point + case envelope, D27 | T004, T073, T090, T092, T096, T097, T098 |
 | D28 `harness_error` at search time | T099, T072, T084 |
 | §8 catalog amendments, D13 | T002 |
 | §7 binary trajectory, D21 | T072, T002 |
-| §3.5 irrigation decision, D22 | T040–T042, T002, R7 |
+| §3.5 irrigation decision, D22 | T040–T042, T002 (R7 retired) |
 | T18 relabel + empty gold, D23 | T002, T031 |
 | D24 routing must-nots, D25 T24b answer | T002, T070 (catalog already patched) |
 | §9.6/§9.7 semantic-layer prerequisites | T077, T078 |
@@ -342,7 +374,10 @@ what the retired single-task "GEPA adapter" was.
 - `specs/agent_architecture/agent_architecture.md` (reconciled), this plan
 - To be created: `assistant/context.py`, `assistant/cache.py`,
   `assistant/rules_constants.py`, `assistant/irrigation.py`,
-  `assistant/retrieval/bm25_index.py`, `assistant/tools/{search_docs,plot}.py`,
+  `assistant/et_fao56.py`, `assistant/ops_manual.py`,
+  `assistant/tools/roofs.py`, `assistant/tools/irrigation_tool.md`,
+  `assistant/retrieval/bm25_index.py`,
+  `assistant/tools/{search_docs,plot,irrigation}.py`,
   `harness/` (incl. `run_case.py`, `scoring.py`, `optimize.py`, `scorers.py`),
   `eval/{corpus,cache,templates,oracles,cases,schema}/`, `eval/pins.json`
 - To be edited: `tools/{gr2l,weather,warehouse,swc,weather_client,gr2l_client,schemas}.py`,

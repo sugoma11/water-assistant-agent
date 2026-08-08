@@ -27,7 +27,7 @@ mechanism, this document wins on evaluation properties.**
 | weather | `get_weather_forecast_tool` | **built** — live, uncached, no typed abstention, wall-clock backend cutoff, uncapped series, no station source (D4, D9, D11, D17, D26) |
 | GR2L water balance | `predict_green_roof_water_balance_tool` | **built** — no `forcings` / `evaluate_against_measured`, uncapped series (D8, D9) |
 | doc retrieval | `search_docs` | **to build** |
-| irrigation rule | `calc_irrigation` | **to build** |
+| irrigation rule | `calc_irrigation` | **to build** — self-contained over its *own* bucket model, not GR2L; runs local, no HTTP (D29, D30) |
 | plotting | `plot_timeseries` | **to build** — multi-source: DB · weather · GR2L (D14) |
 | `ScenarioContext`, as-of views | — | **to build** (D3) |
 | response cache (weather + GR2L) | — | **to build** (D4) |
@@ -48,8 +48,11 @@ What is missing is the *injection* seam (§4) that makes any of it replayable.
    1; the harness injects at layer 2; oracles import layer 3 directly.
    **Layer 3 is not uniformly local**: GR2L runs as an external HTTP service, so
    `run_gr2l` is a thin client and an oracle that imports it issues the same
-   request the tool does (§3.4). `rules_constants.py` and the irrigation rule
-   remain pure local functions.
+   request the tool does (§3.4). `rules_constants.py`, the irrigation rule **and
+   the irrigation bucket model with its ET0** remain pure local functions —
+   layer 3 gains a second water-balance core, not a second HTTP client (D30).
+   The R endpoint carrying that model into the weinbau API is a deliverable
+   *outside* this testbed and no case's answer depends on it.
 2. **Replay the world through a request-keyed cache, run everything downstream
    of optimized prompts live, pin the data live components read.** External
    world-state (weather, GR2L) is fetched live once and replayed thereafter from
@@ -61,7 +64,13 @@ What is missing is the *injection* seam (§4) that makes any of it replayable.
    requiring arithmetic over a long series happens inside a tool or core (D9).
 4. **Single source of truth for rules.** `rules_constants.py` feeds the
    irrigation calculator, the oracles, and the rendered ops-manual sections.
-   Agent-readable text and executable logic cannot drift apart.
+   Agent-readable text and executable logic cannot drift apart. The same rule
+   applies to roof *identity*: one table in `tools/roofs.py` carries canonical
+   name, DE/EN labels, site ids, `swc` column, substrate height, lysimeter area
+   and aliases, so the four names stop being restated across
+   `swc.ROOF_SWC_COLUMNS`, `gr2l_client.ROOF_PRESETS` and the docstrings — the
+   duplication that makes T036 reachable, and that leaves the modellable roofs
+   with no alias map at all.
 5. **Disclosure fairness.** Every self-contained tool's docstring states what it
    fetches internally. Required in the handwritten baseline; optimized
    candidates may rewrite docstrings (they are part of the candidate).
@@ -77,8 +86,9 @@ What is missing is the *injection* seam (§4) that makes any of it replayable.
 ┌ shared cores ─┴─────────────────────────────────────────────────────┐
 │ run_gr2l (HTTP → external GR2L service, cached) ·                   │
 │ daily weather (station rows from ctx.db · Open-Meteo, cached) ·     │
-│ swc (θ ↔ mm, measured seed) · irrigation_decision ·                 │
-│ rules_constants · bm25 index · pinned data/water.duckdb             │
+│ swc (θ ↔ mm, measured seed) · irrigation bucket · et0_fao56 ·       │
+│ irrigation_decision · rules_constants · roofs ·                     │
+│ bm25 index · pinned data/water.duckdb                               │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -166,8 +176,12 @@ singleton with a literal `static_instruction` and three tools.
 - `rank_bm25` over the corpus; deterministic; no LLM, no reranker.
 - Corpus: ops-manual sections **rendered from `rules_constants.py`**
   (`#irrigation_rule`, `#heatwave_definition`, `#retention_target`,
+  `#irrigation_dose`, `#roof_reference_ranges`, `#data_freshness`,
   irrigation-priority logic §3.5), reference-ranges pages (normal/low/high per
   roof segment), sensor ReadMe, FAO-56 excerpts.
+- T16a forbids `calc_irrigation` (D24), so `#irrigation_rule` must state the
+  per-roof numbers explicitly enough to answer *without* the calculator —
+  otherwise the docs half of the routing probe is unanswerable by construction.
 - Chunking by markdown headings with **stable section IDs** — these IDs are what
   `gold_docs` and recall@k reference.
 - Returns top-k chunks with section IDs and scores; never "no results"
@@ -346,24 +360,78 @@ templates (D, G, part of E) must **not** sample it, and a modelling request
 naming it is a legitimate `not_available`. Implemented as
 `NON_MODELLABLE_ROOFS`, which also accepts the German/column aliases.
 
-### 3.5 `calc_irrigation` — **to build**, deterministic decision rule
+### 3.5 `calc_irrigation` — **to build**, self-contained over its own bucket model
+
+```python
+async def calc_irrigation(
+    roof_type,                   # wetland | non_irrigated_extensive |
+                                 # irrigated_extensive | semi_intensive
+    soil_moisture_pct=None,      # stated-value path (T16a/T16b): %θ
+    max_temperature_c=None,      #   supplying these skips every fetch and
+    forecast_precip_mm=None,     #   every simulation — the rule alone runs
+    water_level_kg=None,         # wetland only
+) -> dict
+```
+
 - **Returns a decision, not a volume** (D22): `irrigate: bool`, with the fixed
   dose stated alongside for disclosure. The dose is policy, not computation —
   the roof's 90th-percentile historical ET, a per-roof constant in
   `rules_constants.py` rendered into the ops manual like every other rule
   constant. No template asks for a per-case volume (T11 and T16b are bool).
-- Docstring intent ("minimize runoff, avoid wilting, provide cooling")
-  implemented as **fixed priority rules** — no LLM, no stochastic weights: never
-  below wilting point → minimize expected runoff → pre-heat-day cooling.
-  Constants and priorities from `rules_constants.py`, mirrored verbatim into the
-  ops manual (T11 gold + phase-2 judge depend on this).
-- Pure function; callable with stated values (T16b) or chain outputs (T11).
-- **Input set unconfirmed — blocks P3 freeze** (D22, plan R7). Preliminary, from
-  the algorithm's authors pending confirmation: SWC, precipitation, air
-  temperature, radiation components, wind speed, air humidity. Until pinned,
-  the signature, T11's gold chain (whether `get_weather_forecast_tool` joins
-  it or the GR2L payload must echo the needed inputs) and the T11/T16b oracles
-  stay unfrozen.
+  `rules_constants.py` carries the deployed valve minutes beside it, because
+  those are what the site actually applies.
+- **It runs its own bucket model, and that model is not GR2L** (D29). The
+  deployed controller's balance differs from GR2L's in seven respects — one
+  store rather than two, a stress coefficient with a residual offset evaluated
+  on the *previous* step, ET applied before the cap, no lower floor, ET0 taken
+  as input, and a flat 22 %θ field capacity where GR2L measures 22.9 / 32.6 /
+  30.4 — so the two are separate cores, maintained separately. The physics, the
+  per-roof parameter derivation and the deviations from the deployed controller
+  are `irrigation_tool.md`'s, on the same terms §3.4 defers to `gr2l_tool.md`.
+- **Self-contained by default** on §3.4's terms, with the same disclosure
+  discipline: the seed comes from `swc.latest_measured_swc` under D5's
+  `min(window_start, as_of)` and the forcing from `ctx.weather`. Supplying the
+  stated values instead makes the call pure — no DB, no weather, no simulation
+  (T16b).
+- **Millimetres internally; the site's own units at the surface.** Constants are
+  authored as the site states them (%θ, kg) and converted once through
+  `swc.theta_pct_to_mm` and `kg / area_m²` (lysimeter area 1 m², so kg ↔ mm is
+  identity). The conversion *removes* a constant rather than adding one: the
+  deployed script's `SWC_CAPACITY = 22.0` and `THETA_FIELD_CAPACITY = 0.22` are
+  one quantity written twice in two units, serving the overflow threshold and
+  the stress-coefficient denominator; in mm they collapse into one.
+- **Horizons are authored in hours** (48 for SWC and temperature, 168 for
+  refill) and converted to row counts by the series' step, so one implementation
+  serves the site's hourly step and this system's daily one. At daily
+  resolution the heat test reads `max(tx)` over two days rather than the hourly
+  maximum of `temperature_2m` — the more faithful quantity, and a stated
+  deviation.
+- **ET0 is computed, not fetched.** `DailyWeatherRow` carries no `et0` and its
+  schema is frozen (§3.3); the station source could not supply one either. A
+  local FAO-56 Penman-Monteith core (`et_fao56.py`) computes it at **albedo
+  0.23**, the reference-crop value — roof-specific throttling is the stress
+  coefficient's job, not the ET0 term's.
+- **Reason codes, not prose.** The decision returns one of
+  `below_wilting_point · no_heat_no_stress · sufficient_moisture ·
+  refill_forecast · cooling_requested · low_water_level ·
+  sufficient_water_level · no_forecast · missing_values`; DE/EN text is a
+  rendering table shared with the ops manual. The "will it refill?" conjunct
+  reaches the ladder as a single `will_reach_capacity` bool computed by two
+  adapters — one from modelled outflow, one from a stated rain total — so the
+  priority ladder itself exists exactly once.
+- **The wetland is not simulated.** Its rule reads current lysimeter level
+  against a fixed minimum and ignores temperature and forecast entirely, which
+  is what the deployed controller does; the model run it computes for the
+  wetland is dead code there.
+- **Three outcomes, as in §3.4**: `success`; `not_available` for the gravel roof
+  (`NON_MODELLABLE_ROOFS`) and for a window with no trustworthy seed
+  (`SwcUnavailableError`); `error` carrying D16's `error_type`.
+- **Everything runs local** (D30), which is what makes irrigation cases fully
+  offline: no D4 cache entry, no canary in the agent path, no `upstream` error
+  class, and an oracle that imports the very function the tool calls.
+- **Input set confirmed; plan R7 is retired.** The rule consumes soil moisture,
+  precipitation, ET0 and air temperature. The preliminary list's radiation, wind
+  and humidity are real but indirect — they enter only through ET0.
 
 ### 3.6 `plot_timeseries` — **to build**, self-contained, multi-source, spec-scored
 
@@ -477,14 +545,17 @@ def build_toolset(ctx, docstrings=None) -> list[Tool]: ...   # make_* factories
 | `search_docs` | n/a | live, deterministic | corpus snapshot + index, hashed |
 | `get_weather_forecast_tool` | n/a | station: pure, offline · Open-Meteo: live once, then **cached** | ctx.db as-of views (station) · Open-Meteo, cache keyed by request |
 | `predict_green_roof_water_balance_tool` | n/a | live, **remote HTTP**, cached | ctx.weather / ctx.db; pinned presets |
-| `calc_irrigation` | n/a | live, pure | `rules_constants.py` |
+| `calc_irrigation` | n/a | live, pure, **fully offline** | `rules_constants.py` · `roofs.py` · ctx.db as-of views · ctx.weather (station path: no network, D26) |
 | `plot_timeseries` | n/a | live, deterministic | ctx.db as-of views · ctx.weather · run_gr2l, all cached |
 | LLM | — | T=0, pinned dated version, cached | — |
 
 - Pins committed to the repo: `water.duckdb` sha256, corpus commit + index hash,
-  `rules_constants.py` version, GR2L roof presets, **GR2L base URL + a canary
-  request/response hash** (the service exposes no version string, so a canary
-  that changes means the service changed), LLM model version string, **the
+  `rules_constants.py` and `roofs.py` versions, GR2L roof presets, **GR2L base
+  URL + a canary request/response hash** (the service exposes no version string,
+  so a canary that changes means the service changed), the **irrigation R
+  endpoint's canary — marked non-evaluation**, since under D30 it guards the
+  cross-language deliverable and no case's answer depends on it,
+  LLM model version string, **the
   reflection LM's dated version** (a second model, distinct from the task model —
   it shapes every proposal GEPA makes, so an unpinned reflector makes a run
   unrepeatable even with the task model fixed), **the candidate prompt names and
@@ -685,8 +756,9 @@ still calls them pays nothing unless a must-not says otherwise):
 
 | Template | Gold trajectory now |
 |---|---|
+| T07 | `{calc_irrigation}` — the catalog's `{search_docs, query_database, get_weather}` predates the self-contained calculator (D29, D30). **Phrasing re-derived in T002**: "according to the operations manual" cues the docs route and collides with T16a's probe |
 | T09, T10 | `{predict_green_roof_water_balance_tool}` |
-| T11 | **reframed bool** (D22): `{predict_green_roof_water_balance_tool, calc_irrigation}` expected; final chain pending the D22 input confirmation (whether `get_weather_forecast_tool` joins it) |
+| T11 | **reframed bool** (D22): `{calc_irrigation}` — self-contained over its own bucket model, so the GR2L tool leaves this chain entirely (D29) |
 | T19 | `{predict_green_roof_water_balance_tool(evaluate_against_measured=True)}`; must-not `get_weather_forecast_tool` (a `text_to_sql_agent` cross-check is a free extra call, D21) |
 | T21 | `{predict_green_roof_water_balance_tool(forcings=…)}` (a prior `get_weather_forecast_tool` fetch is a free extra call — fetch-then-override valid, D21) |
 | T22 | `{predict_green_roof_water_balance_tool(albedo=…)}` |
@@ -740,7 +812,9 @@ src/water_assistant_agent/assistant/
   prompts/             temporal.py (scenario clock) · agent_instructions.py
   settings.py          WATER_ASSISTANT_* pydantic-settings
   [to build]  context.py · cache.py · rules_constants.py · irrigation.py
-              retrieval/bm25_index.py · tools/{search_docs,plot}.py
+              et_fao56.py · ops_manual.py
+              retrieval/bm25_index.py · tools/{search_docs,plot,irrigation}.py
+              tools/roofs.py · tools/irrigation_tool.md   (tool spec)
 data/water.duckdb      (sha256 to pin)
 eval/          [to build] corpus/ cache/ templates/ oracles/ cases/
 specs/agent_architecture/   agent_architecture.md · questions.md · plan.md
@@ -756,8 +830,11 @@ Blocking order before data generation (see `plan.md` for the task-level plan):
    typed `not_available` on weather, window-range validation, bounded series,
    **the station source and its daily derivation** (D26). Blocks D, G, and T18a
    (T18b is agent-level, no tool prerequisite — D11).
-3. `rules_constants.py` + `calc_irrigation` + rendered manual + ranges pages —
-   blocks B, E, F.
+3. `roofs.py` + `rules_constants.py` + `et_fao56.py` + the irrigation bucket +
+   `calc_irrigation` + rendered manual + ranges pages — blocks B, E, F. Now
+   **partially downstream of prerequisite 2**: the calculator fetches through
+   `ctx.weather`, so its retrospective cases are offline only once D26's station
+   source lands. The R endpoint (§3.5) is not on this path at all.
 4. `search_docs` + corpus + stable section IDs — blocks B, E, F recall metrics.
 5. `plot_timeseries` — blocks H. Now downstream of prerequisite 2 as well: its
    `model` and `weather` series ride the same window resolution, seed rule and
@@ -1065,9 +1142,10 @@ measured SWC, T11 on the model's prediction), and **T16b** becomes the same
 bool on stated values through the calculator (`{calc_irrigation}`), pairing
 with T16a's docs-only route (`{search_docs}`) on identical inputs — the a/b
 pair now probes docs-vs-calculator routing, and the two questions' phrasing
-must cue the route (settle the wording in T002). The rule's unconfirmed input
-set — which leaves this template pair, the calculator's signature and its
-oracles unfrozen — is tracked as §3.5 and plan R7.
+must cue the route (settle the wording in T002). *Amended:* the input set is now
+confirmed (§3.5) and plan R7 is retired, so the signature and the T11/T16b
+oracles are unblocked. "Chain outputs (T11)" no longer means a GR2L payload —
+under D29 it means the calculator's own internal chain.
 
 **D23 — The catalog's T18a/T18b assignment was swapped; this document's labels
 are canonical.** `questions.md` had T18a = unknown variable and T18b = beyond
@@ -1236,3 +1314,70 @@ visible — a `harness_error` scorer contributes 0 **and** its per-arm count is
 reported, so a search polluted by outages is a stated fact instead of silent
 noise in the fitness signal. Corollary: `train_data` is pre-filtered to cases
 with complete capture, so a case that cannot replay never enters the search.
+
+**D29 — The irrigation rule runs on its own bucket model; GR2L is not a
+substitute.** §3.5 assumed `calc_irrigation` would consume GR2L's output. The
+deployed controller's water balance differs from GR2L's in seven respects (§3.5,
+derived in `irrigation_tool.md`), so the two are separate layer-3 cores.
+
+*Rejected:* reusing `run_gr2l` for T11's chain. It would score the agent against
+a model the site does not run — and the disagreement is not academic: the
+controller applies a flat 22 %θ field capacity to all three substrate roofs,
+which for `semi_intensive` sits 12.6 mm below GR2L's measured `Ssubmax`, so the
+two models disagree about when that roof overflows at all. The evaluation
+property at stake is that T07/T11 measure the *deployed* rule; a chain through
+GR2L would measure a rule nobody uses.
+
+*Consequences:* T11's gold set drops to `{calc_irrigation}` (§8); the model tool
+keeps its T04 distractor slot, so D21's coverage claim is unaffected; and
+`gr2l_tool.md` and `irrigation_tool.md` must each state that the other model
+exists and why its numbers differ, or a reader will treat one as a bug in the
+other.
+
+**D30 — The irrigation model and rule run local in Python; the R endpoint is a
+separate, non-evaluation deliverable.** The same model ships to the weinbau API
+as an R endpoint for consumers outside this system. The agent does not call it.
+
+*Rejected:* routing the agent's irrigation path through HTTP as §3.4 does for
+GR2L. The GR2L precedent is not binding, because GR2L's remoteness is a
+constraint (the R core exists only as a service, §3.4) while here we own the
+implementation and are choosing where to put it.
+
+*Evaluation-validity conditions this buys:* irrigation cases become **fully
+offline** — pure functions over the pinned DuckDB and, for retrospective
+windows, the station source. No D4 cache entry, no canary on the answer path, no
+`upstream` error class, and no capture deadline (R1); the T07/T11/T16b oracles
+import the very function the tool calls, so oracle and tool cannot diverge.
+Structurally this is D26's argument for the station source, reapplied to a
+second component.
+
+*Cross-language agreement is asserted through the existing canary mechanism, not
+a new fixture path.* The R endpoint gets a committed request/response hash
+exactly as GR2L has (§5), replayed through the D4 cache, and the Python
+implementation is checked against it. Building a bespoke conformance-fixture
+file with its own schema and generator is the alternative D4 already rejected
+for weather and GR2L, and it is no more justified here.
+
+*Cost, stated plainly:* the bucket and the ladder exist in two languages, and
+nothing links the two repositories' CI. The canary fails loudly on drift; it does
+not prevent it (plan R10).
+
+**D31 — The unit fix changes what the deployed algorithm predicts; the
+thresholds are kept and the change is measured.** The extracted controller adds
+millimetres of rain and ET to a store held in %VWC or kg. Correcting it to
+millimetres rescales each roof's response to rain by `100/SH_mm` — ≈0.7× for the
+7 cm extensive roofs, ≈1.5× for the 15 cm semi-intensive — and the deployed
+trigger levels were tuned against the uncorrected dynamics.
+
+*Rejected:* re-deriving the thresholds so the corrected model reproduces the
+controller's historical decisions. That is a fitted correction sitting between
+the instrument and the oracle — precisely the objection D26 sustained against
+calibrating `gs` against the on-site pyranometers. Uncorrected constants are
+reproducible from the site's own documentation by anyone; a rescaled set is not.
+
+*Adopted:* the deployed values are carried verbatim into `rules_constants.py` as
+site policy, and a decision-diff harness (plan T048) replays a historical window
+through both unit regimes — same ET0, so unit handling is the only variable —
+and reports every date and roof where the decision flips. Whether to re-tune is
+then the site's call, made against evidence, and the thesis can state what the
+correction did rather than assuming it did nothing.

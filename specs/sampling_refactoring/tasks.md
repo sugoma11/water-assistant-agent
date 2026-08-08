@@ -180,8 +180,19 @@ become the default.
     and still differ by 2 records (29 vs 27 of 55);
   - GEPA's test-before at the same seed, same split and same seed prompt scored 30/55
     (54.55%) vs TextGrad's 29/55 (52.73%).
-  So the judge/model run-to-run noise floor on the 55-record test set is ~1–2 records
-  (≈2–4 pp); per-technique deltas below that are not signal. (depends: T016)
+  A first read of this put the noise floor at ~1–2 records, but T022's SkillOpt run
+  then scored the *same* seed prompt on the *same* 55 records at 24/55 (43.64%), so the
+  three-run spread of the identical baseline is **24 / 29 / 30 of 55 — 6 records,
+  ≈11 pp**. All three ran the same task model with identical sampling params
+  (`temperature=0.05`, `top_p=1.0`, `max_tokens=44000`, `reasoning_effort=high`) and
+  the same judge params, seeded from byte-identical prompt versions (v18 / v20 / v21,
+  each `== SYSTEM_PROMPT_TEMPLATE`), so the spread is run-to-run sampling/judge
+  variance, not configuration. Consequences for reading the campaign: a single-seed
+  before/after delta carries an error bar of that size, `test_quality_before` should be
+  treated as a per-run draw rather than a shared constant, and technique comparisons
+  are better made on `test_quality_after` (GEPA 40/55, SkillOpt 39/55, TextGrad 27/55
+  at seed 41) than on the deltas. This is the strongest argument yet for the 4-seed
+  replicate design in T032. (depends: T016)
 
 ## Phase 4 — SkillOpt (one approach)
 
@@ -214,14 +225,36 @@ become the default.
   `questions_path` still points at the 5-record `to_test.json`, see T010) and killed at
   the echo by a scratchpad `run_until_split.py`, so no MLflow run and no spend. The
   smoke also proves both edited files import cleanly. (depends: T020)
-- [ ] T022 Full regression run: one complete `...-skillopt-1` run. Confirm the logged
+- [x] T022 Full regression run: one complete `...-skillopt-1` run. Confirm the logged
   split params (20/20/55), that `history.json` / `best_skill.md` are written and the
   gate series is logged, that the budget-stop read-back path still resolves
-  `baseline_gate_score`, and that both test phases score 55 records. **Queued behind
-  T011 and T017** (shared endpoints/quota, one full run at a time): as of 2026-08-06
-  ~19:50 the T011 GEPA run was still in its `test-before` phase (37/55 after ~46 min),
-  with T017's TextGrad run next in line. Then run with `--budget 1` (`--set train_budget
-  1`) against the 75-record dataset, same as the GEPA run. (depends: T021)
+  `baseline_gate_score`, and that both test phases score 55 records.
+  All confirmed on run `913e8264310d4553a21dcaf20f2626f2` (seed 41, `--budget 1`,
+  2026-08-07 15:54 → 2026-08-08 05:06, ~13 h, log `logs/skillopt-1-2055-0807-1554.log`),
+  run after T011 and T017 so the three never shared endpoint quota:
+  - params `train_size=20`, `val_size=20`, `test_size=55`, `edit_budget=2`,
+    `minibatch_size=3`, `optimization_stop_reason=budget_exhausted`, and — as the first
+    run to carry it — `split_scheme=20-0-55-val-eq-train` (T026);
+  - `cost_total=1.103` (task 0.802 / judge 0.496 / optimizer 0.039),
+    `cost_excluded=0.235` (the excluded baseline gate over 20 records);
+  - gate series logged from `history.json` under `eval_score`: 6 points,
+    0.65 → 0.80 → 0.90 → 0.90 → 0.90 → 0.90 (twentieths, i.e. the `sel_env_num = 20`
+    hard gate of T019);
+  - `best_skill.md` / `history.json` are written into the optimizer's
+    `tempfile.TemporaryDirectory()` `out_root` and consumed in-process, so they are
+    *not* MLflow artifacts — their existence is proven instead by the budget-stop
+    read-back at `skillopt_optimizer.py:684-700` completing without raising (it reads
+    both files and raises `RuntimeError` if either is missing or unparseable) and by
+    the skill actually growing (`[5/6 UPDATE] skill_len 1843 -> 2709`);
+  - `baseline_gate_score` is an in-memory adapter attribute, never an MLflow param, so
+    `params.baseline_gate_score` is absent by design. It resolved: `eval_score` step 0
+    is 0.65 while `initial_eval_score` is 0.60, so the read-back used
+    `adapter.baseline_gate_score` and *not* the defensive `initial_eval_score` fallback;
+  - nested `test-before` / `test-after` each echoed "on 55 samples", means 24/55 =
+    43.64% and 39/55 = 70.91%.
+  Result: val (= train) 60.00% → 90.00%, test 43.64% → 70.91%; optimized prompt
+  registered as `prompts:/text2sql_system/22` (1863 chars vs the 608-char seed).
+  (depends: T021)
 
 ## Phase 5 — Make 20/0/55 the default; retire the ratio path
 

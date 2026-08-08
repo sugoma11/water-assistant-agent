@@ -234,9 +234,13 @@ Window must end ≤ `as_of` (as-of view check).
 Q: "Does the {roof} roof need irrigation right now, according to the
 operations manual?"
 DE: "Muss das unbewässerte Extensivdach heute bewässert werden?"
-A: bool · Traj: {search_docs, query_database, get_weather}
+A: bool · Traj: {calc_irrigation}
 Docs: ops_manual#irrigation_rule
-Oracle: latest SWC + 48 h rain lookahead vs rule constants.
+Oracle: `irrigation_decision` on the measured seed + 48 h lookahead.
+Note: the old `{search_docs, query_database, get_weather}` chain predates the
+self-contained calculator (architecture §8, D29/D30). **Phrasing is unsettled**
+— "according to the operations manual" cues the docs route and collides with
+T16a's probe, so re-derive the wording with the gold set in T002.
 
 **T08 — heatwave days (manual definition)**
 Q: "How many heatwave days, as defined in the operations manual, occurred in
@@ -248,12 +252,13 @@ Oracle: definition constants → SQL count on `wetter`.
 **T11 — irrigation decision tomorrow** *(reframed per architecture D22)*
 Q: "Does the {roof} roof need irrigation tomorrow, per the standard rule?"
 A: bool (balanced sampling)
-Traj: {predict_green_roof_water_balance_tool, calc_irrigation} expected; final
-chain pending the D22 input confirmation (whether get_weather joins it).
-Oracle: predicted SWC (+ confirmed rule inputs) → calc_irrigation decision.
+Traj: {calc_irrigation}
+Oracle: `irrigation_decision` over the calculator's own modelled features.
 Note: predictive twin of T07 — T07 runs on measured SWC "right now", T11 on the
 model's prediction for tomorrow. The dose, when yes, is the fixed per-roof
-p90-of-historical-ET constant from the manual, not a computed volume.
+p90-of-historical-ET constant from the manual, not a computed volume. The GR2L
+tool leaves this chain entirely: `calc_irrigation` is self-contained over its
+*own* bucket model, which is not GR2L (D29).
 
 **T12 — retention vs target** *(blocked: needs lysimeter areas)*
 Q: "Was the retention of the {roof} roof during {event} above the manual's
@@ -295,8 +300,9 @@ Note: identical inputs to T16a; symmetric must-nots (D24) make the
 docs-vs-calculator probe binding in both directions, so the phrasing must cue
 the route unambiguously (settle wording in T002 — a docs lookup before
 calculating is defensible behaviour and fails only because the cue says
-calculator). Stated values must stay expressible once the D22 input set is
-confirmed.
+calculator). The input set is now confirmed, so the stated values are fixed:
+soil moisture in %θ, maximum air temperature, and forecast rain over 48 h
+(lysimeter level in kg for the wetland) — architecture §3.5.
 
 ### G. Counterfactuals
 
@@ -358,9 +364,9 @@ differs. The difference wording keeps the answer a single scalar within the
 |---|---|---|---|
 | search_docs | T06, T16a, T17a, T17b | T07, T08, T12, T20, T26(i) | T16b (D24) + all of A, C, D, G-non-doc, H |
 | query_database | T01–T05, T15a | T07–T12, T19, T21–T23, T25, T26 | T15b, T16a, T20, T24a |
-| get_weather | T13, T14, T15b, T18a | T07, T20, T25 (+T11 pending D22) | T15a, T16a, T19, T23 |
-| predict_soil_moisture | — (documented: never sole) | T09–T11, T19, T21–T23, T26 | T04 (D24) |
-| calc_irrigation | T16b | T11 | T16a (D24) |
+| get_weather | T13, T14, T15b, T18a | T20, T25 | T15a, T16a, T19, T23 |
+| predict_soil_moisture | — (documented: never sole) | T09, T10, T19, T21–T23, T26 | T04 (D24) |
+| calc_irrigation | T07, T11, T16b | — | T16a (D24) |
 | plot_timeseries | T24a | — | T24b |
 
 Every tool appears at least once as necessary-and-sufficient (except the
@@ -373,9 +379,15 @@ T09/T10/T19/T21–T23 chains — re-derive the matrix wholesale in T002.
 
 ## 4 Prerequisites / blockers
 
-1. `rules_constants.py` + ops-manual sections rendered from it:
-   `#irrigation_rule`, `#heatwave_definition`, `#retention_target`.
-   Deliberately absent: wind-shutoff threshold, wetland-roof threshold.
+1. `roofs.py` + `rules_constants.py` + ops-manual sections rendered from them:
+   `#irrigation_rule`, `#heatwave_definition`, `#retention_target`,
+   `#irrigation_dose`, `#roof_reference_ranges`, `#data_freshness`.
+   Deliberately absent: wind-shutoff threshold, wetland **soil-moisture**
+   threshold. The second is now better grounded, not weakened: the wetland's
+   rule is a lysimeter *level* in kg, and its θ sensor saturates near 86 %
+   (`MM_ONLY_ROOFS`), so `#roof_reference_ranges` must carry the level threshold
+   and state that no soil-moisture threshold exists — otherwise the rendered
+   page silently answers T06c, whose abstention is the point.
 2. Lysimeter collection areas added to the semantic layer → unblocks T12
    (and L↔mm conversions generally). Plan T077.
 3. Semantic-layer alias map + typo fixes (paraphrase robustness for A/E).

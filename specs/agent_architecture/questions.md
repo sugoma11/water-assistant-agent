@@ -1,8 +1,10 @@
 # Question template catalog — green-roof water management assistant
 
 Human-readable spec for the evaluation dataset. Machine-readable twins live in
-`eval/templates/*.yaml`; instantiated cases in `eval/cases/*.jsonl`. Oracles in
-`eval/oracles/`. 26 template families (31 entries incl. a/b variants),
+`eval/templates/*.yaml`; instantiated cases in one pretty-printed JSON array per
+split, `eval/cases/{train,val,test_seen,test_unseen}.json` — array over JSONL so
+a diff reports the changed *field*, not just a changed line (architecture §6).
+Oracles in `eval/oracles/`. 26 template families (31 entries incl. a/b variants),
 target ~250–300 instances.
 
 ---
@@ -56,8 +58,13 @@ false abstention, or `parse_failure`).
   extra calls per arm). `Must-not` = trajectory 0 if called (only where it is
   the point of the template). There is no `(opt)` marker — under a zero
   penalty, optional and unlisted are the same thing.
-- **Retrieval**: recall@k vs `Docs`, reported twice — with gold queries
-  (retriever quality) and agent-generated queries (system quality).
+- **Card recall**: `|Cards ∩ retrieved| / |Cards|` over the union of every
+  `lookup_reference` call in the run (architecture D32). One number — an exact
+  lookup has no query to substitute, so the old retriever-quality /
+  system-quality split is deleted. **Skipped, not 0, where `Cards` is empty**
+  (0/0 undefined), with coverage reported alongside, exactly as §1.1 does for
+  family H's answer metric. A non-empty `Cards` therefore requires
+  `lookup_reference` in `Traj`.
 - **Abstention**: two separate numbers — abstention accuracy on unanswerable
   cases; false-abstention rate on answerable cases. Never aggregate.
 
@@ -73,7 +80,7 @@ rh_pct, wind_ms, swrad_wm2`. Fixtures are forecasts *as issued at* `as_of`
 (archived model runs), not measured outcomes.
 
 ### 1.5 Tools & the pure-function refactor
-`search_docs`, `query_database` (text2SQL sub-agent), `get_weather` (replayed),
+`lookup_reference`, `query_database` (text2SQL sub-agent), `get_weather` (replayed),
 `predict_soil_moisture(meteo_series, initial_swc, roof, params=None)`,
 `calc_irrigation`, `plot_timeseries` (declarative spec, internal fixed query,
 echoes resolved spec).
@@ -99,7 +106,7 @@ abstention variant, T17b/T18b test generalization to the other.
 | Category | share |
 |---|---|
 | Pure SQL | 28% |
-| Pure doc (incl. abstention) | 12% |
+| Pure lookup (incl. abstention) | 12% |
 | Pure weather (incl. abstention) | 10% |
 | Model chains | 12% |
 | Hybrid / full chain | 20% |
@@ -113,9 +120,10 @@ abstention variant, T17b/T18b test generalization to the other.
 
 Field legend — **Q**: question sketch · **DE**: example German paraphrase ·
 **A**: answer type (unit, tolerance) · **Traj**: gold trajectory ·
-**Docs**: gold sections · **Oracle**: logic · **Note**: purpose · **Split**.
+**Cards**: gold reference cards (architecture §3.2) · **Oracle**: logic ·
+**Note**: purpose · **Split**.
 
-### A. Pure SQL — negative controls for `search_docs` / `get_weather`
+### A. Pure SQL — negative controls for `lookup_reference` / `get_weather`
 
 **T01 — total outflow**
 Q: "What was the total outflow of the {roof} roof in {month}?"
@@ -154,23 +162,36 @@ A: numeric (mm, ±2% rel) · Traj: {query_database} · Must-not: get_weather
 Oracle: SUM over `wetter.Rain`.
 Note: only tense differs from T15b — temporal routing probe.
 
-### B. Pure document (RAG)
+### B. Pure reference lookup
 
 **T06 — stated constant**
 Q: "What is the soil-moisture threshold for irrigating the extensive roofs?"
-A: numeric (%, exact) · Traj: {search_docs} · Docs: ops_manual#irrigation_rule
-Oracle: constant from `rules_constants.py`.
+A: numeric (%, exact) · Traj: {lookup_reference} · Cards: irrigation_threshold
+Oracle: constant from `rules_constants.py`, which the card's `values:` block is
+test-bound to (architecture §3.2).
 
 **T17a — absent constant (abstention)**
 Q: "What is the maximum wind speed at which irrigation must be shut off?"
-A: not_available · Traj: {search_docs} · Docs: []
-Note: plausible but deliberately not in the manual. Split: train-eligible.
+A: not_available · Traj: {lookup_reference} · Cards: irrigation_rule
+Note: plausible but deliberately absent. **The absence is grounded inside a
+card, not in the topic vocabulary** (D32): a wind-shutoff condition would sit in
+the `irrigation_rule` ladder alongside the moisture, heat and refill conjuncts,
+so the agent must fetch that card and find no wind clause. Grounding it in the
+enum instead — a missing `wind_shutoff` topic — would let the agent abstain
+without reading anything, force the gold set empty by D23's reasoning, and make
+this a duplicate of T18b. `Cards` is therefore the card that *should* have
+contained it, and card recall stays scored. Split: train-eligible.
 
 **T17b — scope near-miss (abstention, holdout)**
 Q: "What is the soil-moisture irrigation threshold for the **wetland** roof?"
-A: not_available · Traj: {search_docs} · Docs: []
-Note: retrieval will surface the extensive-roof rule — confidently worded,
-wrong scope. Strongest hallucination probe. Split: **test_unseen**.
+A: not_available · Traj: {lookup_reference} · Cards: irrigation_threshold
+Note: the card comes back **whole** — the three substrate roofs' thresholds
+under `values:` and the wetland under `not_applicable:` ("no soil-moisture
+threshold exists; controlled by lysimeter level in kg"). The tool does **not**
+type this abstention (D32): a roof-scoped `not_available` would collapse the
+template into T18a's already-tested relay. The agent must read the exclusion
+with a confidently worded, wrong-scope rule sitting directly beside it.
+Strongest hallucination probe. Split: **test_unseen**.
 
 ### C. Pure weather
 
@@ -234,10 +255,11 @@ Window must end ≤ `as_of` (as-of view check).
 Q: "Does the {roof} roof need irrigation right now, according to the
 operations manual?"
 DE: "Muss das unbewässerte Extensivdach heute bewässert werden?"
-A: bool · Traj: {calc_irrigation}
-Docs: ops_manual#irrigation_rule
+A: bool · Traj: {calc_irrigation} · Cards: [] (deleted, not renamed — the gold
+route is the calculator, and a gold card on a template that never looks one up
+scores card recall 0 on a correct run; architecture D32)
 Oracle: `irrigation_decision` on the measured seed + 48 h lookahead.
-Note: the old `{search_docs, query_database, get_weather}` chain predates the
+Note: the old `{lookup_reference, query_database, get_weather}` chain predates the
 self-contained calculator (architecture §8, D29/D30). **Phrasing is unsettled**
 — "according to the operations manual" cues the docs route and collides with
 T16a's probe, so re-derive the wording with the gold set in T002.
@@ -245,9 +267,11 @@ T16a's probe, so re-derive the wording with the gold set in T002.
 **T08 — heatwave days (manual definition)**
 Q: "How many heatwave days, as defined in the operations manual, occurred in
 {month}?"
-A: numeric (count, exact) · Traj: {search_docs, query_database}
-Docs: ops_manual#heatwave_definition
-Oracle: definition constants → SQL count on `wetter`.
+A: numeric (count, exact) · Traj: {lookup_reference, query_database}
+Cards: heatwave_definition
+Oracle: definition constants → SQL count on `wetter`. Note: the definition's
+consecutive-day rule has **no source in the deployed controller** (which carries
+only `HEAT_THRESHOLD_C`) and is authored as eval policy in `rules_constants.py`.
 
 **T11 — irrigation decision tomorrow** *(reframed per architecture D22)*
 Q: "Does the {roof} roof need irrigation tomorrow, per the standard rule?"
@@ -263,14 +287,15 @@ tool leaves this chain entirely: `calc_irrigation` is self-contained over its
 **T12 — retention vs target** *(blocked: needs lysimeter areas)*
 Q: "Was the retention of the {roof} roof during {event} above the manual's
 target?"
-A: bool · Traj: {search_docs, query_database} · Docs: ops_manual#retention_target
-Oracle: (rain − outflow/area) / rain vs target.
+A: bool · Traj: {lookup_reference, query_database} · Cards: retention_target
+Oracle: (rain − outflow/area) / rain vs target. The target itself has no
+deployed source and is authored as eval policy in `rules_constants.py`.
 
 **T20 — forecast heatwave per manual**
 Q: "Does the coming week's forecast qualify as a heatwave under the manual's
 definition?"
-A: bool · Traj: {search_docs, get_weather} · Must-not: query_database
-Docs: ops_manual#heatwave_definition
+A: bool · Traj: {lookup_reference, get_weather} · Must-not: query_database
+Cards: heatwave_definition
 Oracle: definition applied to fixture.
 Note: the only hybrid excluding the DB — `query_database` negative control.
 
@@ -284,16 +309,18 @@ Oracle: `wetter.Tmax` yesterday vs fixture max tomorrow.
 **T16a — rule applied to stated values**
 Q: "Soil moisture is at 12% and only 2 mm of rain is forecast — should we
 irrigate, per the manual?"
-A: bool · Traj: {search_docs} · Must-not: query_database, get_weather,
+A: bool · Traj: {lookup_reference} · Must-not: query_database, get_weather,
 calc_irrigation (D24)
-Docs: ops_manual#irrigation_rule · Oracle: rule on stated values.
+Cards: irrigation_rule, irrigation_threshold · Oracle: rule on stated values.
 Note: catches reflexive DB/weather calls for values already given; the
-calc_irrigation must-not makes the a-side of the routing probe binding.
+calc_irrigation must-not makes the a-side of the routing probe binding. The two
+cards must between them state the ladder *and* the per-roof numbers, or the
+docs half of the probe is unanswerable by construction (architecture §3.2).
 
 **T16b — calculator isolation** *(reframed per architecture D22)*
 Q: "Given SWC {x}% and {y} mm of rain in the next 48 h for the {roof} roof,
 does the standard rule say to irrigate?"
-A: bool (balanced sampling) · Traj: {calc_irrigation} · Must-not: search_docs
+A: bool (balanced sampling) · Traj: {calc_irrigation} · Must-not: lookup_reference
 (D24)
 Oracle: `calc_irrigation` on stated values.
 Note: identical inputs to T16a; symmetric must-nots (D24) make the
@@ -330,8 +357,8 @@ Oracle: `initial_swc=0.20` + DB meteo since Monday. Split: **test_unseen**.
 
 **T26 — compositional (holdout)**
 Q variants: (i) "If albedo were {a} **and** 30 mm fell tomorrow, would the
-{roof} roof stay above the irrigation threshold?" (adds Docs:
-ops_manual#irrigation_rule); (ii) override + cross-roof comparison.
+{roof} roof stay above the irrigation threshold?" (adds `lookup_reference` to
+Traj and Cards: irrigation_threshold); (ii) override + cross-roof comparison.
 A: bool / numeric · Traj: union of the composed chains.
 Split: **test_unseen** — the compositional-generalization headline.
 
@@ -362,7 +389,7 @@ differs. The difference wording keeps the answer a single scalar within the
 
 | Tool | Sole necessary | In chain | Critical distractor (Must-not) |
 |---|---|---|---|
-| search_docs | T06, T16a, T17a, T17b | T07, T08, T12, T20, T26(i) | T16b (D24) + all of A, C, D, G-non-doc, H |
+| lookup_reference | T06, T16a, T17a, T17b | T08, T12, T20, T26(i) | T16b (D24) + all of A, C, D, G-non-doc, H |
 | query_database | T01–T05, T15a | T07–T12, T19, T21–T23, T25, T26 | T15b, T16a, T20, T24a |
 | get_weather | T13, T14, T15b, T18a | T20, T25 | T15a, T16a, T19, T23 |
 | predict_soil_moisture | — (documented: never sole) | T09, T10, T19, T21–T23, T26 | T04 (D24) |
@@ -379,15 +406,23 @@ T09/T10/T19/T21–T23 chains — re-derive the matrix wholesale in T002.
 
 ## 4 Prerequisites / blockers
 
-1. `roofs.py` + `rules_constants.py` + ops-manual sections rendered from them:
-   `#irrigation_rule`, `#heatwave_definition`, `#retention_target`,
-   `#irrigation_dose`, `#roof_reference_ranges`, `#data_freshness`.
+1. `roofs.py` + `rules_constants.py` + the **card store** whose `values:` blocks
+   are test-bound to them (architecture §3.2, D32). Cards, with provenance:
+   `irrigation_rule`, `irrigation_threshold`, `substrate_hydraulics`,
+   `irrigation_dose`, `data_freshness`, `heatwave_definition` (**duration rule
+   authored** — the deployed controller has only `HEAT_THRESHOLD_C`),
+   `retention_target` (**fully authored**, no deployed source),
+   `roof_reference_ranges` (rendered from the `swc` record); and three static
+   cards with no constants behind them — `roof_directory`, `sensor_reference`,
+   `et0_method`.
    Deliberately absent: wind-shutoff threshold, wetland **soil-moisture**
    threshold. The second is now better grounded, not weakened: the wetland's
    rule is a lysimeter *level* in kg, and its θ sensor saturates near 86 %
-   (`MM_ONLY_ROOFS`), so `#roof_reference_ranges` must carry the level threshold
-   and state that no soil-moisture threshold exists — otherwise the rendered
-   page silently answers T06c, whose abstention is the point.
+   (`MM_ONLY_ROOFS`), so `irrigation_threshold`'s `not_applicable:` block must
+   name the exclusion and `roof_reference_ranges` must carry the level threshold
+   — otherwise the card silently answers T17b, whose abstention is the point.
+   **No card may be named after a single constant** (D32): cards name subjects,
+   or absence becomes inferable from the topic enum and T17a degenerates.
 2. Lysimeter collection areas added to the semantic layer → unblocks T12
    (and L↔mm conversions generally). Plan T077.
 3. Semantic-layer alias map + typo fixes (paraphrase robustness for A/E).

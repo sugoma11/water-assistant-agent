@@ -26,7 +26,7 @@ mechanism, this document wins on evaluation properties.**
 | text2SQL sub-agent | `text_to_sql_agent` | **built** — no as-of views, not ctx-rebindable yet (D3, D19) |
 | weather | `get_weather_forecast_tool` | **built** — live, uncached, no typed abstention, wall-clock backend cutoff, uncapped series, no station source (D4, D9, D11, D17, D26) |
 | GR2L water balance | `predict_green_roof_water_balance_tool` | **built** — no `forcings` / `evaluate_against_measured`, uncapped series (D8, D9) |
-| doc retrieval | `search_docs` | **to build** |
+| reference lookup | `lookup_reference` | **to build** — exact card lookup over a packaged YAML store, no ranking (D32) |
 | irrigation rule | `calc_irrigation` | **to build** — self-contained over its *own* bucket model, not GR2L; runs local, no HTTP (D29, D30) |
 | plotting | `plot_timeseries` | **to build** — multi-source: DB · weather · GR2L (D14) |
 | `ScenarioContext`, as-of views | — | **to build** (D3) |
@@ -63,8 +63,11 @@ What is missing is the *injection* seam (§4) that makes any of it replayable.
    series — never a database row dump, never an unbounded daily array. Anything
    requiring arithmetic over a long series happens inside a tool or core (D9).
 4. **Single source of truth for rules.** `rules_constants.py` feeds the
-   irrigation calculator, the oracles, and the rendered ops-manual sections.
-   Agent-readable text and executable logic cannot drift apart. The same rule
+   irrigation calculator, the oracles, and the **reference cards** the agent
+   reads (§3.2). Agent-readable text and executable logic cannot drift apart:
+   a card's prose is hand-authored and carries **no numerals**, while its
+   `values:` block is test-bound to the constants, so every figure the agent can
+   quote exists in exactly one place. The same rule
    applies to roof *identity*: one table in `tools/roofs.py` carries canonical
    name, DE/EN labels, site ids, `swc` column, substrate height, lysimeter area
    and aliases, so the four names stop being restated across
@@ -80,7 +83,7 @@ What is missing is the *injection* seam (§4) that makes any of it replayable.
 │ root_agent (ADK LlmAgent; instruction ← candidate)                  │
 │  text_to_sql_agent · get_weather_forecast_tool ·                    │
 │  predict_green_roof_water_balance_tool ·                            │
-│  search_docs · calc_irrigation · plot_timeseries                    │
+│  lookup_reference · calc_irrigation · plot_timeseries               │
 └───────────────┬─────────────────────────────────────────────────────┘
         ScenarioContext(as_of, db_asof, weather_client, http_cache)
 ┌ shared cores ─┴─────────────────────────────────────────────────────┐
@@ -88,7 +91,7 @@ What is missing is the *injection* seam (§4) that makes any of it replayable.
 │ daily weather (station rows from ctx.db · Open-Meteo, cached) ·     │
 │ swc (θ ↔ mm, measured seed) · irrigation bucket · et0_fao56 ·       │
 │ irrigation_decision · rules_constants · roofs ·                     │
-│ bm25 index · pinned data/water.duckdb                               │
+│ card store (packaged YAML) · pinned data/water.duckdb               │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -109,6 +112,9 @@ singleton with a literal `static_instruction` and three tools.
   prompt**, read per rollout inside `predict_fn`; that registry read is the only
   channel candidate text has (§6, D27), and one prompt per component — never a
   concatenated blob — is what keeps the surface separately mutable.
+  **One deliberate exception**: `lookup_reference`'s `topic` enum lives in the
+  function *signature*, not its docstring, so a candidate can reword the guidance
+  but cannot delete the agent's list of valid topics (§3.2, D32).
 - Scenario clock: `as_of` reaches the model through the per-invocation
   instruction provider (`prompts/temporal.py`), which today renders
   `site_now()` — the wall clock. It must render `ctx.as_of` (D3), read through
@@ -172,23 +178,67 @@ singleton with a literal `static_instruction` and three tools.
   instruction names the tool — and the module singleton stays as the production
   default built from the same factory, mirroring D6.
 
-### 3.2 `search_docs` — **to build**, BM25 v1
-- `rank_bm25` over the corpus; deterministic; no LLM, no reranker.
-- Corpus: ops-manual sections **rendered from `rules_constants.py`**
-  (`#irrigation_rule`, `#heatwave_definition`, `#retention_target`,
-  `#irrigation_dose`, `#roof_reference_ranges`, `#data_freshness`,
-  irrigation-priority logic §3.5), reference-ranges pages (normal/low/high per
-  roof segment), sensor ReadMe, FAO-56 excerpts.
-- T16a forbids `calc_irrigation` (D24), so `#irrigation_rule` must state the
-  per-roof numbers explicitly enough to answer *without* the calculator —
-  otherwise the docs half of the routing probe is unanswerable by construction.
-- Chunking by markdown headings with **stable section IDs** — these IDs are what
-  `gold_docs` and recall@k reference.
-- Returns top-k chunks with section IDs and scores; never "no results"
-  suppression (abstention templates rely on plausible-but-wrong hits).
-- Known scope limit (state in thesis): lexical matching; DE queries vs EN corpus
-  is a measured gap or mitigated by a synonym map — decide before generation.
-  Dense retriever (BGE-M3, exact search) kept as a drop-in **ablation arm**.
+### 3.2 `lookup_reference` — **to build**, exact card lookup (D32)
+
+```python
+async def lookup_reference(
+    topic: Literal["irrigation_rule", "irrigation_threshold",
+                   "substrate_hydraulics", "irrigation_dose",
+                   "heatwave_definition", "retention_target",
+                   "roof_reference_ranges", "data_freshness",
+                   "roof_directory", "sensor_reference", "et0_method"],
+    roof: str | None = None,     # filter; never suppresses `not_applicable`
+) -> dict
+```
+
+- **There is no ranking and no query.** The agent names a topic; a Python
+  function reads that card out of a packaged YAML store. Retrieval is a routing
+  problem, not a scoring one — which is the part prompt optimization can
+  actually move (D32).
+- **The store is ~9 cards, baked into the image.** One YAML file per card:
+  `id`, `title`, `provenance`, a hand-authored `text:` block, and
+  `values:` / `applies_to:` / `not_applicable:` blocks. Editing a card requires
+  a rollout; that is accepted, and it is what keeps the store part of the pinned
+  surface (§5).
+- **Prose carries no numerals; `values:` is test-bound to the constants.**
+  `provenance: rendered` means the `values:` block must equal what
+  `rules_constants.py` + `roofs.py` produce, asserted by a test — not that the
+  file is machine-written (hand prose and generated values in one file would
+  otherwise need a format-preserving YAML writer for no added guarantee).
+  `provenance: static` cards — `roof_directory`, `sensor_reference`,
+  `et0_method` — have no constants behind them and are exempt.
+- **The enum lives in the signature; only the docstring is candidate-owned.**
+  ADK renders `Literal[...]` into the function declaration as a schema `enum`
+  (verified against the installed `google-adk`), so the vocabulary reaches the
+  model regardless of the docstring. This split is deliberate: docstrings are
+  candidate-owned (D6), and a candidate that rewrote away the topic list would
+  silently disable the whole reference route while still appearing optimizable.
+  A test pins `enum == card keys`.
+- **Card granularity is a hard constraint: no card may be named after a single
+  constant.** Cards name *subjects*, not values. If absence were inferable from
+  the vocabulary alone, every abstention template would degenerate into "the
+  topic isn't listed" — the agent would abstain without reading anything and the
+  hallucination probe would measure nothing. This is what keeps T17a honest: a
+  wind-shutoff threshold would plausibly be a conjunct of the `irrigation_rule`
+  ladder, so the agent must fetch that card and find no wind clause.
+- **A known topic returns the card whole**, `not_applicable:` included. There is
+  **no roof-scoped `not_available`**: asking for the wetland's soil-moisture
+  threshold returns the `irrigation_threshold` card with the extensive-roof rule
+  and the wetland's exclusion side by side, and the agent must read the
+  exclusion. Typing that abstention at the tool level would collapse T17b into
+  T18a's already-tested "relay a typed `not_available`".
+- **Three outcomes, as in §3.4**: `success`; `not_available` (reserved, unused
+  today — the store either has a topic or does not); `error` with
+  `error_type="invalid_argument"` for an unknown topic, echoing the valid list so
+  the agent can recover — free under D21.
+- T16a forbids `calc_irrigation` (D24), so `irrigation_rule` and
+  `irrigation_threshold` must together state the per-roof numbers well enough to
+  answer *without* the calculator, or the docs half of the routing probe is
+  unanswerable by construction.
+- **Fully offline and deterministic.** The store is a pure function of files §5
+  hashes: no network, no cache entry, no capture step, no `upstream` error class
+  — the property D26 buys for retrospective weather and D30 for irrigation,
+  reapplied to a third component.
 
 ### 3.3 `get_weather_forecast_tool` — **built**, daily, live + cached (D4)
 - Thin ADK wrapper (`tools/weather.py`) over `weather_client.fetch_daily_weather`,
@@ -542,14 +592,15 @@ def build_toolset(ctx, docstrings=None) -> list[Tool]: ...   # make_* factories
 |---|---|---|---|
 | root instruction + tool docstrings | **optimized** | live | — |
 | `text_to_sql_agent` | frozen (tuned) | live | DB via as-of views |
-| `search_docs` | n/a | live, deterministic | corpus snapshot + index, hashed |
+| `lookup_reference` | n/a | pure, exact, **fully offline** | card store, hashed |
 | `get_weather_forecast_tool` | n/a | station: pure, offline · Open-Meteo: live once, then **cached** | ctx.db as-of views (station) · Open-Meteo, cache keyed by request |
 | `predict_green_roof_water_balance_tool` | n/a | live, **remote HTTP**, cached | ctx.weather / ctx.db; pinned presets |
 | `calc_irrigation` | n/a | live, pure, **fully offline** | `rules_constants.py` · `roofs.py` · ctx.db as-of views · ctx.weather (station path: no network, D26) |
 | `plot_timeseries` | n/a | live, deterministic | ctx.db as-of views · ctx.weather · run_gr2l, all cached |
 | LLM | — | T=0, pinned dated version, cached | — |
 
-- Pins committed to the repo: `water.duckdb` sha256, corpus commit + index hash,
+- Pins committed to the repo: `water.duckdb` sha256, **one sha256 over the card
+  store** (`assistant/knowledge/cards/`; there is no index to hash),
   `rules_constants.py` and `roofs.py` versions, GR2L roof presets, **GR2L base
   URL + a canary request/response hash** (the service exposes no version string,
   so a canary that changes means the service changed), the **irrigation R
@@ -560,7 +611,7 @@ def build_toolset(ctx, docstrings=None) -> list[Tool]: ...   # make_* factories
   it shapes every proposal GEPA makes, so an unpinned reflector makes a run
   unrepeatable even with the task model fixed), **the candidate prompt names and
   seed versions** in the MLflow registry (D27), dependency lockfile (adk,
-  litellm, mlflow, gepa, rank_bm25, duckdb — the optimizer entry point is
+  litellm, mlflow, gepa, pyyaml, duckdb — the optimizer entry point is
   `@experimental`, R8), and the **station derivation**
   (`weather_tool.md` § Station source: the per-field aggregation, the
   Europe/Berlin day boundary, the sentinel filter, and the station record's
@@ -662,7 +713,7 @@ test_seen,test_unseen}.json`), each element projecting **directly** onto MLflow'
                   "answer_metric": "scored",        // "skipped" for family H (D14)
                   "tolerance": {"kind": "abs", "value": 0.1},
                   "expected_tool_calls": [{"name": "…", "args": {…}}],
-                  "must_not_tools": ["…"], "gold_docs": [],
+                  "must_not_tools": ["…"], "gold_cards": [],
                   "argument_checks": [{"tool": "…", "path": "forcings.precip.2026-03-15",
                                        "op": "eq", "value": 50.0}],
                   "pins": {…}}}
@@ -681,6 +732,10 @@ only two channels it delivers. Consequences:
   later change to any of them invalidates answers with nothing to detect it.
 - `argument_checks` are **declarative**, so D21's argument conjuncts stay in data
   and the scorer never branches per template.
+- **`gold_cards` non-empty implies `lookup_reference` in `expected_tool_calls`**
+  — a schema validator, not a convention. Card recall is scored, so a gold card
+  on a template that never looks one up would score 0 on a fully correct run
+  (D32). Where `gold_cards` is empty the metric is *skipped*, not 0.
 - `expected_tool_calls` keeps ADK's own key name: it costs nothing and keeps
   `mlflow.genai.scorers.google_adk.ToolTrajectory` available as a cross-check
   against our own trajectory scorer.
@@ -711,7 +766,15 @@ only two channels it delivers. Consequences:
   else 0. No partial credit and no extra-call penalty: calls beyond the gold
   set are free, and their per-arm mean is a diagnostic, not a score. Tool names
   in gold trajectories are the **registered** names (D2).
-- Retrieval: recall@k, gold-query and agent-query variants.
+- Retrieval → **card recall**, one number:
+  `|gold_cards ∩ retrieved_cards| / |gold_cards|` over the union of every
+  `lookup_reference` call in the run. Graded, so it gives partial credit the
+  binary trajectory cannot (two of three cards fetched). **Skipped, not scored
+  0, where `gold_cards` is empty** — 0/0 is undefined — reusing D14's
+  skipped-with-coverage mechanism rather than adding a second one. The
+  gold-query / agent-query split is **deleted**: an exact lookup has no query to
+  substitute, so retriever quality is 1.0 by construction and only the agent's
+  card selection is measurable (D32).
 - Abstention: accuracy on unanswerables **and** false-abstention rate, never
   aggregated. The scored quantity is the **agent's** contract `status`, on §2's
   terms.
@@ -756,7 +819,7 @@ still calls them pays nothing unless a must-not says otherwise):
 
 | Template | Gold trajectory now |
 |---|---|
-| T07 | `{calc_irrigation}` — the catalog's `{search_docs, query_database, get_weather}` predates the self-contained calculator (D29, D30). **Phrasing re-derived in T002**: "according to the operations manual" cues the docs route and collides with T16a's probe |
+| T07 | `{calc_irrigation}` — the catalog's `{lookup_reference, query_database, get_weather}` predates the self-contained calculator (D29, D30). Its `Docs:`/`Cards:` line is **deleted**, not renamed: a gold card on a template that never looks one up scores card recall 0 on a correct run (D32). **Phrasing re-derived in T002**: "according to the operations manual" cues the docs route and collides with T16a's probe |
 | T09, T10 | `{predict_green_roof_water_balance_tool}` |
 | T11 | **reframed bool** (D22): `{calc_irrigation}` — self-contained over its own bucket model, so the GR2L tool leaves this chain entirely (D29) |
 | T19 | `{predict_green_roof_water_balance_tool(evaluate_against_measured=True)}`; must-not `get_weather_forecast_tool` (a `text_to_sql_agent` cross-check is a free extra call, D21) |
@@ -812,11 +875,12 @@ src/water_assistant_agent/assistant/
   prompts/             temporal.py (scenario clock) · agent_instructions.py
   settings.py          WATER_ASSISTANT_* pydantic-settings
   [to build]  context.py · cache.py · rules_constants.py · irrigation.py
-              et_fao56.py · ops_manual.py
-              retrieval/bm25_index.py · tools/{search_docs,plot,irrigation}.py
+              et_fao56.py
+              knowledge/store.py · knowledge/cards/*.yaml   (card store, D32)
+              tools/{lookup,plot,irrigation}.py
               tools/roofs.py · tools/irrigation_tool.md   (tool spec)
 data/water.duckdb      (sha256 to pin)
-eval/          [to build] corpus/ cache/ templates/ oracles/ cases/
+eval/          [to build] cache/ templates/ oracles/ cases/   (no corpus, D32)
 specs/agent_architecture/   agent_architecture.md · questions.md · plan.md
 ```
 
@@ -831,11 +895,13 @@ Blocking order before data generation (see `plan.md` for the task-level plan):
    **the station source and its daily derivation** (D26). Blocks D, G, and T18a
    (T18b is agent-level, no tool prerequisite — D11).
 3. `roofs.py` + `rules_constants.py` + `et_fao56.py` + the irrigation bucket +
-   `calc_irrigation` + rendered manual + ranges pages — blocks B, E, F. Now
+   `calc_irrigation` + the card store's rendered values + ranges pages — blocks
+   B, E, F. Now
    **partially downstream of prerequisite 2**: the calculator fetches through
    `ctx.weather`, so its retrospective cases are offline only once D26's station
    source lands. The R endpoint (§3.5) is not on this path at all.
-4. `search_docs` + corpus + stable section IDs — blocks B, E, F recall metrics.
+4. `lookup_reference` + the card store + the `enum == card keys` test — blocks
+   B, E, F card-recall metrics. No corpus, no chunker, no index (D32).
 5. `plot_timeseries` — blocks H. Now downstream of prerequisite 2 as well: its
    `model` and `weather` series ride the same window resolution, seed rule and
    cache as the standalone tools (D14).
@@ -1140,7 +1206,7 @@ template survives: **T11** becomes the *predictive* twin of T07 ("does the
 {roof} roof need irrigation **tomorrow**, per the standard rule?" — T07 runs on
 measured SWC, T11 on the model's prediction), and **T16b** becomes the same
 bool on stated values through the calculator (`{calc_irrigation}`), pairing
-with T16a's docs-only route (`{search_docs}`) on identical inputs — the a/b
+with T16a's docs-only route (`{lookup_reference}`) on identical inputs — the a/b
 pair now probes docs-vs-calculator routing, and the two questions' phrasing
 must cue the route (settle the wording in T002). *Amended:* the input set is now
 confirmed (§3.5) and plan R7 is retired, so the signature and the T11/T16b
@@ -1168,13 +1234,13 @@ contract.
 distractor slot.** Under D21 an unlisted call is free, so a template
 discriminates routing only through its must-not set — the gold set alone
 cannot: a candidate that takes both routes satisfies it. As the catalog stood,
-`calc_irrigation` was unlisted on T16a and `search_docs` on T16b, so a
+`calc_irrigation` was unlisted on T16a and `lookup_reference` on T16b, so a
 candidate calling both on every irrigation question scored trajectory 1 on both
 halves and the a/b pair probed nothing; `predict_green_roof_water_balance_tool`
 was unlisted on *every* template, falsifying the §3-matrix claim ("every tool
 appears at least once as a distractor") that D21's shotgun mitigation leans on.
 Resolved: (a) the T16 pair carries **symmetric must-nots** — T16a (docs route)
-forbids `calc_irrigation`, T16b (calculator route) forbids `search_docs` —
+forbids `calc_irrigation`, T16b (calculator route) forbids `lookup_reference` —
 restoring the probe in both directions. Accepted risk, stated plainly: a
 candidate that looks the rule up before calculating fails T16b even though the
 behaviour is defensible, which makes the T002 phrasing cue load-bearing — the
@@ -1381,3 +1447,55 @@ through both unit regimes — same ET0, so unit handling is the only variable �
 and reports every date and roof where the decision flips. Whether to re-tune is
 then the site's call, made against evidence, and the thesis can state what the
 correction did rather than assuming it did nothing.
+
+**D32 — Retrieval is an exact card lookup, not BM25; the retrievable knowledge
+is a closed set of ~9 cards.** §3.2 specified `rank_bm25` over a chunked markdown
+corpus scored by recall@k. The retrievable knowledge is actually a dozen facts —
+per-roof trigger levels, capacities, doses, horizons, freshness limits, nearly
+all of them constants in the deployed controller. Ranking a closed dozen items by
+lexical overlap is machinery without a problem, and it was not free: it imported
+a DE-query-vs-EN-corpus gap that had to be settled before case generation, a
+chunker whose heading-derived section IDs were a scored contract, and an index
+hash in the pin set. The replacement is a `topic` enum over a packaged YAML store
+(§3.2).
+
+*Rejected alternatives:*
+- **BM25 v1 as specified.** Kept the three costs above and bought nothing a
+  closed vocabulary does not give exactly: with ~9 items there is no ranking
+  problem to solve, and a lexical miss is a failure mode the thesis would have to
+  explain rather than measure.
+- **The BGE-M3 dense ablation arm.** It existed to mitigate BM25's lexical
+  brittleness, and an exact lookup has none. Dropped with its motivation, not
+  deferred.
+- **A free-text `query` matched against card keys.** Reintroduces lexical
+  matching at the boundary while pretending not to, and makes an unknown query
+  indistinguishable from an absent fact.
+- **Typing the abstention at the tool level** (roof-scoped `not_available`).
+  Cleanest contract, but it collapses T17b into T18a's already-tested "relay a
+  typed `not_available`" and costs the catalog its strongest hallucination probe.
+
+*Evaluation-validity conditions this pins:*
+- **The topic enum is frozen in the signature, not the docstring.** Docstrings
+  are candidate-owned (D6). ADK renders `Literal[...]` into the function
+  declaration, so the vocabulary reaches the model either way — and a candidate
+  that rewrote the topic list away would otherwise disable the reference route
+  while still appearing optimizable, a silent failure of exactly the kind D27's
+  "prompts were not used" assertion exists to catch.
+- **Card granularity must keep absence non-inferable from the vocabulary.** No
+  card is named after a single constant. Otherwise the agent abstains from the
+  enum without reading anything, T17a's gold set is forced empty by D23's own
+  reasoning, and it becomes a duplicate of T18b — voiding the holdout claim that
+  T18b is the only abstention with no tool signal.
+- **`gold_cards` non-empty implies a `lookup_reference` call in the gold
+  trajectory.** Card recall is scored, so a gold card on a template that never
+  looks one up scores 0 on a correct run. T07 carried exactly that contradiction
+  (`Docs: ops_manual#irrigation_rule` against a `{calc_irrigation}` gold set);
+  its docs line is deleted and T004 validates the invariant.
+- **The DE/EN gap moves from the retriever into the model**, which is the surface
+  under optimization. A German question maps to an enum value through the LLM
+  rather than through lexical overlap with an English corpus. This is a genuine
+  relocation, not an elimination: it is now measured as routing accuracy on DE
+  paraphrases instead of as a retriever scope limit.
+- **Reference cases become fully offline** — no cache entry, no capture deadline,
+  no `upstream` error class — on the same terms as D26's station source and
+  D30's local irrigation core.

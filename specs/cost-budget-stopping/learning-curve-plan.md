@@ -535,12 +535,12 @@ methodological guardrail below.
   evaluations put ungradable rows in the denominator and grade them incorrect. The probe
   therefore does the same, and `probe_judge_errors` makes a degraded point visible.
   Note this is **deliberately opposite** to the training-side policy: there an
-  ungradable sample must never become a verdict (today the optimizers raise; on
-  `fix/judge-error-training-failure` they drop the sample and continue), because a
-  fabricated INCORRECT verdict turns into a textual gradient or a gate score and
-  misleads the search. Here the only requirement is to match the endpoints' axis
-  (LC-FR3), so dropping them in the probe would tilt every interior point upward
-  relative to `test_quality_{before,after}`.
+  ungradable sample must never become a verdict, so the optimizers drop it from the
+  batch/rollout and count it in `judge_ungradable_items` (merged from
+  `fix/judge-error-training-failure`, 2026-08-12), because a fabricated INCORRECT verdict
+  turns into a textual gradient or a gate score and misleads the search. Here the only
+  requirement is to match the endpoints' axis (LC-FR3), so dropping them in the probe
+  would tilt every interior point upward relative to `test_quality_{before,after}`.
 
 ---
 

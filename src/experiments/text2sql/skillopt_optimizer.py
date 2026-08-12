@@ -222,6 +222,11 @@ class Text2SqlEnvAdapter(EnvAdapter):
         self._opt_tokens_prompt = 0
         self._opt_tokens_completion = 0
         self._baseline_gate_pending = True
+        # Samples the shared judge could not grade at all (a truncated/failed judge
+        # call), summed over every rollout of the run. They are dropped from their
+        # rollout rather than graded (EC4), so this is also the count by which the
+        # gate/reflection denominators shrank -- logged as a run metric by optimize().
+        self.ungradable_items = 0
         # Mean judge `hard` of the baseline gate rollout, captured here because this
         # installed skillopt writes NO baseline row into history.json (verified
         # against skillopt 0.1.0's trainer: the baseline block persists only
@@ -374,13 +379,27 @@ class Text2SqlEnvAdapter(EnvAdapter):
 
         ``hard = 1.0/0.0`` from the judge verdict and ``soft = hard`` — the same pass/fail
         signal that produces the reported metric (FR11, A3) — so both the success/failure
-        reflection partition and the val gate run off the judge. EC4: on a judge error we
-        **raise** rather than default a grade. The reflection stage reads each item's
-        trajectory from ``<out_dir>/predictions/<id>/conversation.json``, so a conversation
-        file is persisted per item (returning ``{id, hard, soft}`` alone is insufficient)."""
+        reflection partition and the val gate run off the judge.
+
+        EC4: a sample the judge could not grade is **dropped from the rollout**, never
+        defaulted to a grade. Dropping (rather than raising, as this did originally)
+        keeps one ungradable sample — e.g. a judge completion truncated at
+        ``max_tokens``, which is an endpoint/budget accident and not a property of the
+        candidate skill — from killing an hours-long run: the round simply trains and
+        gates on one data point fewer, loudly logged and counted in
+        ``ungradable_items``. A rollout where *nothing* could be graded is a broken
+        judge rather than a bad sample and still raises, because a gate mean over an
+        empty result set is meaningless (it would be NaN).
+
+        The reflection stage reads each item's trajectory from
+        ``<out_dir>/predictions/<id>/conversation.json``, so a conversation file is
+        persisted per item (returning ``{id, hard, soft}`` alone is insufficient)."""
         pred_dir = os.path.join(out_dir, "predictions")
         results: list[dict[str, Any]] = []
+        n_items = 0
+        last_judge_error: Any = None
         for i, rec in enumerate(env_manager):
+            n_items += 1
             rid = str(rec.get("id", i))
             question = rec["inputs"]["question"]
             ref_sql = rec["expectations"]["sql"]
@@ -393,14 +412,21 @@ class Text2SqlEnvAdapter(EnvAdapter):
             )
             # EC4: the shared scorer swallows judge-call failures into
             # Feedback(value=False, error=...); never let that fabricate an INCORRECT
-            # grade -- raise so the run is marked FAILED instead of training/gating on it.
+            # grade. Drop the sample from this rollout instead -- the run continues on
+            # the remaining items rather than dying on one ungradable question.
             err = getattr(fb, "error", None)
             if err is not None:
-                raise RuntimeError(
-                    "Shared SQL judge failed during SkillOpt rollout "
-                    f"(id={rid!r}, question={question!r}); refusing to grade the "
-                    f"candidate by default (EC4). Underlying error: {err}"
-                ) from (err if isinstance(err, BaseException) else None)
+                self.ungradable_items += 1
+                last_judge_error = err
+                logger.warning(
+                    "Shared SQL judge could not grade SkillOpt rollout item "
+                    "(id=%s, question=%r); dropping it from this rollout rather than "
+                    "grading it by default (EC4). Underlying error: %s",
+                    rid,
+                    question,
+                    err,
+                )
+                continue
             hard = 1.0 if fb.value else 0.0
 
             item_dir = os.path.join(pred_dir, rid)
@@ -427,6 +453,27 @@ class Text2SqlEnvAdapter(EnvAdapter):
                     "fail_reason": "" if hard else (fb.rationale or ""),
                     "n_turns": 1,
                 }
+            )
+        if not results:
+            raise RuntimeError(
+                f"The shared SQL judge graded none of the {n_items} items in this "
+                "SkillOpt rollout, so there is no signal to reflect on or gate with "
+                "(a mean over an empty result set is NaN). This is a broken judge "
+                "rather than an unlucky sample, so the run is failed instead of "
+                f"continuing (EC4). Last underlying error: {last_judge_error}"
+            ) from (
+                last_judge_error
+                if isinstance(last_judge_error, BaseException)
+                else None
+            )
+        if self.ungradable_items:
+            logger.warning(
+                "SkillOpt rollout graded %d/%d items; %d ungradable sample(s) so far "
+                "this run were dropped, so this round's scores are means over a "
+                "shrunken denominator.",
+                len(results),
+                n_items,
+                self.ungradable_items,
             )
         return results
 
@@ -768,6 +815,20 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
         # Per-epoch val progression (SC2, F-001/F-003) -- after a budget stop these
         # are the gate-axis rows persisted before the stop.
         self._log_history_series(history, enable_tracking=enable_tracking)
+
+        # How many samples the judge could not grade at all across the run's rollouts.
+        # Always logged (0 on a clean run) so "the gate ran on the full split" is a
+        # readable fact rather than an assumption -- every dropped sample shrank a
+        # gate/reflection denominator (EC4).
+        if enable_tracking:
+            mlflow.log_metric("judge_ungradable_items", adapter.ungradable_items)
+        if adapter.ungradable_items:
+            logger.warning(
+                "SkillOpt run dropped %d ungradable sample(s): the shared judge failed "
+                "on them (e.g. a completion truncated at max_tokens), so they were "
+                "excluded from reflection and the val gate rather than graded.",
+                adapter.ungradable_items,
+            )
 
         if not budget_stopped:
             # Best candidate val on the same eval_fn axis (final_eval_score): the

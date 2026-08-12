@@ -328,12 +328,11 @@ class LearningCurveProbe:
         pessimistic (LC-OQ2).
 
         **Why this deliberately differs from the training-side policy.** The optimizers
-        refuse to turn an ungradable sample into a verdict at all — today they raise out
-        of the run (``TextGradPromptOptimizer._judge``, ``Text2SqlEnvAdapter._rollout``);
-        on the ``fix/judge-error-training-failure`` branch they drop the sample and carry
-        on — because there a fabricated INCORRECT verdict becomes a textual gradient or a
-        gate score and would actively mislead the search. A probe is not training: its
-        one job is to
+        refuse to turn an ungradable sample into a verdict at all: they *drop* it from the
+        batch/rollout and count it in ``judge_ungradable_items``
+        (``TextGradPromptOptimizer._judge``, ``Text2SqlEnvAdapter._rollout``), because
+        there a fabricated INCORRECT verdict becomes a textual gradient or a gate score
+        and would actively mislead the search. A probe is not training: its one job is to
         land on the same axis as ``test_quality_{before,after}``, and those come from
         ``mlflow.genai.evaluate``, which counts an errored Feedback as 0 in
         ``sql_is_correct/mean`` — its denominator includes ungradable rows (measured

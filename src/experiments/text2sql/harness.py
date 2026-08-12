@@ -7,11 +7,13 @@ setup / global-param logging.
 """
 
 import hashlib
+import importlib.util
 import json
 import logging
 import numbers
 import os
 import subprocess
+import sys
 from collections.abc import Callable, Hashable
 from datetime import datetime
 from typing import Any
@@ -38,7 +40,6 @@ from water_assistant_agent.text2sql.core import (
     USER_PROMPT_TEMPLATE,
     clean_sql,
 )
-
 
 
 # Endpoint name -> (api_base env var, api_key env var). Every endpoint is
@@ -387,9 +388,7 @@ def openrouter_provider_kwargs(endpoint: str) -> dict[str, Any]:
     return {"extra_body": {"provider": body}} if body else {}
 
 
-def apply_openrouter_provider(
-    kwargs: dict[str, Any], endpoint: str
-) -> dict[str, Any]:
+def apply_openrouter_provider(kwargs: dict[str, Any], endpoint: str) -> dict[str, Any]:
     """Merge the pin into an existing completion/create kwargs dict, in place.
 
     Used where the kwargs are not ours to build from scratch: the in-library GEPA
@@ -500,6 +499,64 @@ def to_mlflow_model_uri(model: str) -> str:
     return f"{provider}:/{name}"
 
 
+class TruncatedCompletionError(RuntimeError):
+    """A completion that hit its ``max_tokens`` ceiling before emitting any content.
+
+    A *thinking* model can spend its entire generation budget inside the reasoning
+    channel and come back with ``finish_reason="length"`` and ``content=None`` -- an
+    HTTP 200 the endpoint considers successful, so it never reaches
+    :data:`RETRYABLE_LLM_ERRORS`. Left unnamed it surfaced downstream as an opaque
+    pydantic "input should be a valid string" from the judge's
+    ``model_validate_json(None)``; raising this instead says what actually happened
+    and at which budget.
+
+    Deliberately *not* retryable: the judge samples greedily (``JUDGE_TEMPERATURE=0``,
+    ``JUDGE_TOP_K=1``, fixed seed), so a byte-identical re-request reproduces the same
+    truncation -- 25 retries would burn ~25x44k output tokens against the money budget
+    and still fail. Callers treat a truncated judge call as *ungradable* (skip the
+    sample) rather than as a verdict; see the rollout/gradient-step call sites.
+    """
+
+
+def finish_reason(resp: Any) -> str:
+    """The first choice's ``finish_reason`` (``"length"`` == hit ``max_tokens``), or
+    ``""`` when the response carries none."""
+    choices = getattr(resp, "choices", None) or []
+    if not choices:
+        return ""
+    return getattr(choices[0], "finish_reason", "") or ""
+
+
+def response_content(resp: Any) -> str:
+    """The first choice's message content, with ``None`` (a thinking model that emitted
+    only reasoning) normalised to ``""``."""
+    choices = getattr(resp, "choices", None) or []
+    if not choices:
+        return ""
+    return getattr(choices[0].message, "content", None) or ""
+
+
+def content_or_raise(resp: Any, role: str) -> str:
+    """The response content, or :class:`TruncatedCompletionError` when it is empty.
+
+    Used where an empty completion cannot be interpreted at all (the judge: no content
+    means no verdict). The task path deliberately does NOT use this -- an empty
+    generation there is a legitimately empty SQL answer the judge scores INCORRECT.
+    """
+    content = response_content(resp)
+    if content:
+        return content
+    usage = getattr(resp, "usage", None)
+    generated = getattr(usage, "completion_tokens", None)
+    raise TruncatedCompletionError(
+        f"The {role} model returned no content (finish_reason="
+        f"{finish_reason(resp)!r}) after generating "
+        f"{generated if generated is not None else 'an unknown number of'} tokens -- "
+        "the whole generation budget went into the reasoning channel. Lower this "
+        f"role's reasoning effort or raise its *_MAX_TOKENS if this recurs."
+    )
+
+
 def extract_usage(resp: Any, prefix: str) -> dict[str, str]:
     """Flatten litellm response usage into ``{prefix}_*_tokens`` string entries
     (Feedback metadata values must be strings). Missing usage -> empty dict."""
@@ -571,8 +628,16 @@ def _make_predict_fn(
             ],
             **completion_kwargs,
         )
-        sql = clean_sql(resp.choices[0].message.content or "")
-        return {"sql": sql, **extract_usage(resp, "generation")}
+        sql = clean_sql(response_content(resp))
+        # ``finish_reason`` rides along so the scorer can tell an empty answer the
+        # model actually meant from one truncated at max_tokens; both still score
+        # INCORRECT (an unanswered question is a task failure), but only one of them
+        # is a budget problem to go fix.
+        return {
+            "sql": sql,
+            "finish_reason": finish_reason(resp),
+            **extract_usage(resp, "generation"),
+        }
 
     return predict_fn
 
@@ -607,7 +672,9 @@ def create_optimizable_predict_fn(
 # ---------------------------------------------------------------------------
 # Execution accuracy (original BIRD EX) + result rendering (ported from FLEX)
 # ---------------------------------------------------------------------------
-def run_query(cursor: "duckdb.DuckDBPyConnection", sql: str) -> tuple[list[tuple] | None, str | None]:
+def run_query(
+    cursor: "duckdb.DuckDBPyConnection", sql: str
+) -> tuple[list[tuple] | None, str | None]:
     """Execute SQL on a DuckDB cursor. Returns ``(rows, None)`` on success or
     ``(None, error message)`` on failure."""
     try:
@@ -714,17 +781,24 @@ def build_sql_judge_scorer(
             "question": str(question),
             "argilla_link": str(argilla_link),
             "generated_sql": str(generated_sql),
-            **{
-                k: str(v)
-                for k, v in outputs.items()
-                if k.endswith("_tokens")
-            },
+            **{k: str(v) for k, v in outputs.items() if k.endswith("_tokens")},
         }
+        generation_finish_reason = str(outputs.get("finish_reason", ""))
+        if generation_finish_reason:
+            metadata["generation_finish_reason"] = generation_finish_reason
         if not generated_sql:
+            if generation_finish_reason == "length":
+                rationale = (
+                    "Model produced no SQL: the generation was truncated at max_tokens "
+                    "(finish_reason='length'), so this is a budget problem rather than "
+                    "a refusal."
+                )
+            else:
+                rationale = "Model produced no SQL."
             return Feedback(
                 name="sql_is_correct",
                 value=False,
-                rationale="Model produced no SQL.",
+                rationale=rationale,
                 metadata=metadata,
             )
 
@@ -737,7 +811,11 @@ def build_sql_judge_scorer(
         finally:
             cursor.close()
 
-        ex = gen_error is None and ref_error is None and execution_match(gen_rows, ref_rows)
+        ex = (
+            gen_error is None
+            and ref_error is None
+            and execution_match(gen_rows, ref_rows)
+        )
         metadata["ex_match"] = str(ex)
         metadata["judge_branch"] = "eq" if ex else "neq"
         if gen_error is not None:
@@ -780,17 +858,24 @@ def build_sql_judge_scorer(
                 response_format=SqlJudgeResponse,
                 **completion_kwargs,
             )
-            # Record judge usage before parsing so it survives JSON-validation
-            # failures (the except branch reuses this metadata dict).
+            # Record judge usage and finish_reason before parsing so they survive
+            # JSON-validation failures (the except branch reuses this metadata dict) --
+            # a truncated judge call is exactly the case where the token counts matter.
             usage = extract_usage(resp, "judge")
             metadata.update(usage)
+            metadata["judge_finish_reason"] = finish_reason(resp)
+            # content_or_raise turns "thinking model burned the whole budget and
+            # returned content=None" into a named TruncatedCompletionError instead of
+            # an opaque pydantic error on model_validate_json(None).
             verdict = SqlJudgeResponse.model_validate_json(
-                resp.choices[0].message.content
+                content_or_raise(resp, "judge")
             )
         except Exception as e:
-            # Never let a judge failure (request error, empty/non-JSON content) raise
-            # out of the scorer: that would leave the prediction trace with no
-            # assessment at all. Emit a failed Feedback carrying the error instead.
+            # Never let a judge failure (request error, truncated/empty/non-JSON
+            # content) raise out of the scorer: that would leave the prediction trace
+            # with no assessment at all. Emit a failed Feedback carrying the error
+            # instead. Callers that must not treat this as an INCORRECT verdict read
+            # ``Feedback.error`` and drop the sample (EC4).
             return Feedback(
                 name="sql_is_correct",
                 value=False,
@@ -811,9 +896,48 @@ def build_sql_judge_scorer(
 # ---------------------------------------------------------------------------
 # MLflow setup & logging (shared by eval and train)
 # ---------------------------------------------------------------------------
+# Optional integrations MLflow probes but that we never install. Because a failed
+# import is not cached in sys.modules, each probe re-runs the whole meta-path finder
+# sweep -- and MLflow wraps find_spec in a hook synchronized on its global
+# _post_import_hooks_lock. That deadlocked a GEPA run for 15h (2026-08-08): the main
+# thread held _post_import_hooks_lock inside register_post_import_hook (which fires
+# mlflow.openai.autolog -> `from agents.run import ...` inline) while waiting on an
+# importlib module lock, and the trace-export thread held that module lock (via
+# _is_jupyter -> `from IPython import ...`) while waiting on _post_import_hooks_lock.
+# Classic AB-BA. Poisoning sys.modules makes these imports raise ImportError straight
+# from the sys.modules lookup -- zero find_spec calls, so the hook lock is never taken.
+# All three call sites already swallow ImportError.
+# ``openai.resources.beta.chat`` is gone from current openai SDKs but MLflow still
+# probes it once per evaluation, on the same main thread that holds the hook lock.
+_UNINSTALLED_MLFLOW_PROBES = (
+    "agents",
+    "IPython",
+    "dbruntime",
+    "openai.resources.beta.chat",
+)
+
+
+def _block_optional_mlflow_imports() -> None:
+    """Poison the probes that are genuinely absent, leaving any that a future
+    dependency bump reinstates untouched."""
+    for name in _UNINSTALLED_MLFLOW_PROBES:
+        if name in sys.modules:
+            continue
+        try:
+            found = importlib.util.find_spec(name) is not None
+        except (ImportError, AttributeError, ValueError):
+            found = False
+        if not found:
+            sys.modules[name] = None  # type: ignore[assignment]
+
+
 def setup_mlflow(tracking_uri: str, experiment_name: str) -> None:
+    _block_optional_mlflow_imports()
     mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment(experiment_name)
+    # Belt and braces on the trace-export side: we are never in a notebook, so skip the
+    # display path that probes IPython on every single trace export.
+    mlflow.tracing.disable_notebook_display()
     os.environ.setdefault("MLFLOW_GENAI_EVAL_MAX_WORKERS", "1")
     os.environ.setdefault("MLFLOW_GENAI_EVAL_MAX_SCORER_WORKERS", "1")
     # Keep litellm autolog enabled but do NOT emit its own traces. mlflow.genai.evaluate
@@ -868,7 +992,9 @@ def register_prompt_if_changed(name: str, template: str) -> PromptVersion | None
             f"prompts:/{name}@latest", allow_missing=True, cache_ttl_seconds=0
         )
         if latest is not None and latest.template == template:
-            click.echo(f"Prompt {name!r} unchanged from latest version; skipping registry update.")
+            click.echo(
+                f"Prompt {name!r} unchanged from latest version; skipping registry update."
+            )
             return latest
         return mlflow.genai.register_prompt(
             name=name,

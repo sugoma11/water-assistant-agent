@@ -25,6 +25,9 @@ each run logs:
   prompt is by construction the earlier best (best-not-last), which the registration
   decision above pins to the scores.
 
+**LC-SC4 — a learning-curve run's spend buckets partition cleanly** and its curve
+endpoints are the bracketing evaluations. Skipped for runs without probing.
+
 **SC5 — the meter reconciles with the post-hoc trace audit.** The run's
 ``tokens_{role}_{input,output}`` metrics (the live meter, FR6) are compared per role
 and direction against ``scripts/count_tokens.py``'s deduped span totals (the
@@ -250,6 +253,75 @@ def verify_sc5(run: mlflow.entities.Run, tolerance: float) -> list[str]:
     return problems
 
 
+# ---------------------------------------------------------------------------
+# LC-SC4 (learning curve): bucket identity + curve endpoints
+# ---------------------------------------------------------------------------
+def verify_learning_curve(run: mlflow.entities.Run) -> list[str]:
+    """For a run carrying a learning curve, assert the two properties that make the
+    curve trustworthy:
+
+    **LC-SC4 — the three spend buckets partition every metered call.** The per-role
+    ``cost_*`` cover billable + excluded + probe, so their sum must equal
+    ``cost_total + cost_excluded + cost_probe``. If probe spend had leaked into the
+    billable bucket, a probed run would have bought less optimization than an unprobed
+    one at the same ``--budget`` — the failure mode that would silently invalidate the
+    whole comparison (LC-FR4).
+
+    **LC-FR7 — the curve's endpoints are the bracketing evaluations**, not extra paid
+    ones: the first and last ``curve_test_quality`` points must equal
+    ``test_quality_{before,after}``.
+    """
+    problems: list[str] = []
+    metrics = run.data.metrics
+    interval = float(run.data.params.get("probe_interval_eur", 0.0) or 0.0)
+    if interval <= 0:
+        print("LC: probing was off for this run (probe_interval_eur=0); nothing to check")
+        return problems
+
+    cost_probe = metrics.get("cost_probe", 0.0)
+    per_role = sum(metrics.get(f"cost_{role}", 0.0) for role in ROLES)
+    buckets = metrics.get("cost_total", 0.0) + metrics.get("cost_excluded", 0.0) + cost_probe
+    print(
+        f"LC [{run.data.params['technique']}] interval={interval} EUR, "
+        f"probes={metrics.get('probe_count', 0):.0f} "
+        f"(cache hits {metrics.get('probe_cache_hits', 0):.0f}, "
+        f"failures {metrics.get('probe_failures', 0):.0f}), "
+        f"cost_probe={cost_probe:.4f} "
+        f"({metrics.get('probe_cost_ratio', 0.0):.0%} of billable), "
+        f"probe wall {metrics.get('probe_wall_minutes', 0.0):.0f} min"
+    )
+    if not math.isclose(per_role, buckets, rel_tol=1e-6, abs_tol=1e-9):
+        fail(problems, f"bucket identity broken: sum(cost_role)={per_role:.6f} != "
+             f"cost_total+cost_excluded+cost_probe={buckets:.6f} (LC-SC4)")
+
+    curve = sorted(
+        (
+            (m.step, m.value)
+            for m in mlflow.MlflowClient().get_metric_history(
+                run.info.run_id, "curve_test_quality"
+            )
+        ),
+        key=lambda sv: sv[0],
+    )
+    print(f"  curve (spend cents -> test quality): {[(s, round(v, 4)) for s, v in curve]}")
+    if not curve:
+        fail(problems, "no curve_test_quality points logged despite probing being on")
+        return problems
+    for name, expected, (step, got) in (
+        ("test_quality_before", metrics.get("test_quality_before"), curve[0]),
+        ("test_quality_after", metrics.get("test_quality_after"), curve[-1]),
+    ):
+        if expected is None:
+            continue
+        if not math.isclose(expected, got, rel_tol=1e-9, abs_tol=1e-9):
+            fail(problems, f"curve endpoint at step {step} is {got:.4f} but {name} is "
+                 f"{expected:.4f}; endpoints must reuse the bracketing evals (LC-FR7)")
+    if metrics.get("probe_failures"):
+        print(f"  NOTE: {metrics['probe_failures']:.0f} probe(s) failed — the curve has "
+              "holes, but the optimization itself was unaffected (LC-FR9)")
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-id", required=True)
@@ -276,8 +348,9 @@ def main() -> int:
 
     problems = verify_sc3(run)
     problems += verify_sc5(run, args.tolerance)
+    problems += verify_learning_curve(run)
 
-    print("SC3+SC5 VERIFIED" if not problems else
+    print("SC3+SC5+LC VERIFIED" if not problems else
           f"NOT VERIFIED — {len(problems)} problem(s)")
     return 0 if not problems else 1
 

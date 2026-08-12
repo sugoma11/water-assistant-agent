@@ -97,6 +97,7 @@ from experiments.text2sql.harness import (
     LLM_RETRY_MAX_WAIT,
     render_system_prompt,
 )
+from experiments.text2sql.learning_curve import LearningCurveProbe, NullProbe
 from experiments.text2sql.prompt_skill import (
     MIN_SPLIT_SIZE,
     instruction_block,
@@ -404,6 +405,11 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         batch_size: records per gradient step.
         seed: seeds the per-epoch train shuffle and the val-gate subset (NFR2).
         display_progress_bar: show a per-epoch batch progress bar.
+        probe: optional learning-curve probe. Its ``maybe_probe`` shares this loop's
+            per-gradient-step checkpoint, scoring the best-so-far prompt on the held-out
+            test split every K EUR (LC-FR1/FR2). Its spend is metered into the meter's
+            separate probe bucket, so the curve never eats into ``--budget`` and a probed
+            run performs exactly the same gradient steps as an unprobed one (LC-FR4).
     """
 
     def __init__(
@@ -423,6 +429,7 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         batch_size: int = 1,
         seed: int = 42,
         display_progress_bar: bool = False,
+        probe: LearningCurveProbe | NullProbe | None = None,
     ) -> None:
         self.task_model = task_model
         self.task_endpoint = task_endpoint
@@ -438,6 +445,7 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         self.batch_size = batch_size
         self.seed = seed
         self.display_progress_bar = display_progress_bar
+        self.probe = probe or NullProbe()
 
     # -- shared judge + val scoring ------------------------------------------
     def _judge(self, question: str, ref_sql: str, sql: str) -> Feedback:
@@ -644,6 +652,12 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
                     )
                     budget_exhausted = True
                     break
+                # Learning-curve checkpoint (LC-FR1/FR2): after the stop test, so a run
+                # about to end never pays for a probe of the prompt test_quality_after
+                # measures minutes later (LC-D6). The probed prompt is the keep-best
+                # `best_prompt` -- what this run would return if the budget stopped it
+                # right here -- not the live (possibly about-to-be-reverted) candidate.
+                self.probe.maybe_probe(lambda: recombine(best_prompt))
                 optimizer.zero_grad()
                 losses = []
                 n_correct = 0

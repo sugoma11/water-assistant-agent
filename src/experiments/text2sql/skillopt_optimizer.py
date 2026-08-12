@@ -72,6 +72,7 @@ from experiments.text2sql.harness import (
     completion_with_retry,
     render_system_prompt,
 )
+from experiments.text2sql.learning_curve import LearningCurveProbe, NullProbe
 from experiments.text2sql.prompt_skill import (
     MIN_SPLIT_SIZE,
     install_openrouter_provider,
@@ -186,6 +187,11 @@ class Text2SqlEnvAdapter(EnvAdapter):
             :class:`BudgetExhaustedStop` once the budget is exhausted. The first
             eval-split rollout (the trainer's baseline val gate) is a reserved
             bracketing pass and runs under ``meter.excluded()`` (FR5, D3).
+        probe: optional learning-curve probe, fired at that same rollout checkpoint on
+            the best-so-far skill (LC-D1). Its spend goes to the meter's probe bucket,
+            so the curve never charges the budget (LC-FR4).
+        out_root / seed_skill: where the trainer persists ``best_skill.md`` and what to
+            probe before the first gated step has written it (LC-FR2).
     """
 
     def __init__(
@@ -198,6 +204,9 @@ class Text2SqlEnvAdapter(EnvAdapter):
         judge_scorer: Any,
         schema_text: str,
         cost_meter: CostMeter,
+        probe: LearningCurveProbe | NullProbe | None = None,
+        out_root: str | None = None,
+        seed_skill: str = "",
     ) -> None:
         self._train = list(train_records)
         self._val = list(val_records)
@@ -205,6 +214,9 @@ class Text2SqlEnvAdapter(EnvAdapter):
         self._judge = judge_scorer
         self._schema_text = schema_text
         self._cost_meter = cost_meter
+        self._probe = probe or NullProbe()
+        self._out_root = out_root
+        self._seed_skill = seed_skill
         # Snapshot of SkillOpt's monotone TokenTracker totals at the last fold, so
         # each checkpoint charges only the delta since the previous one.
         self._opt_tokens_prompt = 0
@@ -337,7 +349,22 @@ class Text2SqlEnvAdapter(EnvAdapter):
                 f"budget ({self._cost_meter.budget} EUR); stopping before this "
                 "rollout and reading back the best-so-far skill (FR7, FR8, D2)."
             )
+        # Learning-curve checkpoint, after the stop test so a run about to end never
+        # pays for a probe of the prompt test_quality_after measures anyway (LC-D6).
+        self._probe.maybe_probe(self._best_so_far_template)
         return self._rollout(env_manager, skill_content, out_dir, **kwargs)
+
+    def _best_so_far_template(self) -> str | None:
+        """The full template of the best gate-validated skill so far (LC-FR2): the
+        trainer rewrites ``best_skill.md`` at every completed step, which is the very
+        artifact the budget-stop read-back path already trusts. Before the first gated
+        step the file does not exist yet and the best-so-far skill is the seed."""
+        skill = self._seed_skill
+        if self._out_root:
+            best_path = Path(self._out_root, "best_skill.md")
+            if best_path.exists():
+                skill = best_path.read_text(encoding="utf-8")
+        return recombine(skill) if skill else None
 
     def _rollout(
         self, env_manager: Any, skill_content: str, out_dir: str, **kwargs: Any
@@ -431,6 +458,8 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
             model, applied process-wide by the trainer via ``set_reasoning_effort``;
             ``"off"`` disables thinking. Recorded (FR10).
         seed: seeds SkillOpt's ``seed``/``split_seed`` (== sampler_seed, NFR2).
+        probe: optional learning-curve probe, handed to the adapter so it fires at the
+            per-rollout checkpoint on the best gate-validated skill (LC-D1, LC-FR2).
     """
 
     # SkillOpt-internal knobs not exposed as spec effort knobs; pinned in the spike.
@@ -463,6 +492,7 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
         reflect_on_success: bool = False,
         reasoning_effort: str = "high",
         seed: int = 42,
+        probe: LearningCurveProbe | NullProbe | None = None,
     ) -> None:
         self.task_model = task_model
         self.task_endpoint = task_endpoint
@@ -477,6 +507,7 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
         self.reflect_on_success = reflect_on_success
         self.reasoning_effort = reasoning_effort
         self.seed = seed
+        self.probe = probe or NullProbe()
 
     def _build_cfg(
         self, out_root: str, train_data: list[dict[str, Any]]
@@ -638,22 +669,26 @@ class SkillOptPromptOptimizer(BasePromptOptimizer):
         self._log_eval_score(initial_eval_score, step=0, enable_tracking=enable_tracking)
         logger.info("SkillOpt baseline val eval_score=%.4f", initial_eval_score)
 
-        adapter = Text2SqlEnvAdapter(
-            train_data,
-            self.val_set,
-            task_model=self.task_model,
-            task_endpoint=self.task_endpoint,
-            judge_scorer=self.judge_scorer,
-            schema_text=self.schema_text,
-            cost_meter=self.cost_meter,
-        )
-
         # Drive the trainer in a temp out_root so the repo is never polluted with
         # SkillOpt's outputs/; read back the best-on-val skill before the dir is removed.
         # EC5: a round whose reflection yields no usable edit is left to SkillOpt's own
         # native keep-best -- the trainer simply keeps the current best skill and never
         # applies a malformed edit, so no special handling is needed here.
         with tempfile.TemporaryDirectory() as out_root:
+            # Built inside the temp dir's scope because the learning-curve probe reads
+            # the best-so-far skill from `out_root/best_skill.md` (LC-FR2).
+            adapter = Text2SqlEnvAdapter(
+                train_data,
+                self.val_set,
+                task_model=self.task_model,
+                task_endpoint=self.task_endpoint,
+                judge_scorer=self.judge_scorer,
+                schema_text=self.schema_text,
+                cost_meter=self.cost_meter,
+                probe=self.probe,
+                out_root=out_root,
+                seed_skill=seed_skill,
+            )
             cfg = self._build_cfg(out_root, train_data)
             Path(cfg["skill_init"]).write_text(seed_skill, encoding="utf-8")
             budget_stopped = False

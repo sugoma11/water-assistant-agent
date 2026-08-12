@@ -10,12 +10,17 @@ today (FR12, NFR4).
 
 Prices come from six env vars ``PRICE_{TASK,JUDGE,OPTIMIZER}_{INPUT,OUTPUT}`` in EUR per
 million tokens (D4); the budget is EUR. Roles are ``task``, ``judge`` and ``optimizer``.
+
+Spend lands in one of three buckets, in precedence order (LC-D2): ``probe`` (learning-curve
+test evaluations — real money, but instrumentation the budget must not charge, see
+:mod:`experiments.text2sql.learning_curve`), ``excluded`` (the reserved bracketing passes,
+D3) and ``billable`` (everything else — the optimization work the budget governs).
 """
 
 import logging
 import os
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -49,6 +54,7 @@ UNMETERED_FRACTION = 0.05
 _state_lock = threading.Lock()
 _active: Optional["CostMeter"] = None
 _excluded: bool = False
+_probing: bool = False
 
 
 def active_meter() -> Optional["CostMeter"]:
@@ -62,6 +68,12 @@ def _is_excluded() -> bool:
     """Whether an :meth:`CostMeter.excluded` bracketing pass is in flight."""
     with _state_lock:
         return _excluded
+
+
+def _is_probing() -> bool:
+    """Whether a :meth:`CostMeter.probing` learning-curve probe is in flight."""
+    with _state_lock:
+        return _probing
 
 
 class BudgetExhaustedStop(Exception):
@@ -141,9 +153,11 @@ class PriceConfig:
 class CostMeter:
     """Thread-safe accumulator of tokens and EUR cost per role, with a budget-based
     stop signal. Per-role token/cost counters cover every metered call (billable +
-    excluded) so they reconcile with the post-hoc trace audit (SC5); ``billable_cost``
-    is the budget-governing subtotal and ``excluded_cost`` the reserved-pass subtotal
-    (D3, SC4)."""
+    excluded + probe) so they reconcile with the post-hoc trace audit (SC5);
+    ``billable_cost`` is the budget-governing subtotal, ``excluded_cost`` the
+    reserved-pass subtotal (D3, SC4) and ``probe_cost`` the learning-curve
+    instrumentation subtotal (LC-D2). The three subtotals partition every metered
+    call, so ``sum(cost_role) == billable + excluded + probe`` (LC-SC4)."""
 
     def __init__(self, budget: float, prices: PriceConfig) -> None:
         self._budget = float(budget)
@@ -155,17 +169,22 @@ class CostMeter:
         self._cost: dict[str, float] = {r: 0.0 for r in ROLES}
         self._billable_cost = 0.0
         self._excluded_cost = 0.0
+        self._probe_cost = 0.0
+        self._probe_tokens: dict[str, int] = {"input": 0, "output": 0}
         self._metered_calls = 0
         self._unmetered_calls = 0
         self._stop_reason = "completed"
 
     # -- metering ---------------------------------------------------------
     def record(self, role: Optional[str], input_tokens: int, output_tokens: int) -> None:
-        """Accumulate one call's tokens and cost (``tokens/1e6 * price``) into the
-        billable or excluded bucket per the :meth:`excluded` context. A missing or
-        unknown role is a misattribution we refuse to guess at (R6): it falls through
-        to :meth:`record_unmetered`, counting toward the same threshold as
-        missing-usage calls."""
+        """Accumulate one call's tokens and cost (``tokens/1e6 * price``) into exactly
+        one of the three buckets, with precedence **probe > excluded > billable**
+        (LC-D2): a learning-curve probe is instrumentation the experimenter pays for but
+        the budget must not (LC-FR4/FR5), a bracketing pass is reserved spend (D3), and
+        everything else is optimization work the budget governs. A missing or unknown
+        role is a misattribution we refuse to guess at (R6): it falls through to
+        :meth:`record_unmetered`, counting toward the same threshold as missing-usage
+        calls."""
         if role not in ROLES:
             logger.warning(
                 "COST METER: call with role=%r is not one of %s; counting it as "
@@ -178,12 +197,16 @@ class CostMeter:
         in_cost = input_tokens / 1e6 * self._prices.price(role, "input")
         out_cost = output_tokens / 1e6 * self._prices.price(role, "output")
         call_cost = in_cost + out_cost
-        excluded = _is_excluded()
+        probing, excluded = _is_probing(), _is_excluded()
         with self._lock:
             self._tokens[role]["input"] += input_tokens
             self._tokens[role]["output"] += output_tokens
             self._cost[role] += call_cost
-            if excluded:
+            if probing:
+                self._probe_cost += call_cost
+                self._probe_tokens["input"] += input_tokens
+                self._probe_tokens["output"] += output_tokens
+            elif excluded:
                 self._excluded_cost += call_cost
             else:
                 self._billable_cost += call_cost
@@ -230,7 +253,12 @@ class CostMeter:
     def check_unmetered(self) -> None:
         """Raise :class:`MeterIntegrityError` when unmetered calls exceed
         ``max(UNMETERED_MIN, UNMETERED_FRACTION * metered_calls)`` (OQ3) — frequent
-        enough that the recorded spend can no longer be trusted."""
+        enough that the recorded spend can no longer be trusted.
+
+        Probe calls count toward ``metered_calls`` like any other, so a probed run
+        tolerates marginally more unmetered calls than an unprobed one. Deliberate: the
+        threshold measures the *fraction* of spend we cannot see, and probe calls are
+        spend we can."""
         with self._lock:
             unmetered = self._unmetered_calls
             threshold = max(UNMETERED_MIN, UNMETERED_FRACTION * self._metered_calls)
@@ -266,6 +294,20 @@ class CostMeter:
         return self._budget
 
     @property
+    def billable_cost(self) -> float:
+        """Budget-charging spend so far — the x-axis of the learning curve and the
+        input to the probe's ``k * interval`` threshold test (LC-FR1, LC-D4)."""
+        with self._lock:
+            return self._billable_cost
+
+    @property
+    def probe_cost(self) -> float:
+        """Learning-curve instrumentation spend so far (LC-FR5); never charges the
+        budget, always recorded."""
+        with self._lock:
+            return self._probe_cost
+
+    @property
     def prices(self) -> PriceConfig:
         """The price config this meter charges against, logged via
         :meth:`PriceConfig.as_log_params`."""
@@ -274,8 +316,13 @@ class CostMeter:
     # -- reporting --------------------------------------------------------
     def spend_summary(self) -> dict[str, float]:
         """The FR9 metric dict logged by ``_run_optimization``: per-role token counts
-        and cost, billable ``cost_total``, ``cost_excluded`` (reserved passes, SC4) and
-        ``unmetered_calls`` (EC2)."""
+        and cost, billable ``cost_total``, ``cost_excluded`` (reserved passes, SC4),
+        ``cost_probe`` + ``tokens_probe_*`` (learning-curve instrumentation, LC-FR5) and
+        ``unmetered_calls`` (EC2).
+
+        The per-role ``cost_*`` cover all three buckets, so
+        ``sum(cost_role) == cost_total + cost_excluded + cost_probe`` up to float error
+        — the identity ``scripts/verify_budget_stop.py`` asserts (LC-SC4)."""
         with self._lock:
             summary: dict[str, float] = {}
             for r in ROLES:
@@ -284,6 +331,9 @@ class CostMeter:
                 summary[f"cost_{r}"] = self._cost[r]
             summary["cost_total"] = self._billable_cost
             summary["cost_excluded"] = self._excluded_cost
+            summary["cost_probe"] = self._probe_cost
+            summary["tokens_probe_input"] = self._probe_tokens["input"]
+            summary["tokens_probe_output"] = self._probe_tokens["output"]
             summary["unmetered_calls"] = self._unmetered_calls
             return summary
 
@@ -326,6 +376,40 @@ class CostMeter:
             with _state_lock:
                 _excluded = False
 
+    @contextmanager
+    def probing(self) -> Iterator[None]:
+        """Calls made under this context are counted as learning-curve instrumentation:
+        visible as ``cost_probe`` + ``tokens_probe_*``, never charging the budget
+        (LC-FR4/FR5). Separate from :meth:`excluded` on purpose (LC-D2) — merging the
+        two would blur the reserved-bracketing-pass bucket SC4 asserts on, and
+        ``excluded`` is non-reentrant. Process-global for the same eval-worker-thread
+        reason as the other two flags; probes run at technique checkpoints, where
+        nothing else is in flight."""
+        global _probing
+        with _state_lock:
+            if _probing:
+                raise RuntimeError(
+                    "A learning-curve probe is already in flight; probing() is not "
+                    "reentrant (probes run one at a time, at technique checkpoints)."
+                )
+            was_excluded = _excluded
+            _probing = True
+        if was_excluded:
+            # Defensive: a probe nested inside a reserved bracketing pass would silently
+            # move that pass's spend into the probe bucket. Checkpoints sit outside the
+            # reserved passes by construction (LC-D6), so this only ever fires on a
+            # wiring mistake -- loudly, rather than corrupting SC4's bucket.
+            logger.warning(
+                "COST METER: a learning-curve probe started inside an excluded "
+                "bracketing pass; probe precedence means that pass's calls are being "
+                "recorded as probe spend. This is a wiring bug (LC-D6)."
+            )
+        try:
+            yield
+        finally:
+            with _state_lock:
+                _probing = False
+
 
 # ---------------------------------------------------------------------------
 # Attachment primitives (T003)
@@ -334,10 +418,21 @@ class BudgetStopper:
     """GEPA ``StopperProtocol`` (``(gepa_state) -> bool``) that stops the run once the
     budget is exhausted. On its first invocation it reclassifies the spend accumulated
     so far — GEPA's seed full-val pass, which the engine runs before any stopper fires —
-    into the excluded bucket (D3), so the seed pass never charges the budget."""
+    into the excluded bucket (D3), so the seed pass never charges the budget.
 
-    def __init__(self, meter: CostMeter) -> None:
+    ``on_checkpoint`` is the GEPA half of the learning-curve hook: the engine's
+    per-iteration stopper call *is* GEPA's natural checkpoint, so a probe belongs
+    exactly here. It runs only when the run is NOT stopping (LC-D6) — a probe on the
+    way out would pay for a 55-record evaluation of the same prompt
+    ``test_quality_after`` measures minutes later."""
+
+    def __init__(
+        self,
+        meter: CostMeter,
+        on_checkpoint: Optional[Callable[[Any], None]] = None,
+    ) -> None:
         self.meter = meter
+        self.on_checkpoint = on_checkpoint
         self._snapshotted = False
 
     def __call__(self, gepa_state: Any) -> bool:
@@ -345,7 +440,11 @@ class BudgetStopper:
             self.meter.exclude_accumulated_billable()
             self._snapshotted = True
         self.meter.check_unmetered()
-        return self.meter.exhausted()
+        if self.meter.exhausted():
+            return True
+        if self.on_checkpoint is not None:
+            self.on_checkpoint(gepa_state)
+        return False
 
 
 def litellm_reflection_callback(meter: CostMeter):

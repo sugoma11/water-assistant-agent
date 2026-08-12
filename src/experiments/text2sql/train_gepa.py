@@ -69,6 +69,7 @@ from experiments.text2sql.cost_meter import (
     CostMeter,
     litellm_reflection_callback,
 )
+from experiments.text2sql.learning_curve import build_probe
 from experiments.text2sql.sampler import split_dataset
 from experiments.text2sql.train_common import (
     PROMPT_NAME,
@@ -81,6 +82,36 @@ from experiments.text2sql.train_common import (
 # next to the BudgetStopper (CompositeStopper, "any" mode). Its only other use is the
 # tqdm progress-bar denominator (cosmetic, T015c).
 MAX_METRIC_CALLS_SENTINEL = 10**9
+
+
+def gepa_best_template(gepa_state: Any, prompt_name: str) -> str | None:
+    """GEPA's best-so-far candidate for the learning curve (LC-FR2), read off the engine
+    state the stopper is handed at each iteration boundary.
+
+    This is ``FullEvaluationPolicy.get_best_program`` inlined (gepa 0.1.1,
+    ``gepa/strategies/eval_policy.py``): the candidate with the highest mean over its
+    evaluated valset subscores, ties broken by coverage. The engine applies that same
+    rule to pick the ``best_candidate`` it finally returns, so a probe measures exactly
+    the prompt this run would deliver if the budget stopped it here — not the candidate
+    that happens to be under evaluation.
+
+    Inlined rather than called because the policy object is not reachable from a
+    ``StopperProtocol`` callback, which only receives the state. That couples this to
+    gepa's state attributes, so it returns ``None`` (a warned, skipped curve point)
+    instead of raising if a version bump moves them (LC-R2)."""
+    subscores = getattr(gepa_state, "prog_candidate_val_subscores", None)
+    candidates = getattr(gepa_state, "program_candidates", None)
+    if not subscores or not candidates:
+        return None
+    best_idx, best_avg, best_coverage = -1, float("-inf"), -1
+    for idx, scores in enumerate(subscores):
+        coverage = len(scores)
+        avg = sum(scores.values()) / coverage if coverage else float("-inf")
+        if avg > best_avg or (avg == best_avg and coverage > best_coverage):
+            best_idx, best_avg, best_coverage = idx, avg, coverage
+    if best_idx < 0 or best_idx >= len(candidates):
+        return None
+    return candidates[best_idx].get(prompt_name)
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +169,30 @@ MAX_METRIC_CALLS_SENTINEL = 10**9
     "once billable spend reaches it; prices come from the PRICE_* env vars.",
 )
 @click.option(
+    "--probe-interval-eur",
+    default=0.0,
+    show_default=True,
+    type=click.FloatRange(min=0),
+    help="Learning curve: evaluate the best-so-far prompt on the held-out test split "
+    "every K EUR of billable spend (0 = off). Probe spend never charges --budget.",
+)
+@click.option(
+    "--probe-workers",
+    default=1,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Parallel workers for a learning-curve probe. 1 keeps a probe as sequential "
+    "as the eval phases it must match; raise it to trade endpoint concurrency for "
+    "wall clock (a probe is the one point where nothing else is in flight).",
+)
+@click.option(
+    "--max-probes",
+    default=20,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Safety cap on learning-curve probes per run (instrumentation cost).",
+)
+@click.option(
     "--sampler-seed",
     default=42,
     show_default=True,
@@ -162,6 +217,9 @@ def train_gepa(
     teacher_model: str,
     teacher_endpoint: str,
     budget: float,
+    probe_interval_eur: float,
+    probe_workers: int,
+    max_probes: int,
     sampler_seed: int,
     use_prod_questions: bool,
 ) -> None:
@@ -200,6 +258,40 @@ def train_gepa(
             "registered prompt URI."
         )
 
+    probe = build_probe(
+        meter=meter,
+        interval_eur=probe_interval_eur,
+        max_probes=max_probes,
+        workers=probe_workers,
+        test_set=test_set,
+        model=model,
+        endpoint=endpoint,
+        judge_model=judge_model,
+        judge_endpoint=judge_endpoint,
+        schema_text=schema_text,
+        db_path=db_path,
+    )
+    # GEPA's natural checkpoint IS the stopper call, so the learning-curve hook rides it
+    # (LC-D1). The first invocation doubles as a validation of the state-shape coupling
+    # (LC-R2): it happens after the seed full-val pass but before any iteration, so the
+    # extraction must yield the seed template. A warning here surfaces a gepa version
+    # bump within minutes of the run starting; it deliberately does not raise, because
+    # instrumentation must never kill an hours-long training run (LC-FR9).
+    checkpoint_validated = False
+
+    def on_checkpoint(gepa_state: Any) -> None:
+        nonlocal checkpoint_validated
+        if not checkpoint_validated:
+            checkpoint_validated = True
+            if gepa_best_template(gepa_state, PROMPT_NAME) is None:
+                click.echo(
+                    "WARNING: GEPA best-candidate extraction returned nothing at the "
+                    "first checkpoint; the learning curve will have no interior points "
+                    "for this run. gepa's GEPAState layout has probably changed -- see "
+                    "gepa_best_template (LC-R2)."
+                )
+        probe.maybe_probe(lambda: gepa_best_template(gepa_state, PROMPT_NAME))
+
     gepa_kwargs: dict[str, Any] = {
         "valset": val_set,
         "seed": sampler_seed,
@@ -208,7 +300,7 @@ def train_gepa(
         # loop), so the stopper's first-call snapshot moves exactly that pass into the
         # excluded bucket (D3, T015a). Every later full-val pass belongs to an accepted
         # candidate — part of the search, billable.
-        "stop_callbacks": [BudgetStopper(meter)],
+        "stop_callbacks": [BudgetStopper(meter, on_checkpoint=on_checkpoint)],
     }
     reflection_prompt_template = gepa_kwargs.get(
         "reflection_prompt_template", InstructionProposalSignature.default_prompt_template
@@ -281,6 +373,7 @@ def train_gepa(
             prompt_version=prompt_version,
             sampler_seed=sampler_seed,
             cost_meter=meter,
+            probe=probe,
             extra_artifacts={"reflection_prompt_template.txt": reflection_prompt_template},
         )
     finally:

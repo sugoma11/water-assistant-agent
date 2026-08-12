@@ -52,6 +52,7 @@ from experiments.text2sql.harness import (
     setup_mlflow,
 )
 from experiments.text2sql.cost_meter import CostMeter
+from experiments.text2sql.learning_curve import build_probe
 from experiments.text2sql.sampler import split_dataset
 from experiments.text2sql.skillopt_optimizer import SkillOptPromptOptimizer
 from experiments.text2sql.train_common import (
@@ -131,6 +132,30 @@ from experiments.text2sql.train_common import (
     "once billable spend reaches it; prices come from the PRICE_* env vars.",
 )
 @click.option(
+    "--probe-interval-eur",
+    default=0.0,
+    show_default=True,
+    type=click.FloatRange(min=0),
+    help="Learning curve: evaluate the best-so-far prompt on the held-out test split "
+    "every K EUR of billable spend (0 = off). Probe spend never charges --budget.",
+)
+@click.option(
+    "--probe-workers",
+    default=1,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Parallel workers for a learning-curve probe. 1 keeps a probe as sequential "
+    "as the eval phases it must match; raise it to trade endpoint concurrency for "
+    "wall clock (a probe is the one point where nothing else is in flight).",
+)
+@click.option(
+    "--max-probes",
+    default=20,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Safety cap on learning-curve probes per run (instrumentation cost).",
+)
+@click.option(
     "--sampler-seed",
     default=42,
     show_default=True,
@@ -158,6 +183,9 @@ def train_skillopt(
     minibatch_size: int,
     reflect_on_success: bool,
     budget: float,
+    probe_interval_eur: float,
+    probe_workers: int,
+    max_probes: int,
     sampler_seed: int,
     use_prod_questions: bool,
 ) -> None:
@@ -209,6 +237,19 @@ def train_skillopt(
     # adapter rollout); the optimizer model runs on SkillOpt's own OpenAI-compatible
     # client, which strips the prefix internally.
     judge_scorer = build_sql_judge_scorer(judge_model, judge_endpoint, schema_text, db_path)
+    probe = build_probe(
+        meter=meter,
+        interval_eur=probe_interval_eur,
+        max_probes=max_probes,
+        workers=probe_workers,
+        test_set=test_set,
+        model=model,
+        endpoint=endpoint,
+        judge_model=judge_model,
+        judge_endpoint=judge_endpoint,
+        schema_text=schema_text,
+        db_path=db_path,
+    )
     optimizer = SkillOptPromptOptimizer(
         task_model=model,
         task_endpoint=endpoint,
@@ -226,6 +267,9 @@ def train_skillopt(
         # the student/judge run at -- no longer a per-run CLI knob.
         reasoning_effort=REASONING_EFFORT,
         seed=sampler_seed,
+        # Learning-curve probe: fires at the adapter's per-rollout checkpoint on the
+        # best gate-validated skill, into the meter's separate probe bucket (LC-D1/D2).
+        probe=probe,
     )
 
     click.echo(
@@ -266,6 +310,7 @@ def train_skillopt(
         prompt_version=prompt_version,
         sampler_seed=sampler_seed,
         cost_meter=meter,
+        probe=probe,
     )
 
 

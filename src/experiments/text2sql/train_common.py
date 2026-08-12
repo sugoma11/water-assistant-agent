@@ -17,6 +17,7 @@ from mlflow.entities.model_registry import PromptVersion
 from mlflow.genai import evaluate
 from mlflow.genai.optimize.optimizers import BasePromptOptimizer
 
+from water_assistant_agent.text2sql.core import SYSTEM_PROMPT_TEMPLATE
 from experiments.text2sql.cost_meter import CostMeter, PriceConfig
 from experiments.text2sql.harness import (
     build_sql_judge_scorer,
@@ -25,6 +26,7 @@ from experiments.text2sql.harness import (
     log_global_params,
     make_run_name,
 )
+from experiments.text2sql.learning_curve import LearningCurveProbe, NullProbe
 
 PROMPT_NAME = "text2sql_system"
 
@@ -87,6 +89,7 @@ def _run_optimization(
     prompt_version: PromptVersion,
     sampler_seed: int,
     cost_meter: CostMeter,
+    probe: LearningCurveProbe | NullProbe | None = None,
     extra_artifacts: dict[str, str] | None = None,
 ) -> None:
     """Open the run, optimize the prompt with ``optimizer``, log before/after metrics.
@@ -116,7 +119,17 @@ def _run_optimization(
     test-before/after eval phases stay unmetered (FR5, EC3), and the spend summary +
     ``optimization_stop_reason`` are logged in a ``finally`` so a FAILED optimization
     still carries its spend and true stop reason (FR9, EC4, EC6).
+
+    ``probe`` is the optional learning-curve probe (``NullProbe`` / ``None`` = off, the
+    default, in which case this routine behaves byte-identically to a pre-feature run --
+    LC-FR8). The technique itself fires the interior points at its own checkpoints; what
+    happens here is the two *free* endpoints (LC-FR7): the ``test-before`` quality
+    becomes the 0-EUR point and seeds the probe's score cache, and the ``test-after``
+    quality closes the curve at the run's actual billable spend. Both bracketing phases
+    stay outside ``meter.active()``, so neither they nor the probes they feed charge the
+    budget.
     """
+    probe = probe or NullProbe()
     judge_scorer = build_sql_judge_scorer(judge_model, judge_endpoint, schema_text, db_path)
     baseline_predict_fn = create_predict_fn(model, endpoint, schema_text)
 
@@ -141,6 +154,7 @@ def _run_optimization(
                 "test_size": len(test_set),
                 "budget": cost_meter.budget,
                 **cost_meter.prices.as_log_params(),
+                **probe.params(),
                 **extra_params,
             }
         )
@@ -151,6 +165,10 @@ def _run_optimization(
             "test-before", model, test_set, baseline_predict_fn, judge_scorer
         )
         mlflow.log_metric("test_quality_before", test_before)
+        # The 0-EUR curve point, free: it reuses the pass just paid for (LC-FR7) and
+        # seeds the probe's cache with the seed template, so a probe that fires while
+        # the best-so-far prompt is still the seed costs nothing (LC-D5, LC-EC4).
+        probe.seed_curve(test_before, SYSTEM_PROMPT_TEMPLATE)
 
         # Only the optimization phase is metered: the test-before/after evals sit
         # outside meter.active() (FR5, EC3). The spend summary + stop reason are logged
@@ -191,6 +209,9 @@ def _run_optimization(
             "test-after", model, test_set, optimized_predict_fn, judge_scorer
         )
         mlflow.log_metric("test_quality_after", test_after)
+        # Final curve point at the run's actual billable spend, plus the instrumentation
+        # summary and the learning_curve.json artifact (LC-FR6/FR7).
+        probe.close_curve(test_after, optimized.template)
 
     click.echo(
         f"val:  {val_before:.2%} -> {val_after:.2%}\n"

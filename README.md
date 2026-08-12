@@ -198,6 +198,28 @@ and are only comparable via the post-hoc trace audit (`scripts/count_tokens.py`)
 `scripts/verify_budget_stop.py` reconciles a run's live meter against that audit and checks
 the returned prompt is the best-on-validation one.
 
+**Learning curves (quality per EUR).** Pass `--probe-interval-eur K` (0 = off, the default;
+`probe_interval_eur` in `common.just` for the recipes) and every `K` EUR of billable spend
+the run pauses at its next natural checkpoint and scores its **best-so-far** prompt — the
+one it would return if the budget stopped it there — on the same held-out 55-record test
+split and with the same judge as `test_quality_{before,after}`. That turns a run's two
+generalization data points into a curve: `curve_test_quality` is logged against a money
+x-axis (the MLflow step is spend in cents, so curves from different runs and techniques
+overlay directly), together with `curve_spend_eur` / `curve_probe_cost_eur` /
+`curve_prompt_changed` and a `learning_curve.json` artifact; the curve's endpoints reuse the
+before/after evaluations, so they cost nothing extra.
+`scripts/export_learning_curves.py` collects the curves of several runs into one tidy CSV
+for plotting. **Probe spend never charges `--budget`** — it goes to its own `cost_probe`
+bucket, so a probed run performs exactly the same optimization work as an unprobed one —
+but it is real money and time on top of it: ≈ 0.35 EUR and ≈ 35 min per point at the
+default `--probe-workers 1` (sequential, like the before/after phases it must match; raise
+it to trade endpoint concurrency for wall clock). So `K` should be set against the run's
+budget, and `--max-probes` (default 20) caps the instrumentation bill. Probing an unchanged prompt is
+served from cache and costs nothing, and a failed probe is a hole in the curve, never a
+failed run. **Reporting only:** the curve does not feed back into optimization, and the
+result of a run remains the prompt its own validation gate selected — picking the
+best-scoring probe point afterwards would be test-set selection.
+
 All three share the same dataset loader, the same seeded train/val/test split (`--sampler-seed`),
 the same FLEX LLM-as-Judge, the same metric names, and register the same prompt — so runs are
 directly comparable in the MLflow UI. **Three model roles** are configured per run:

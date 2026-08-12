@@ -55,6 +55,7 @@ from experiments.text2sql.harness import (
     setup_mlflow,
 )
 from experiments.text2sql.cost_meter import CostMeter
+from experiments.text2sql.learning_curve import build_probe
 from experiments.text2sql.sampler import split_dataset
 from experiments.text2sql.textgrad_optimizer import TextGradPromptOptimizer
 from experiments.text2sql.train_common import (
@@ -146,6 +147,30 @@ def _strip_litellm_provider_prefix(model: str) -> str:
     "once billable spend reaches it; prices come from the PRICE_* env vars.",
 )
 @click.option(
+    "--probe-interval-eur",
+    default=0.0,
+    show_default=True,
+    type=click.FloatRange(min=0),
+    help="Learning curve: evaluate the best-so-far prompt on the held-out test split "
+    "every K EUR of billable spend (0 = off). Probe spend never charges --budget.",
+)
+@click.option(
+    "--probe-workers",
+    default=1,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Parallel workers for a learning-curve probe. 1 keeps a probe as sequential "
+    "as the eval phases it must match; raise it to trade endpoint concurrency for "
+    "wall clock (a probe is the one point where nothing else is in flight).",
+)
+@click.option(
+    "--max-probes",
+    default=20,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Safety cap on learning-curve probes per run (instrumentation cost).",
+)
+@click.option(
     "--sampler-seed",
     default=42,
     show_default=True,
@@ -172,6 +197,9 @@ def train_textgrad(
     batch_size: int,
     val_gate_size: int,
     budget: float,
+    probe_interval_eur: float,
+    probe_workers: int,
+    max_probes: int,
     sampler_seed: int,
     use_prod_questions: bool,
 ) -> None:
@@ -231,6 +259,19 @@ def train_textgrad(
     # GEPA's). The judge scorer is the SAME shared FLEX judge the eval phases use, so
     # training and validation score with one judge (FR9, A3).
     judge_scorer = build_sql_judge_scorer(judge_model, judge_endpoint, schema_text, db_path)
+    probe = build_probe(
+        meter=meter,
+        interval_eur=probe_interval_eur,
+        max_probes=max_probes,
+        workers=probe_workers,
+        test_set=test_set,
+        model=model,
+        endpoint=endpoint,
+        judge_model=judge_model,
+        judge_endpoint=judge_endpoint,
+        schema_text=schema_text,
+        db_path=db_path,
+    )
     optimizer = TextGradPromptOptimizer(
         task_model=_strip_litellm_provider_prefix(model),
         task_endpoint=endpoint,
@@ -253,6 +294,9 @@ def train_textgrad(
         batch_size=batch_size,
         seed=sampler_seed,
         display_progress_bar=True,
+        # Learning-curve probe: fires at this loop's per-gradient-step checkpoint, on
+        # the keep-best prompt, into the meter's separate probe bucket (LC-D1/D2).
+        probe=probe,
     )
 
     click.echo(
@@ -284,6 +328,7 @@ def train_textgrad(
         prompt_version=prompt_version,
         sampler_seed=sampler_seed,
         cost_meter=meter,
+        probe=probe,
     )
 
 

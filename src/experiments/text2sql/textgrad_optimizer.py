@@ -438,17 +438,26 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         self.batch_size = batch_size
         self.seed = seed
         self.display_progress_bar = display_progress_bar
+        # Training samples the shared judge could not grade at all (a truncated/failed
+        # judge call), summed over the run. They are dropped from their batch rather
+        # than turned into an INCORRECT gradient (EC4); logged as a run metric by
+        # optimize() so a step built on a shrunken batch is visible.
+        self.ungradable_items = 0
 
     # -- shared judge + val scoring ------------------------------------------
-    def _judge(self, question: str, ref_sql: str, sql: str) -> Feedback:
-        """Call the shared judge directly; returns the Feedback (.value, .rationale).
+    def _judge(self, question: str, ref_sql: str, sql: str) -> Feedback | None:
+        """Call the shared judge directly; returns the Feedback (.value, .rationale),
+        or ``None`` when the judge could not grade this sample at all.
 
         The shared scorer swallows judge-call failures into ``Feedback(value=False,
         error=...)`` so a single bad sample never kills an MLflow eval. That default is
         wrong for the *training* gradient step: a failed judge call must not be treated
-        as an INCORRECT verdict (EC4). Re-raise so the failure propagates out of
-        ``optimize`` and the run is marked FAILED instead of training on a fabricated
-        gradient.
+        as an INCORRECT verdict, because its rationale would then become the textual
+        gradient (EC4). Returning ``None`` lets the caller drop the sample from the
+        batch -- so an ungradable question (e.g. a judge completion truncated at
+        ``max_tokens``, an endpoint accident unrelated to the candidate prompt) costs
+        the step one example instead of killing an hours-long run. The count is tracked
+        in ``ungradable_items`` and logged as a run metric.
         """
         fb = self.judge_scorer(
             inputs={"question": question},
@@ -457,11 +466,16 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
         )
         err = getattr(fb, "error", None)
         if err is not None:
-            raise RuntimeError(
-                "Shared SQL judge failed during the TextGrad training step "
-                f"(question={question!r}); refusing to score the candidate as "
-                f"INCORRECT by default (EC4). Underlying error: {err}"
-            ) from (err if isinstance(err, BaseException) else None)
+            self.ungradable_items += 1
+            logger.warning(
+                "Shared SQL judge could not grade a TextGrad training sample "
+                "(question=%r); dropping it from this batch rather than turning a "
+                "failed judge call into an INCORRECT gradient (EC4). Underlying "
+                "error: %s",
+                question,
+                err,
+            )
+            return None
         return fb
 
     def _val_score(
@@ -658,6 +672,10 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
                     )
                     response = task_model(q_var)  # graph: system_prompt -> response
                     fb = self._judge(question, ref_sql, clean_sql(response.value))
+                    if fb is None:
+                        # Ungradable sample (EC4): no verdict means no textual
+                        # gradient, so it contributes nothing to this step's loss.
+                        continue
                     n_correct += int(bool(fb.value))
                     verdict = "CORRECT" if fb.value else "INCORRECT"
                     eval_instruction = tg.Variable(
@@ -669,6 +687,15 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
                     )
                     losses.append(tg.TextLoss(eval_instruction)(response))
                 if not losses:
+                    # Either an empty batch or one the judge could grade nothing in;
+                    # there is no gradient to take. The per-batch budget checkpoint
+                    # above still runs, so a judge that fails on everything ends the
+                    # run on the money budget rather than spinning forever.
+                    logger.warning(
+                        "TextGrad batch produced no usable judge verdicts; skipping "
+                        "the gradient step (ungradable so far this run: %d).",
+                        self.ungradable_items,
+                    )
                     continue
                 global_step += 1
                 # Per-iteration train monitor: the batch judge pass-rate that produced
@@ -705,6 +732,19 @@ class TextGradPromptOptimizer(BasePromptOptimizer):
 
         # Ensure the live prompt is the best-on-gate one before returning.
         system_prompt.set_value(best_prompt)
+
+        # How many training samples the judge could not grade at all. Always logged
+        # (0 on a clean run) so "every step saw its full batch" is a readable fact
+        # rather than an assumption -- each dropped sample shrank a batch (EC4).
+        if enable_tracking:
+            mlflow.log_metric("judge_ungradable_items", self.ungradable_items)
+        if self.ungradable_items:
+            logger.warning(
+                "TextGrad run dropped %d ungradable sample(s): the shared judge failed "
+                "on them (e.g. a completion truncated at max_tokens), so they "
+                "contributed no textual gradient rather than an INCORRECT one.",
+                self.ungradable_items,
+            )
 
         # Reported final score is the best candidate's FULL-val pass -- the second
         # reserved excluded pass (D3, SC4), so it runs inside `meter.excluded()`. When

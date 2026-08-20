@@ -472,11 +472,57 @@ The blocking phase: no case is reproducible until this lands.
   this task exists to remove. The FR15 session-state stash keeps the model's own
   `sql_executed` text; the rewrite is logged at debug with both strings.
   `uv run ruff check .` and `uv run pytest` clean — 103 passed.
-- [ ] T029 `make_*` tool factories closing over `ctx` for the built tools, plus
+- [x] T029 `make_*` tool factories closing over `ctx` for the built tools, plus
   `build_toolset(ctx, docstrings=None)` applying docstrings to the produced
   callables so they are candidate-addressable. The text2SQL entry is built per
   context, never the import-time singleton, with `description` threaded from the
   candidate docstrings. → T022, T024, T027
+  Done. `make_weather_forecast_tool(ctx)` and `make_green_roof_balance_tool(ctx)`
+  join T025's `make_query_database_tool`, each moving the former module-level
+  `async def` inside verbatim, and `build_toolset` lives in a new
+  `assistant/toolset.py` — it needs the sub-agent, both tool modules and
+  `TextToSqlAgentTool`, so putting it in `context.py` (§4's sketch shows the
+  signature there) would have made `context.py` import the tools that already
+  import it. The toolset is `[TextToSqlAgentTool(sub_agent), green_roof, weather]`
+  in that order, which is the order the service has always declared; declaration
+  order is part of the prompt, so `TOOL_NAMES` fixes it rather than the caller.
+  Each factory binds exactly what `ctx` owns and reads it **per call**:
+  `ctx.clock()` for the day both wrappers resolve their window against (the
+  `site_now()` reads T031 had just made explicit are now gone from the tool
+  layer), and `ctx.db` for the GR2L seed — the single `get_duckdb_executor()`
+  expression T024's note left marked for this task. Docstrings are applied to the
+  produced callables by assignment (`tool.__doc__ = text`), which is safe only
+  because the callable is that context's own closure; the sub-agent's entry is
+  its outward `description`, not a docstring, and goes through T027's
+  `description=` argument. An unknown key in `docstrings` **raises**: a candidate
+  component that is silently dropped is scored as though it had been applied,
+  which is exactly `decisions.md` § The optimizer entry point and the candidate
+  surface's failure through a side door.
+  **Byte-identical, verified rather than asserted:** ADK's
+  `FunctionTool(...)._get_declaration()` over both closures yields the name,
+  description and parameter schema of the pre-refactor module-level functions —
+  compared against the docstrings parsed out of `git show HEAD:` for both files,
+  not against a copy in the test — with `tool_context` still excluded. The
+  sub-agent's `sha256(name | description | static_instruction)` is still
+  `ba967291…`. `__qualname__` is reset on both closures, as T025 did.
+  Two deliberate deviations. First, **the weather source is not `ctx.weather`
+  yet**, though T022 built the protocol: the only implementation today is
+  `ArchiveWeatherClient`, which forces Open-Meteo's Archive backend and therefore
+  cannot answer any forecast window, so binding it here would break the
+  production tool for exactly the questions the chat is asked most. T043's
+  composite is what fills `ctx.weather`; this task binds the clock, which is the
+  half that leaks real time into a case. Second, **production gets a context, not
+  a `ScenarioContext(db_path=...)`**: `ScenarioContext.bound(clock=..., db=...,
+  weather=..., cache=...)` is a new alternative constructor taking
+  already-built collaborators, so `production_context()` can pair `site_now` with
+  T025's lazy `SETTINGS_EXECUTOR` and still open no DuckDB connection at import —
+  `__init__` builds an `AsOfQueryExecutor`, which connects immediately, and
+  production has no case to be bounded by. Its `weather` is `None` on purpose, so
+  a premature consumer fails loudly rather than reading the wrong source.
+  `agents/root_agent/agent.py` consequently stops importing the two tool
+  callables and passes `tools=build_toolset(production_context())`; the `Agent(…)`
+  construction itself is T030's to replace. `uv run ruff check .` and
+  `uv run pytest` clean — 115 passed, the same 15 pre-existing findings.
 - [ ] T030 `build_root_agent(instruction, docstrings, tools, model)` binding the
   per-invocation instruction provider as a closure over `ctx.clock`; the
   module-level `root_agent` becomes the production default built from it, so

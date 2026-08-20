@@ -5,9 +5,18 @@ standalone agent tool (reusable without GR2L). The location is pinned to the
 site (see :mod:`site`), so the agent supplies only a date window. Returns
 GR2L-ready daily rows so the same output can be fed straight into the green-roof
 water-balance tool.
+
+The tool is produced by :func:`make_weather_forecast_tool`, which closes over one
+:class:`~water_assistant_agent.assistant.context.ScenarioContext`: the window is
+resolved against ``ctx.clock()``, never a wall clock of this module's own, so a
+case frozen at its ``as_of`` and production's advancing site clock take the same
+path (``agent_architecture.md`` §4). Docstring and signature are the ones ADK
+turns into the tool declaration and are therefore candidate-optimizable text —
+:func:`..toolset.build_toolset` rewrites ``__doc__`` on the produced callable.
 """
 
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from google.adk.tools.tool_context import ToolContext
@@ -17,7 +26,6 @@ from water_assistant_agent.assistant.tools.site import (
     SITE_ELEVATION_M,
     SITE_LATITUDE,
     SITE_LONGITUDE,
-    site_now,
 )
 from water_assistant_agent.assistant.tools.weather_client import (
     InvalidWindowError,
@@ -26,94 +34,121 @@ from water_assistant_agent.assistant.tools.weather_client import (
     resolve_window,
 )
 
+if TYPE_CHECKING:
+    from water_assistant_agent.assistant.context import ScenarioContext
+
 logger = structlog.get_logger(__name__)
 
+WeatherForecastTool = Callable[..., Awaitable[dict[str, Any]]]
+"""What :func:`make_weather_forecast_tool` returns: the ADK-facing weather tool."""
 
-async def get_weather_forecast_tool(
-    start_date: str | None = None,
-    end_date: str | None = None,
-    past_days: int | None = None,
-    forecast_days: int | None = None,
-    tool_context: ToolContext | None = None,
-) -> dict[str, Any]:
-    """Fetch daily weather (past and/or forecast) for the research facility.
 
-    Returns the daily mean/max/min temperature, relative humidity, precipitation,
-    wind speed, and global radiation for each day. The location is the facility
-    itself and is fixed, so only the date window has to be given. Use it on its
-    own when the user asks about the weather; the green-roof tool fetches its own
-    weather.
+def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
+    """Build ``get_weather_forecast_tool`` bound to *ctx*.
 
-    Every value comes back in the unit named under ``Returns`` below. Two of them
-    are **not** the unit normally assumed — wind is km/h, not m/s, and radiation
-    is J/cm²/day, not W/m². State the unit given; never convert or guess one.
+    The returned callable keeps the exact name, signature and docstring of the
+    tool the root instruction names, because ADK derives the declaration from the
+    function itself; only the clock the window resolves against is bound here.
 
-    Args:
-        start_date: Window start, ``YYYY-MM-DD``. Give it together with
-            ``end_date`` to select an explicit date range (used for historical
-            windows).
-        end_date: Window end, ``YYYY-MM-DD``. Required whenever ``start_date`` is
-            given.
-        past_days: Number of **complete past days** to include, ending yesterday
-            (0-92). It adds no forecast days: ask for ``past_days=7`` and you get
-            last week's observations only.
-        forecast_days: Number of days from **today** forward to include (0-16).
-            Combine it with ``past_days`` to span both sides of today; with
-            neither given, the window is the coming 7 days.
-
-    Returns:
-        dict: on success ``status='success'`` with the site's
-        ``latitude``/``longitude``/``elevation`` (m), ``timezone``, ``backend``,
-        and ``data`` — one row per day, each carrying the day's date and these
-        seven values under short keys:
-
-        * ``Date`` — the day, ``YYYY-MM-DD``
-        * ``tm`` — mean temperature, **°C**
-        * ``tx`` — maximum temperature, **°C**
-        * ``tn`` — minimum temperature, **°C**
-        * ``rf`` — mean relative humidity, **%**
-        * ``precip`` — precipitation total, **mm**
-        * ``w`` — mean wind speed, **km/h** (10 m above ground)
-        * ``gs`` — global (shortwave) radiation total, **J/cm²/day**
-
-        On failure ``status='error'`` with ``error_details``.
+    The **source** is still :func:`fetch_daily_weather` rather than
+    ``ctx.weather``: the one :class:`~..tools.weather_client.WeatherClient`
+    implementation that exists today is Archive-only and cannot answer a forecast
+    window, so swapping it in now would break the production tool. T043's
+    composite client is what closes that seam; this task binds the clock, which is
+    the half that leaks time into a case.
     """
-    # Resolved before the fetch: Open-Meteo's own past_days silently appends a
-    # seven-day forecast tail, which would land in `data` unlabelled.
-    today = site_now().date()
-    try:
-        window_start, window_end = resolve_window(
-            start_date, end_date, past_days, forecast_days, today=today
-        )
-    except InvalidWindowError as exc:
-        logger.info("Rejected weather window", error=str(exc))
-        return ErrorResult(error_details=str(exc)).model_dump()
 
-    try:
-        result = await fetch_daily_weather(
-            SITE_LATITUDE,
-            SITE_LONGITUDE,
-            start_date=window_start,
-            end_date=window_end,
-            today=today,
-        )
-    except WeatherFetchError as exc:
-        # Upstream said what was wrong; passing it on lets the agent fix the window.
-        logger.warning("Weather fetch rejected", window=(window_start, window_end), error=str(exc))
-        return ErrorResult(error_details=str(exc)).model_dump()
-    except Exception:
-        logger.exception("Weather fetch failed")
-        return ErrorResult(
-            error_details=(
-                f"Failed to fetch weather for {window_start}..{window_end}. "
-                "Please try a different date window."
+    async def get_weather_forecast_tool(
+        start_date: str | None = None,
+        end_date: str | None = None,
+        past_days: int | None = None,
+        forecast_days: int | None = None,
+        tool_context: ToolContext | None = None,
+    ) -> dict[str, Any]:
+        """Fetch daily weather (past and/or forecast) for the research facility.
+
+        Returns the daily mean/max/min temperature, relative humidity, precipitation,
+        wind speed, and global radiation for each day. The location is the facility
+        itself and is fixed, so only the date window has to be given. Use it on its
+        own when the user asks about the weather; the green-roof tool fetches its own
+        weather.
+
+        Every value comes back in the unit named under ``Returns`` below. Two of them
+        are **not** the unit normally assumed — wind is km/h, not m/s, and radiation
+        is J/cm²/day, not W/m². State the unit given; never convert or guess one.
+
+        Args:
+            start_date: Window start, ``YYYY-MM-DD``. Give it together with
+                ``end_date`` to select an explicit date range (used for historical
+                windows).
+            end_date: Window end, ``YYYY-MM-DD``. Required whenever ``start_date`` is
+                given.
+            past_days: Number of **complete past days** to include, ending yesterday
+                (0-92). It adds no forecast days: ask for ``past_days=7`` and you get
+                last week's observations only.
+            forecast_days: Number of days from **today** forward to include (0-16).
+                Combine it with ``past_days`` to span both sides of today; with
+                neither given, the window is the coming 7 days.
+
+        Returns:
+            dict: on success ``status='success'`` with the site's
+            ``latitude``/``longitude``/``elevation`` (m), ``timezone``, ``backend``,
+            and ``data`` — one row per day, each carrying the day's date and these
+            seven values under short keys:
+
+            * ``Date`` — the day, ``YYYY-MM-DD``
+            * ``tm`` — mean temperature, **°C**
+            * ``tx`` — maximum temperature, **°C**
+            * ``tn`` — minimum temperature, **°C**
+            * ``rf`` — mean relative humidity, **%**
+            * ``precip`` — precipitation total, **mm**
+            * ``w`` — mean wind speed, **km/h** (10 m above ground)
+            * ``gs`` — global (shortwave) radiation total, **J/cm²/day**
+
+            On failure ``status='error'`` with ``error_details``.
+        """
+        # Resolved before the fetch: Open-Meteo's own past_days silently appends a
+        # seven-day forecast tail, which would land in `data` unlabelled. The day
+        # it resolves against is the context's, read per call.
+        today = ctx.clock().date()
+        try:
+            window_start, window_end = resolve_window(
+                start_date, end_date, past_days, forecast_days, today=today
             )
+        except InvalidWindowError as exc:
+            logger.info("Rejected weather window", error=str(exc))
+            return ErrorResult(error_details=str(exc)).model_dump()
+
+        try:
+            result = await fetch_daily_weather(
+                SITE_LATITUDE,
+                SITE_LONGITUDE,
+                start_date=window_start,
+                end_date=window_end,
+                today=today,
+            )
+        except WeatherFetchError as exc:
+            # Upstream said what was wrong; passing it on lets the agent fix the window.
+            logger.warning("Weather fetch rejected", window=(window_start, window_end), error=str(exc))
+            return ErrorResult(error_details=str(exc)).model_dump()
+        except Exception:
+            logger.exception("Weather fetch failed")
+            return ErrorResult(
+                error_details=(
+                    f"Failed to fetch weather for {window_start}..{window_end}. "
+                    "Please try a different date window."
+                )
+            ).model_dump()
+        # Report the site's own coordinates/height rather than Open-Meteo's grid cell.
+        return result.model_copy(
+            update={
+                "latitude": SITE_LATITUDE,
+                "longitude": SITE_LONGITUDE,
+                "elevation": SITE_ELEVATION_M,
+            }
         ).model_dump()
-    # Report the site's own coordinates/height rather than Open-Meteo's grid cell.
-    return result.model_copy(
-        update={
-            "latitude": SITE_LATITUDE,
-            "longitude": SITE_LONGITUDE,
-            "elevation": SITE_ELEVATION_M,
-        }
-    ).model_dump()
+
+    # ADK reads `__name__`; the qualname is reset so a `<locals>`-qualified name
+    # never surfaces in logs or reprs (as in ``warehouse.make_query_database_tool``).
+    get_weather_forecast_tool.__qualname__ = "get_weather_forecast_tool"
+    return get_weather_forecast_tool

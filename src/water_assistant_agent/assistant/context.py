@@ -131,6 +131,32 @@ class ScenarioContext:
         # reads the cache. A factory taking only `db` cannot build the composite.
         self.weather = weather_client_factory(self.db, self.cache)
 
+    @classmethod
+    def bound(
+        cls,
+        *,
+        clock: Clock,
+        db: Any,
+        weather: Any = None,
+        cache: Any = None,
+    ) -> "ScenarioContext":
+        """Build a context around collaborators that already exist.
+
+        ``__init__`` is the harness's constructor: it takes a *db_path* and builds
+        the as-of executor itself, opening a DuckDB connection there and then.
+        Production wants the same object shape around the collaborators it already
+        has — the lazily-resolved settings executor and the site clock — and wants
+        it without touching a database at import time, so it comes in through here.
+        Both paths hand the identical ``ScenarioContext`` to the same factories;
+        only the binding differs (``agent_architecture.md`` §4).
+        """
+        context = cls.__new__(cls)
+        context.clock = clock
+        context.db = db
+        context.cache = cache
+        context.weather = weather
+        return context
+
     @property
     def as_of(self) -> datetime:
         """The instant this rollout is bound to, re-evaluated on every read."""

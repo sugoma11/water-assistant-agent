@@ -10,17 +10,10 @@ from google.adk.agents.llm_agent import Agent
 from google.adk.agents.readonly_context import ReadonlyContext
 from google.adk.models.lite_llm import LiteLlm
 
-from water_assistant_agent.assistant.agents.root_agent.text_to_sql_tool import (
-    TextToSqlAgentTool,
-)
-from water_assistant_agent.assistant.agents.text_to_sql.agent import text_to_sql_agent
 from water_assistant_agent.assistant.prompts.temporal import current_datetime_block
 from water_assistant_agent.assistant.settings import get_settings
-from water_assistant_agent.assistant.tools.gr2l import (
-    predict_green_roof_water_balance_tool,
-)
 from water_assistant_agent.assistant.tools.site import site_now
-from water_assistant_agent.assistant.tools.weather import get_weather_forecast_tool
+from water_assistant_agent.assistant.toolset import build_toolset, production_context
 
 ROOT_INSTRUCTION = """You are a helpful assistant for a water-management research team studying green-roof sensor data (outflow, radiation, soil moisture, soil temperature, weather).
 
@@ -81,9 +74,7 @@ root_agent = Agent(
     description="Water-Management Data Analyst.",
     static_instruction=ROOT_INSTRUCTION,
     instruction=_temporal_instruction,
-    tools=[
-        TextToSqlAgentTool(text_to_sql_agent),
-        predict_green_roof_water_balance_tool,
-        get_weather_forecast_tool,
-    ],
+    # The production context's toolset, from the same factory a case's toolset
+    # comes from — the tools are no longer module-level singletons anywhere.
+    tools=build_toolset(production_context()),
 )

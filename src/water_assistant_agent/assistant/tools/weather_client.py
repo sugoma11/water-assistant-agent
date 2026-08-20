@@ -22,7 +22,7 @@ import structlog
 
 from water_assistant_agent.assistant.cache import ResponseCache
 from water_assistant_agent.assistant.tools.schemas import DailyWeatherRow, WeatherResult
-from water_assistant_agent.assistant.tools.site import SITE_LATITUDE, SITE_LONGITUDE, site_now
+from water_assistant_agent.assistant.tools.site import SITE_LATITUDE, SITE_LONGITUDE
 
 logger = structlog.get_logger(__name__)
 
@@ -123,7 +123,7 @@ def resolve_window(
     past_days: int | None = None,
     forecast_days: int | None = None,
     *,
-    today: date | None = None,
+    today: date,
 ) -> tuple[str, str]:
     """Resolve either window form to one absolute ``(start, end)`` pair of ISO dates.
 
@@ -132,6 +132,11 @@ def resolve_window(
     Open-Meteo defaults ``forecast_days`` to 7, so forwarding a bare ``past_days``
     appends a week of *predictions* to what the user asked to be history, with
     nothing in the returned rows to mark which is which.
+
+    *today* is required and carries no wall-clock fallback — a caller who forgets
+    it fails here rather than silently resolving a relative window against the
+    host's real date, which would leak real time into a pinned case
+    (`decisions.md` § Window resolution and the scenario clock).
 
     The relative form is read the way Open-Meteo splits it — ``past_days`` counts
     complete days ending yesterday, ``forecast_days`` counts from today forward:
@@ -150,7 +155,6 @@ def resolve_window(
             unparseable date, an out-of-range count, a reversed range, or a pair
             of counts that selects no days at all.
     """
-    today = today or site_now().date()
     has_absolute = start_date is not None or end_date is not None
     has_relative = past_days is not None or forecast_days is not None
 
@@ -188,15 +192,15 @@ def resolve_window(
     return start.isoformat(), end.isoformat()
 
 
-def _choose_backend(start_date: str | None) -> str:
+def _choose_backend(start_date: str | None, today: date) -> str:
     """Pick the Archive backend for windows older than the Forecast reach.
 
-    The cutoff is measured from *today at the site*, the same clock the agent is
-    given, so a window it derives from that date can't fall a day outside the
-    Forecast reach here.
+    The cutoff is measured from *today*, the caller's own resolved date — never
+    read from the wall clock here — so backend selection and window resolution
+    always agree on what day it is.
     """
     if start_date is not None:
-        cutoff = site_now().date() - timedelta(days=_FORECAST_PAST_LIMIT_DAYS)
+        cutoff = today - timedelta(days=_FORECAST_PAST_LIMIT_DAYS)
         if date.fromisoformat(start_date) < cutoff:
             return "archive"
     return "forecast"
@@ -277,6 +281,7 @@ async def fetch_daily_weather(
     *,
     start_date: str,
     end_date: str,
+    today: date | None = None,
     client: httpx.AsyncClient | None = None,
     force_archive: bool = False,
 ) -> WeatherResult:
@@ -288,6 +293,12 @@ async def fetch_daily_weather(
     older than ~92 days, otherwise Forecast — unless *force_archive* selects Archive
     outright, which :class:`ArchiveWeatherClient` uses to stay wall-clock-free.
 
+    *today* drives that backend cutoff and carries no wall-clock fallback: it is
+    required whenever *force_archive* is not set, and omitting it fails loudly
+    here rather than silently reading the host's real date
+    (`decisions.md` § Window resolution and the scenario clock). It is unused,
+    and may be omitted, when *force_archive* is set.
+
     *client* defaults to the module-level singleton when omitted, so existing
     callers are unaffected; :class:`ArchiveWeatherClient` passes its own owned
     ``httpx.AsyncClient`` instead of reaching into that shared singleton.
@@ -296,7 +307,12 @@ async def fetch_daily_weather(
         OpenMeteoError: the backend rejected the request (carries its ``reason``).
         IncompleteWeatherError: a day in the window has no data for some variable.
     """
-    backend = "archive" if force_archive else _choose_backend(start_date)
+    if force_archive:
+        backend = "archive"
+    else:
+        if today is None:
+            raise TypeError("fetch_daily_weather() requires `today` when force_archive is not set.")
+        backend = _choose_backend(start_date, today)
     url = ARCHIVE_URL if backend == "archive" else FORECAST_URL
     params = _build_params(latitude, longitude, start_date, end_date)
     http_client = client if client is not None else _get_client()

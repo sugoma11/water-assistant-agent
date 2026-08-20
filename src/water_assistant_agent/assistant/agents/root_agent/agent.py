@@ -19,6 +19,7 @@ from water_assistant_agent.assistant.settings import get_settings
 from water_assistant_agent.assistant.tools.gr2l import (
     predict_green_roof_water_balance_tool,
 )
+from water_assistant_agent.assistant.tools.site import site_now
 from water_assistant_agent.assistant.tools.weather import get_weather_forecast_tool
 
 ROOT_INSTRUCTION = """You are a helpful assistant for a water-management research team studying green-roof sensor data (outflow, radiation, soil moisture, soil temperature, weather).
@@ -71,7 +72,7 @@ def _temporal_instruction(_ctx: ReadonlyContext) -> str:
     instruction, which keeps the large static prefix byte-stable for prompt
     caching.
     """
-    return current_datetime_block()
+    return current_datetime_block(now=site_now())
 
 
 root_agent = Agent(

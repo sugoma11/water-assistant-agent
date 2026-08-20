@@ -17,6 +17,7 @@ from water_assistant_agent.assistant.tools.site import (
     SITE_ELEVATION_M,
     SITE_LATITUDE,
     SITE_LONGITUDE,
+    site_now,
 )
 from water_assistant_agent.assistant.tools.weather_client import (
     InvalidWindowError,
@@ -79,8 +80,11 @@ async def get_weather_forecast_tool(
     """
     # Resolved before the fetch: Open-Meteo's own past_days silently appends a
     # seven-day forecast tail, which would land in `data` unlabelled.
+    today = site_now().date()
     try:
-        window_start, window_end = resolve_window(start_date, end_date, past_days, forecast_days)
+        window_start, window_end = resolve_window(
+            start_date, end_date, past_days, forecast_days, today=today
+        )
     except InvalidWindowError as exc:
         logger.info("Rejected weather window", error=str(exc))
         return ErrorResult(error_details=str(exc)).model_dump()
@@ -91,6 +95,7 @@ async def get_weather_forecast_tool(
             SITE_LONGITUDE,
             start_date=window_start,
             end_date=window_end,
+            today=today,
         )
     except WeatherFetchError as exc:
         # Upstream said what was wrong; passing it on lets the agent fix the window.

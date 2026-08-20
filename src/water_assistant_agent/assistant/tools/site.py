@@ -13,10 +13,14 @@ and can be off by tens of metres in a city.
 
 ``SITE_TIMEZONE`` is the wall clock the researchers (and the sensor timestamps)
 use, so "today" means today at the site — not on whatever the server's clock is
-set to. Every "now" in the deployment goes through :func:`site_now`: the date
-the agent is told (:mod:`..prompts.temporal`) and the date the weather client
-measures its archive-vs-forecast cutoff against must be the same one, or a
-window the agent treats as in-range can land on the other backend.
+set to. Production's "now" goes through :func:`site_now`: the date the agent is
+told (:mod:`..prompts.temporal`) and the date each tool wrapper resolves its
+window against (:func:`..tools.weather_client.resolve_window`) must be the same
+one, or a window the agent treats as in-range can land on the wrong backend. The
+weather client itself takes no clock of its own — window resolution and backend
+selection both take the caller's already-resolved date as an explicit argument,
+so the same code path serves production's site clock and a harness case's frozen
+``as_of`` alike.
 """
 
 from datetime import datetime

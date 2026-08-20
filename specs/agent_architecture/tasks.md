@@ -357,11 +357,38 @@ The blocking phase: no case is reproducible until this lands.
   per-invocation instruction provider as a closure over `ctx.clock`; the
   module-level `root_agent` becomes the production default built from it, so
   `bootstrap.py` and the frontend are untouched. → T029
-- [ ] T031 Scenario clock end to end: `current_datetime_block` gains a required
+- [x] T031 Scenario clock end to end: `current_datetime_block` gains a required
   `now` parameter; `fetch_daily_weather` and its backend selection gain a
   **required** date argument with no wall-clock default; the `site_now` import
   leaves `weather_client`; `site.py`'s module docstring stops claiming the weather
   client takes its clock from there. → T020
+  Done. `current_datetime_block(now: datetime)` and `_choose_backend(start_date,
+  today: date)` both lost their internal `site_now()` reads outright — the
+  parameter is genuinely required, no sentinel. `resolve_window` came along for
+  the same reason (`site_now` had to leave the module entirely, and it was
+  `resolve_window`'s other wall-clock read): its `today` keyword lost its
+  `today or site_now().date()` fallback and is now required too — unflagged by
+  the row's own text but implied by "the `site_now` import leaves
+  `weather_client`," and every existing test already passed `today=` explicitly,
+  so nothing broke. `fetch_daily_weather`'s `today` stayed **optionally**
+  required: keyword-only, defaulting to `None`, but raising `TypeError` at the
+  call site the moment `force_archive` is not set and `today` is still `None` —
+  a plain required parameter would have forced `ArchiveWeatherClient` (T022,
+  always `force_archive=True`) to invent a date it never uses, which is worse
+  than the raise. Three production call sites lost their hidden wall-clock read
+  as a direct consequence and needed a one-line change each to stay explicit
+  instead of silent: `agents/root_agent/agent.py`'s `_temporal_instruction` now
+  passes `now=site_now()`; `tools/weather.py` and `tools/gr2l.py` now compute
+  `today = site_now().date()` once and thread it into both `resolve_window` and
+  `fetch_daily_weather`. None of the three is on this row's own file list, but
+  all three call the functions the row renames, and leaving them uncalled with
+  the old signature was not an option. `site.py`'s docstring no longer claims
+  `weather_client` reads its own clock; it now says the client "takes no clock of
+  its own" and names the two explicit-argument call sites instead. One existing
+  test called `current_datetime_block()` bare
+  (`tests/assistant/test_temporal_context.py`); updated to pass `now=site_now()`.
+  Manually verified `fetch_daily_weather(...)` with neither `today` nor
+  `force_archive` raises `TypeError` before any HTTP call.
 - [ ] T032 [P] Set the ~6-step tool cap on the root agent. → T030
 - [ ] T033 Pin the task LLM: `temperature=0` and the decoding seed through
   `litellm_extra()`, the served model id and endpoint recorded per run, and the

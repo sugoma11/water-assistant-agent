@@ -6,21 +6,29 @@ resolved to the wrong dates, and the weather / GR2L tools are handed
 ``YYYY-MM-DD`` arguments from the wrong year. Only the root agent needs it — it
 owns the date-taking tools and resolves the user's phrasing before delegating.
 
-The clock is the *site's* wall clock (:data:`..tools.site.SITE_TIMEZONE`), not
-the server's — "today" in a researcher's question means today in Leipzig
-regardless of where the container runs.
+The clock is the *site's* wall clock (:data:`..tools.site.SITE_TIMEZONE`) in
+production, not the server's — "today" in a researcher's question means today in
+Leipzig regardless of where the container runs. This module reads no clock of
+its own: the caller passes the instant explicitly, so the same code renders
+production's advancing site time and a harness case's frozen ``as_of`` alike
+(`decisions.md` § Window resolution and the scenario clock).
 
-The block is deliberately rendered fresh per request rather than baked in at
-import time: the service is long-lived, so a value captured at startup would go
-stale after the first midnight.
+The block must be rendered fresh per request rather than baked in at import
+time: the service is long-lived, so a value captured at startup would go stale
+after the first midnight.
 """
 
-from water_assistant_agent.assistant.tools.site import SITE_TIMEZONE, site_now
+from datetime import datetime
+
+from water_assistant_agent.assistant.tools.site import SITE_TIMEZONE
 
 
-def current_datetime_block() -> str:
-    """Render the current-date instruction block for a prompt."""
-    now = site_now()
+def current_datetime_block(now: datetime) -> str:
+    """Render the current-date instruction block for a prompt, as of *now*.
+
+    *now* is required and carries no wall-clock fallback: a caller who forgets it
+    fails here rather than silently reading the host's real date.
+    """
     return f"""### Current date and time
 
 Right now it is {now:%A, %Y-%m-%d %H:%M %Z} ({SITE_TIMEZONE}); today's date is {now:%Y-%m-%d}.

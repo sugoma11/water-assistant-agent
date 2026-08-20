@@ -31,7 +31,7 @@ def test_site_now_is_site_local_and_aware() -> None:
 
 
 def test_block_states_todays_date() -> None:
-    block = current_datetime_block()
+    block = current_datetime_block(now=site_now())
     assert site_now().strftime("%Y-%m-%d") in block
     assert SITE_TIMEZONE in block
 

@@ -164,9 +164,18 @@ against a document that still contradicts itself.
   lands — the seed rule, typed outcomes, window resolution, the series cap, the
   station derivation, the wetland's scope change. These specs are accurate today
   and must drift neither ahead of nor behind the code.
+  **Open by design — it closes at the freeze gate, not in P0.** Phase 0 changed no
+  tool behaviour, so the three specs needed no edit here; their standing state is
+  that the wetland's scope change is stated *ahead* of the code, which plan §2.4
+  makes deliberate (the code follows in T051) rather than drift. Checked at the
+  P0 exit: every markdown link in the five specs and the three tool specs
+  resolves, and every `decisions.md § …` citation names a heading that exists.
 
-**Exit:** no document references a file, section or decision id that does not
-exist, and `questions.md` §4 holds only items whose resolution is scheduled.
+**Exit — met.** Every cross-document reference resolves (links and
+`decisions.md § …` citations swept mechanically), and `questions.md` §4 is empty:
+its six items are settled and recorded in the sections they govern, with the one
+residual filed as an accepted risk in `decisions.md`. T011 stays open as the
+standing task it is defined to be.
 
 ---
 

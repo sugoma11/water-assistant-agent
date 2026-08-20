@@ -52,7 +52,7 @@ Three rules make a packet fit:
 | **P2b** GR2L: seed, counterfactuals, scope, taxonomy | T046–T054, T057, and **T115 pulled forward** | arch §3.4 + §3's preamble; `gr2l_tool.md`; `decisions.md § GR2L argument surface`, `§ Bounded series`, `§ Tool errors and harness exclusion`; `findings.md § Data record` (QWetland) | T054's list green; `roof_type` pinned as `str`; a model case in replay issues no live call; the GR2L canary committed |
 | **P3a** roof table, ET0, constants | T060–T062 | arch §1 principle 4, §3.5; `irrigation_tool.md § Units`, `§ Which extensive roof is which`; `findings.md § Not every roof is instrumented`, `§ The lysimeter collection area`, `§ External sources on this machine`; `GR2L_function.R:35-74` in the weinbau checkout | one roof table feeds `swc` and the presets with no value changes; ET0 matches the R routine term for term |
 | **P3b** bucket, faithfulness, unit fix, tool | T063–T067, T070, T071 | `irrigation_tool.md` in full; `decisions.md § The irrigation calculator`, `§ No fitted correction between the instrument and the oracle`; `findings.md § External sources on this machine`; `smart_irrigation.py` | the port reproduces the deployed controller **before** the unit fix; the diff list exists and is committed |
-| **P4** cards | T068, T069, T080–T084 | arch §3.2; `decisions.md § Retrieval` | a lookup case in replay with zero cache entries and zero live calls; every drift test green |
+| **P4** cards | T081 **first**, then T068, T069, T080, T082–T084 | arch §3.2; `decisions.md § Retrieval` | a lookup case in replay with zero cache entries and zero live calls; every drift test green |
 | **P5** plotting | T090–T097, T099 | arch §3.6; `decisions.md § Plotting`, `§ Bounded series` | a `model` + `weather` + `measured` plot issues no live call in replay |
 | **P5f** frontend render | T098 | the existing tool-result component; arch §3.6's headless paragraph | the chat renders a plot from the stashed payload |
 | **P6a** rollout, contract | T100, T101, T104 | arch §2 (contract), §6, §7's exclusion paragraph; `decisions.md § The answer contract`, `§ Tool errors and harness exclusion` | one case runs end to end; an injected `upstream` error marks `harness_error` where an `invalid_argument` does not; `parse_failure` reported apart from a wrong answer |
@@ -1819,7 +1819,8 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   cites it as the disclosure it is.
   `uv run ruff check .` and `uv run pytest` clean — 382 passed, same 15
   pre-existing findings.
-- [ ] T068 `values_for(card_id)`: project `rules_constants.py` and `roofs.py` into
+- [ ] T068 **Ordered after T081**, whose decision fixes this function's source
+  list. `values_for(card_id)`: project `rules_constants.py` and `roofs.py` into
   each `provenance: rendered` card's `values:` / `applies_to:` / `not_applicable:`
   blocks, plus the drift test asserting the committed card equals it and a
   `just cards-check` that prints the correct block on failure. A test, not a
@@ -1907,19 +1908,23 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
 
 ## Phase 4 — Reference cards
 
+- [ ] T081 **Runs first in P4, before T068.** Decide `data_freshness`'s
+  provenance (plan §8 Q1): either `static`, with the record dates carried by the
+  station-derivation pin, or `rendered`, with `values_for()` gaining a pinned-DB
+  source — `rendered` is defined against `rules_constants.py` and `roofs.py`, and
+  this card's values are record dates, which is the whole question. Its drift test
+  is meaningless until this is settled, and both T068's source list and T080's
+  provenance field follow from it. Record the decision in `decisions.md § Retrieval`
+  and close plan §8's Q1.
 - [ ] T080 Author `assistant/knowledge/cards/*.yaml` — **11 cards**, one file each,
   matching the §3.2 enum exactly: `irrigation_rule`, `irrigation_threshold`,
   `substrate_hydraulics`, `irrigation_dose`, `heatwave_definition`,
-  `retention_target`, `roof_reference_ranges`, `data_freshness` (rendered);
-  `roof_directory`, `sensor_reference`, `et0_method` (static). Hand-authored
-  `text:` carrying **no numerals**; no card named after a single constant.
-  `irrigation_rule` and `irrigation_threshold` must together answer T16a without
-  the calculator, and `irrigation_threshold.not_applicable` must state the
-  wetland's exclusion or T17b is silently answerable. → T068, T069
-- [ ] T081 Decide `data_freshness`'s provenance (plan §8 Q1): either `static` with
-  the record dates carried by the station-derivation pin, or `rendered` with
-  `values_for()` gaining a pinned-DB source. Its drift test is meaningless until
-  this is settled. → T080
+  `retention_target`, `roof_reference_ranges` (rendered); `roof_directory`,
+  `sensor_reference`, `et0_method` (static); `data_freshness` as **T081 decides**.
+  Hand-authored `text:` carrying **no numerals**; no card named after a single
+  constant. `irrigation_rule` and `irrigation_threshold` must together answer T16a
+  without the calculator, and `irrigation_threshold.not_applicable` must state the
+  wetland's exclusion or T17b is silently answerable. → T081, T068, T069
 - [ ] T082 `assistant/knowledge/store.py`: pydantic `Card` model, loader over the
   packaged YAML, `enum == card keys` test, the T068 drift test wired in, and the
   card-store sha256 into `eval/pins.json`. Pure, ADK-free, no I/O beyond the

@@ -777,8 +777,36 @@ The blocking phase: no case is reproducible until this lands.
   return 1 fails the moved-hash case. Each mutation fails exactly the case that
   claims that seam. `uv run ruff check .` and `uv run pytest` clean — 134 passed,
   same 15 pre-existing findings.
-- [ ] T036 Smoke-run the chat UI against the refactored service and confirm the
+- [x] T036 Smoke-run the chat UI against the refactored service and confirm the
   prose answer path is unchanged. → T030
+  Done, against the **live** model (`openai/qwen3.6-35b-a3b` on the configured
+  endpoint) over the real `create_bootstrap` app — the real `root_agent`, ADK
+  runner and `LiteLlm`, a throwaway SQLite session database, and the exact HTTP
+  path the frontend drives: `POST /admin/users` → `POST /auth/login` →
+  `POST /conversations` → `POST /` with an AG-UI `RunAgentInput` and a bearer
+  token, reading the SSE stream. Three questions, one per path:
+  a bare prose question ("what can you help me with?") streamed
+  `RUN_STARTED … TEXT_MESSAGE_* … RUN_FINISHED` with **no tool call** and a
+  full capability answer; "the highest soil temperature ever recorded" routed to
+  `text_to_sql_agent`, which built and ran SQL against the warehouse and answered
+  56.38 °C on 2025-07-02; and "how much rain fell in the past 3 days" called
+  `get_weather_forecast_tool` and answered 4.8 mm over Aug 17–19 with the
+  per-day breakdown. No `RUN_ERROR` on any of the three, and the conversation
+  messages endpoint returned the persisted turns each time.
+  Two couplings that this packet could have broken silently were checked in the
+  persisted ADK events rather than inferred. **FR15 enrichment still fires**: the
+  `text_to_sql_agent` function response carries `results` with `columns`/`rows`
+  alongside `sql`/`reasoning`, which is what `TextToSqlAgentTool` merges from the
+  querier's session-state stash — and the querier is now a per-context closure, so
+  this is the proof that the state key survived the move. And **the tool name the
+  frontend keys on is unchanged**: `web/components/ChatView.tsx` renders on
+  `name: "text_to_sql_agent"`, and that is the name in the stream.
+  Scope of the claim, stated exactly: this drives the service the chat UI talks
+  to, not a browser. No file under `web/` changed in this packet, and the
+  endpoints, payload shape and event types it consumes are the ones it consumed
+  before. The one deliberate behaviour change on the production path is T033's:
+  those calls now send `temperature=0` and the pinned seed where they previously
+  took the provider's defaults.
 
 **Exit:** two `ScenarioContext`s with different `as_of` run concurrently in one
 process and neither sees the other's data or clock.

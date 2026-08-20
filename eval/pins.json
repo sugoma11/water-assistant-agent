@@ -1,0 +1,42 @@
+{
+  "_comment": "Architecture \u00a75's pin list. Verified by `just pins`; rewritten only by `just pins-write`. A null is an unpinned slot \u2014 the artifact does not exist yet, or the value needs a live capture.",
+  "pins": {
+    "candidate_prompts": null,
+    "card_store_sha256": null,
+    "dependency_versions": {
+      "duckdb": "1.5.3",
+      "gepa": "0.1.1",
+      "google-adk": "2.3.0",
+      "litellm": "1.84.0",
+      "mlflow": "3.13.0",
+      "pyyaml": "6.0.3"
+    },
+    "gr2l_base_url_sha256": "ab363c09354977cad56cb6701b7ed09958f1def695323513bce205e46f373662",
+    "gr2l_canary_request_sha256": "c24f571f416086968ed9a8ac4d1f30e7b10564756ea427d8f36f99faa94c0906",
+    "gr2l_canary_response_sha256": null,
+    "gr2l_roof_presets_sha256": "77e80a238b4bed2a26baaa8ea033cdda483bf4ba5c0cfb350e35e667d548775b",
+    "reflection_model": null,
+    "reflection_model_canary_sha256": null,
+    "roofs_version": null,
+    "rules_constants_version": null,
+    "station_derivation": null,
+    "sub_agent_model": {
+      "decoding": {
+        "seed": 42,
+        "temperature": 0.0
+      },
+      "endpoint": "https://chat-ai.academiccloud.de/v1",
+      "model_id": "openai/qwen3.6-35b-a3b"
+    },
+    "task_model": {
+      "decoding": {
+        "seed": 42,
+        "temperature": 0.0
+      },
+      "endpoint": "https://chat-ai.academiccloud.de/v1",
+      "model_id": "openai/qwen3.6-35b-a3b"
+    },
+    "task_model_canary_sha256": null,
+    "water_duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+  }
+}

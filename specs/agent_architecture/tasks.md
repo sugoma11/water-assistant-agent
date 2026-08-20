@@ -640,9 +640,41 @@ The blocking phase: no case is reproducible until this lands.
   that, the same model id served from a second provider would replay the first
   provider's answers under a pin that claims to distinguish them.
   `uv run ruff check .` and `uv run pytest` clean — 115 passed.
-- [ ] T034 `eval/pins.json` and a `just pins` check covering plan §4's pin list,
+- [x] T034 `eval/pins.json` and a `just pins` check covering plan §4's pin list,
   with the card-store and reflection-model entries stubbed until P4 and P8 fill
   them. → T033
+  Done: `eval/pins.json`, `scripts/check_pins.py`, and a new `eval.just` imported
+  by the `justfile` — the repo splits its recipes by area (`models`, `common`,
+  `experiments`) and has no lint or test target to hang this off, so the testbed
+  gets its own file, which is also where P6–P8's run recipes will go. Two
+  recipes: `just pins` verifies, `just pins-write` re-pins deliberately.
+  **Three states, not two**, which is what makes a file written before most of
+  its artifacts exist checkable at all. *Pinned*: committed and recomputed alike.
+  *Moved*: committed and different — the failure the check exists for; it prints
+  both values and exits 1. *Unpinned*: committed as `null`, reported and never
+  failed, because the artifact does not exist yet (the card store, the rules
+  constants, `roofs.py`, the station derivation, the reflection model, the
+  candidate prompt names) or because filling it needs a live capture no offline
+  check can make (the GR2L and task-model **canary responses**). Seven pins are
+  live today: the `water.duckdb` sha256, the GR2L roof presets, the GR2L canary
+  *request*, the GR2L base URL, the task and sub-agent model records, and the
+  dependency versions. Nine are open. When an unpinned slot becomes computable
+  the report says so (`unpinned, ready: …`) rather than staying silent, and
+  `--write` never overwrites a value it cannot derive, so a canary filled by a
+  live pass survives the next re-pin.
+  Three choices worth recording. The **base URL is pinned by its sha256**, not
+  in clear: §5 asks for the URL, but the URL lives in `.env` and committing an
+  internal host into the repository is a disclosure the pin does not need — the
+  hash detects a move to another deployment just as well. The **dependency
+  versions come from `uv.lock`**, not from the installed environment: the
+  lockfile is the artifact committed beside a result, and an environment that has
+  drifted from it is precisely what this pin should catch. And the **card-store
+  digest covers paths as well as bytes**, since renaming a card is as much a
+  change as editing one and there is no index file to hash instead.
+  Verified end to end: `just pins` exits 0 against the committed file, and
+  exits 1 naming `water_duckdb_sha256` with both values when that hash is moved
+  by one byte. `uv run ruff check .` and `uv run pytest` clean — 115 passed,
+  same 15 pre-existing findings.
 - [x] T035a Tests for the context and the cache (**packet P1a**): `connect_asof`
   bounds every one of the five tables; the as-of cut is identical under at least
   two host `TZ` settings — nothing else in the pin set can detect a violation; a

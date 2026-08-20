@@ -1,6 +1,7 @@
 import "models.just"
 import "common.just"
 import "experiments.just"
+import "eval.just"
 
 # ── Chat frontend + backend ───────────────────────────────────────────────────
 

@@ -2,17 +2,28 @@
 
 Single-tenant water-management assistant, so unlike core-agent's
 ``root/factory.py`` (which builds a per-tenant agent with dynamically wired
-tools) there is exactly one tenant and one data agent, and ``root_agent`` is
-built directly at import time.
+tools) there is exactly one tenant and one data agent.
+
+The agent is built by :func:`build_root_agent` — one per rollout for the harness,
+once at import for the service — and everything a candidate can move is an
+argument to it: the instruction, the tool docstrings, and through them the tools
+themselves (``agent_architecture.md`` §2). The scenario clock reaches the model
+the same way in both cases, through a per-invocation instruction provider closed
+over ``ctx.clock``: production's advances, a case's is frozen at its ``as_of``,
+and there is one code path.
 """
+
+from collections.abc import Mapping
+from typing import Any
 
 from google.adk.agents.llm_agent import Agent
 from google.adk.agents.readonly_context import ReadonlyContext
+from google.adk.models.base_llm import BaseLlm
 from google.adk.models.lite_llm import LiteLlm
 
+from water_assistant_agent.assistant.context import ScenarioContext
 from water_assistant_agent.assistant.prompts.temporal import current_datetime_block
 from water_assistant_agent.assistant.settings import get_settings
-from water_assistant_agent.assistant.tools.site import site_now
 from water_assistant_agent.assistant.toolset import build_toolset, production_context
 
 ROOT_INSTRUCTION = """You are a helpful assistant for a water-management research team studying green-roof sensor data (outflow, radiation, soil moisture, soil temperature, weather).
@@ -49,32 +60,84 @@ ROOT_INSTRUCTION = """You are a helpful assistant for a water-management researc
 """  # noqa: E501 - prompt context
 
 
+AGENT_NAME = "root_agent"
+AGENT_DESCRIPTION = "Water-Management Data Analyst."
+
+
 def _build_model() -> LiteLlm:
     settings = get_settings()
     return LiteLlm(model=settings.root_agent_model, **settings.litellm_extra())
 
 
-def _temporal_instruction(_ctx: ReadonlyContext) -> str:
-    """Per-invocation date context (ADK ``InstructionProvider``).
+def _make_temporal_instruction(ctx: ScenarioContext):
+    """Build the per-invocation date block provider for *ctx* (ADK ``InstructionProvider``).
 
-    ``static_instruction`` is sent to the model verbatim and is built once at
-    import time, so the date cannot live there — a long-running server would
-    keep reporting the day it booted. ADK re-resolves ``instruction`` on every
-    invocation instead. Because ``static_instruction`` is set, ADK places this
-    block at the front of the request contents rather than in the system
-    instruction, which keeps the large static prefix byte-stable for prompt
-    caching.
+    ``static_instruction`` is sent to the model verbatim and is built once when
+    the agent is, so the date cannot live there — a long-running server would
+    keep reporting the day it booted, and a case would report the day its
+    rollout ran. ADK re-resolves ``instruction`` on every invocation instead, and
+    this closure reads ``ctx.clock()`` at that moment: production's site clock
+    advances, a case's returns its frozen ``as_of``, and neither is captured
+    here. Because ``static_instruction`` is set, ADK places this block at the
+    front of the request contents rather than in the system instruction, which
+    keeps the large static prefix byte-stable for prompt caching.
     """
-    return current_datetime_block(now=site_now())
+
+    def temporal_instruction(_readonly_ctx: ReadonlyContext) -> str:
+        return current_datetime_block(now=ctx.clock())
+
+    return temporal_instruction
 
 
-root_agent = Agent(
-    model=_build_model(),
-    name="root_agent",
-    description="Water-Management Data Analyst.",
-    static_instruction=ROOT_INSTRUCTION,
-    instruction=_temporal_instruction,
-    # The production context's toolset, from the same factory a case's toolset
-    # comes from — the tools are no longer module-level singletons anywhere.
-    tools=build_toolset(production_context()),
-)
+def build_root_agent(
+    ctx: ScenarioContext,
+    instruction: str | None = None,
+    docstrings: Mapping[str, str] | None = None,
+    tools: list[Any] | None = None,
+    model: BaseLlm | None = None,
+) -> Agent:
+    """Build a root agent bound to *ctx*, carrying one candidate's text.
+
+    Args:
+        ctx: The rollout's context. Its clock reaches the model through the
+            instruction provider; its executor reaches the tools through
+            :func:`build_toolset`.
+        instruction: The candidate's root instruction, sent as
+            ``static_instruction``. Defaults to the production
+            :data:`ROOT_INSTRUCTION`.
+        docstrings: The candidate's tool text, keyed by tool name; passed to
+            :func:`build_toolset`. Mutually exclusive with *tools*.
+        tools: An already-built toolset, for a caller that has one. Defaults to
+            ``build_toolset(ctx, docstrings)``.
+        model: The task model. Defaults to a fresh :class:`LiteLlm` on the
+            settings model id — per build, since two rollouts should not share a
+            client, though the id and decoding parameters that pin it are the
+            same (§3.1's sense of "shared").
+
+    Raises:
+        ValueError: both *docstrings* and *tools* were given, which would silently
+            drop the docstrings — a component frozen without anyone noticing is
+            the failure ``decisions.md`` § The optimizer entry point and the
+            candidate surface names.
+    """
+    if docstrings is not None and tools is not None:
+        raise ValueError(
+            "Pass either docstrings or a pre-built toolset, not both: the "
+            "docstrings would be ignored and the candidate silently truncated."
+        )
+    return Agent(
+        model=_build_model() if model is None else model,
+        name=AGENT_NAME,
+        description=AGENT_DESCRIPTION,
+        static_instruction=ROOT_INSTRUCTION if instruction is None else instruction,
+        instruction=_make_temporal_instruction(ctx),
+        tools=build_toolset(ctx, docstrings) if tools is None else tools,
+    )
+
+
+root_agent = build_root_agent(production_context())
+"""The production default — the site clock and the unbounded settings executor.
+
+Built by the factory the harness calls, so ``bootstrap.py`` and the frontend keep
+importing one name while every rollout gets its own bound agent.
+"""

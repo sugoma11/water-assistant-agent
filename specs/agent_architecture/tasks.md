@@ -523,10 +523,33 @@ The blocking phase: no case is reproducible until this lands.
   callables and passes `tools=build_toolset(production_context())`; the `Agent(…)`
   construction itself is T030's to replace. `uv run ruff check .` and
   `uv run pytest` clean — 115 passed, the same 15 pre-existing findings.
-- [ ] T030 `build_root_agent(instruction, docstrings, tools, model)` binding the
+- [x] T030 `build_root_agent(instruction, docstrings, tools, model)` binding the
   per-invocation instruction provider as a closure over `ctx.clock`; the
   module-level `root_agent` becomes the production default built from it, so
   `bootstrap.py` and the frontend are untouched. → T029
+  Done. `root_agent = build_root_agent(production_context())`; `bootstrap.py`,
+  `routers/agent.py` and the frontend import the same name and are untouched.
+  **The signature gained `ctx` as its first parameter** — plan §5's four
+  arguments are all still there, defaulted, but the row's own requirement (the
+  instruction provider is "a closure over `ctx.clock`") cannot be met by a
+  function that never receives a context, and the toolset needs the same one.
+  `_make_temporal_instruction(ctx)` returns the `InstructionProvider`, which calls
+  `ctx.clock()` **at invocation time**, not at build time: a case's agent renders
+  its frozen `as_of` and production's renders the advancing site clock through one
+  code path, and `static_instruction` stays the byte-stable prefix it was for
+  prompt caching. The `site_now` import leaves this module, so no wall clock is
+  read anywhere under `agents/`.
+  `instruction` defaults to `ROOT_INSTRUCTION` and `model` to a fresh `LiteLlm`
+  per build (a client is cheap; two rollouts should not share one, while the id
+  and decoding parameters that *pin* it stay the same — §3.1's sense of shared).
+  `tools` defaults to `build_toolset(ctx, docstrings)`, and passing **both**
+  `docstrings` and `tools` raises rather than preferring one: the docstrings
+  would be dropped and the candidate silently truncated, which is T029's unknown-key
+  failure arriving from the other side. Verified: a candidate instruction and a
+  candidate docstring both reach the built agent, two builds share no objects, and
+  a context frozen at 2026-03-15 renders that date in the instruction block while
+  the production agent renders today's. `uv run ruff check .` and `uv run pytest`
+  clean — 115 passed, same 15 pre-existing findings.
 - [x] T031 Scenario clock end to end: `current_datetime_block` gains a required
   `now` parameter; `fetch_daily_weather` and its backend selection gain a
   **required** date argument with no wall-clock default; the `site_now` import

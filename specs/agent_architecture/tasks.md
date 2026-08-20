@@ -34,12 +34,16 @@ against a document that still contradicts itself.
   (`optimize.py:172-182`), not an export — so §6's sketch names this repo's
   `aggregate_scores`, and omitting the argument would silently mean the *mean of
   the numeric scorer values*, with a non-numeric value raising.
-- [ ] T002 [P] Amend `agent_architecture.md` §0: add the wetland delta to the GR2L
+- [x] T002 [P] Amend `agent_architecture.md` §0: add the wetland delta to the GR2L
   row's gap column — `NON_MODELLABLE_ROOFS` covers gravel only, `ROOF_PRESETS`
   still carries a reachable `wetland` entry, `gr2l.py` still routes it through
   `MM_ONLY_ROOFS`, and `ROOT_INSTRUCTION` still advertises four modellable
   segments. Add to §3.4 that `roof_type` is a plain `str` at the tool boundary and
   must not become a `Literal`, since family I is unaskable if it does. (plan §2.4)
+  All four deltas confirmed in the tree: `gr2l_client.py:39-44` (gravel aliases
+  only), `:63` (`wetland` preset), `swc.py:51` + `gr2l.py:52,78` (the mm-only
+  route), `agents/root_agent/agent.py:36` ("four roof segments"). §3.4 now states
+  the `str` rule as the deliberate opposite of §3.2's `topic` enum.
 - [ ] T003 [P] Repair stale references in `agent_architecture.md`: the header, §0
   and §9 point at a `plan.md` that was deleted and at a "plan.md, Open bug
   records" section that never existed — repoint the radiation-offset citation to

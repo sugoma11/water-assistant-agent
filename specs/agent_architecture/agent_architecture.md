@@ -33,7 +33,7 @@ these strings are what trajectory scoring matches.
 | root agent | `root_agent` | partial | module-level singleton, so instruction and docstrings are not addressable per candidate; step cap unset; floating model alias, no `temperature=0`, no prompt cache |
 | text2SQL sub-agent | `text_to_sql_agent` | partial | executor not context-bound (both the inner query tool and the pipeline's EXPLAIN validator read the module singleton); no as-of views; no `CURRENT_DATE` rewrite; lysimeter areas and the alias map missing from the semantic layer |
 | weather | `get_weather_forecast_tool` | partial | no station source, no source resolution, no `WeatherClient` seam or cache, so every rollout fetches live; no typed `not_available`; series uncapped; the client's wall-clock endpoint selection and its day-limit constant are deleted; `WeatherResult.elevation` is deleted |
-| GR2L water balance | `predict_green_roof_water_balance_tool` | partial | no `forcings`, no `evaluate_against_measured`, no `error_type`; series uncapped; the seed reads `window_start` alone; `roof_type` is normalized at one call site and read raw at four others |
+| GR2L water balance | `predict_green_roof_water_balance_tool` | partial | no `forcings`, no `evaluate_against_measured`, no `error_type`; series uncapped; the seed reads `window_start` alone; `roof_type` is normalized at one call site and read raw at four others; **the wetland is still modellable** — `NON_MODELLABLE_ROOFS` holds gravel aliases only (`gr2l_client.py`), `ROOF_PRESETS` carries a reachable `wetland` entry routed through `swc.MM_ONLY_ROOFS` (`gr2l.py`), and `ROOT_INSTRUCTION` still advertises four modellable segments (`agents/root_agent/agent.py`) |
 | reference lookup | `lookup_reference` | to build | card store, `enum == card keys` test |
 | irrigation rule | `calc_irrigation` | to build | bucket model, ET0 core, `rules_constants.py`, `roofs.py`, decision-diff harness |
 | plotting | `plot_timeseries` | to build | closed `measured` vocabulary, session-state handoff |
@@ -356,6 +356,14 @@ which also accepts principle 4's German and column aliases. **`calc_irrigation`
 excludes the same two roofs** (§3.5), so one set carries both water-balance tools'
 scope and lives in `roofs.py` beside the rest of each roof's identity (principle 4).
 This is what the catalog's per-family roof sampling pools are derived from.
+
+**`roof_type` is a plain `str` at the tool boundary and must stay one.** It is the
+deliberate opposite of `lookup_reference`'s `topic` (§3.2): ADK renders a
+`Literal[...]` into the function declaration as a schema `enum`, so typing this
+argument would leave the agent unable to *name* an out-of-scope roof and would make
+family I — the abstention asked in the gravel and wetland aliases — unaskable. Scope
+is decided in code against `NON_MODELLABLE_ROOFS` after normalizing the argument
+once at entry, and a test pins the annotation.
 
 ### 3.5 `calc_irrigation` — self-contained over its own bucket model
 

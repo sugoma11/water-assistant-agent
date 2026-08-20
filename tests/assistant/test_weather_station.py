@@ -453,7 +453,8 @@ def test_the_station_source_is_echoed_end_to_end_through_gr2l(
     """
     forcing: list[list[DailyWeatherRow]] = []
 
-    async def fake_run_gr2l(rows, parameters):
+    async def fake_run_gr2l(rows, parameters, **kwargs):
+        # `**kwargs` absorbs the wrapper's `cache=ctx.cache` (T054).
         forcing.append(rows)
         return [
             Gr2lResultRow(Date=row.Date, ET_PM=1.0, Ssub=10.0, ET=1.0) for row in rows

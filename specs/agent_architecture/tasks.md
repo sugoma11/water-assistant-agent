@@ -1311,11 +1311,72 @@ process and neither sees the other's data or clock.
   is why the row sits inside P2b rather than beside it.
   `uv run ruff check .` and `uv run pytest` clean — 174 passed, same 15
   pre-existing findings.
-- [ ] T054 Tests for `gr2l`, `weather` and `swc`: %θ↔mm round-trip per roof;
+- [x] T054 Tests for `gr2l`, `weather` and `swc`: %θ↔mm round-trip per roof;
   gravel and wetland → `not_available`; no trustworthy seed → `not_available`;
   stale-seed flag; seed-day retention flag; forcings application and echo;
   `evaluate_against_measured` arithmetic; beyond-horizon → `not_available`; each
   error site's `error_type`. → T041, T047, T048, T049, T051, T052
+  Done, 83 tests in `tests/assistant/test_gr2l_tool.py`, every clause of the list
+  covered, against the real pinned `data/water.duckdb` on the same T055
+  reasoning: the seed and the measured comparison *are* that file. Only the two
+  things outside the repository are replaced, and each by a **recording** double,
+  so every claim about what reached the model is asserted from the far side.
+  **Two production lines this row's own list required, both previously deferred
+  *to* it.** T041's note hands over the horizon check explicitly — "`gr2l.py` is
+  deliberately not given the same check … T054's beyond-horizon test belongs to
+  the packet that owns that wrapper's argument surface" — so `beyond_horizon` is
+  now wired into the GR2L wrapper between window resolution and the fetch, with
+  its own `not_available` reason. And the packet's exit criterion ("a model case
+  in replay issues no live call") is unreachable while the wrapper calls
+  `run_gr2l` with no cache: T023 built the mechanism and left the call site
+  alone as out-of-packet, and this is the packet that owns `gr2l.py`, so the hop
+  now passes `cache=ctx.cache`. Production is unaffected — its context's cache is
+  `None`, which is the same direct call as before.
+  **The replay test records, then replays.** The first pass fetches through a
+  fake service and commits both the data entry and the canary; the second runs
+  with that service raising on any POST, and the two results are asserted
+  *equal*. So the hit path is proved to issue nothing — including no canary,
+  which is right: there is no service to have moved when nothing is asked of it.
+  Its companion runs the identical setup with an empty cache and asserts the run
+  fails, without which the first could be evidence about a service that is never
+  called rather than about a cache that is hit. The weather half is the real
+  composite over a station window, so that side needs no entry at all (T044).
+  **Verified by mutation.** Twelve mutants, all caught: no cache on the model
+  hop; `seed_bound` ignoring `as_of`; ignoring the window start; the summary over
+  the fetched rows; the model run on the fetched rows; no horizon check; the cap
+  off by one; a weekly `tx` as a mean of maxima; the comparison grouped in UTC;
+  forcings not applied; the stale threshold never firing; argument faults tagged
+  `upstream`.
+  **Two of them survived the first pass, and both were real gaps.** The `as_of`
+  half of the seed rule cannot be demonstrated through `ctx.db` at all — the
+  as-of view has already hidden the later rows, so the test passed either way —
+  which is exactly the oracle case T047 put the rule in the function for; there
+  is now a test against an **unbounded** `DuckDbQueryExecutor`, and it is the one
+  that fails when the `as_of` half is removed. And the cap tests asserted bucket
+  edges, which hold under any per-field rule, so the aggregation itself is now
+  asserted on values that differ: a weekly `tx` is the week's hottest day and
+  day 1's null flux is skipped rather than read as a zero.
+  Expected values are hand-computed in Python throughout. The measured
+  comparison is joined against daily means bucketed into Berlin days with
+  `zoneinfo` — no `GROUP BY`, no `AT TIME ZONE` — so the day boundary is checked
+  against an independent implementation, and the seed against a raw
+  `ORDER BY timestamp DESC LIMIT 1` read straight from the file.
+  Nine `invalid_argument` sites and eight `upstream` ones are covered, with the
+  argument faults additionally asserted to have reached **no** weather client and
+  **no** model — which is what "before any I/O" means and the only way the
+  classification is checkable rather than declarative.
+  Two existing doubles gained `**kwargs` (`test_factories_and_pins`,
+  `test_weather_station`) because the wrapper now passes `cache=`. That they had
+  to is the useful part: a fake with a fixed arity is what noticed the call site
+  had changed.
+  **One gap left open and named, not fixed here:** `run_gr2l` has no `allow_live`
+  channel, so in a replay pass a GR2L *miss* would call out live rather than
+  raising, where the weather half raises `CacheMissError` (T044 gave
+  `make_weather_client` that flag). Nothing in P2b's list asks for it, and P7d's
+  T116 is where a capture pass would discover it; noted here so it is not
+  rediscovered from scratch.
+  `uv run ruff check .` and `uv run pytest` clean — 254 passed, same 15
+  pre-existing findings; `just pins` unmoved at 8 pinned, 8 unpinned, 0 moved.
 - [x] T055 Tests for the station path: per-field derivation against hand-computed
   values; a rain event straddling local midnight landing in the right Berlin day;
   sentinel exclusion from the wind mean; incomplete-day exclusion; routing at both

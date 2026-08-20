@@ -33,7 +33,7 @@ its own day and its own forcing, and none is a module-level singleton
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -78,8 +78,10 @@ from water_assistant_agent.assistant.tools.swc import (
     theta_pct_to_mm,
 )
 from water_assistant_agent.assistant.tools.weather_client import (
+    FORECAST_HORIZON_DAYS,
     InvalidWindowError,
     WeatherFetchError,
+    beyond_horizon,
     resolve_window,
 )
 
@@ -465,9 +467,10 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
             With ``evaluate_against_measured`` it also carries ``evaluation``: the
             compared days, the overlap window, and the mean and largest
             |predicted − measured| soil moisture in %θ. When the request is outside
-            what can be modelled — the gravel roof or the wetland, or a window with
-            no soil-moisture record to start from — ``status='not_available'`` with
-            a ``reason`` to
+            what can be modelled — the gravel roof or the wetland, a window with no
+            soil-moisture record to start from, or a window ending more than 16
+            days ahead, since no weather exists to drive the model that far out —
+            ``status='not_available'`` with a ``reason`` to
             pass on to the user; that is a scope limit, not a malfunction. On failure
             ``status='error'`` with ``error_details`` and an ``error_type``:
             ``'invalid_argument'`` means the call itself was wrong and can be
@@ -519,6 +522,26 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
             logger.info("Rejected green-roof window", error=str(exc))
             return ErrorResult(
                 error_type="invalid_argument", error_details=str(exc)
+            ).model_dump()
+
+        # The same scope limit the weather tool signals, on the same resolved
+        # window and against the same `ctx.as_of` (`weather_client.beyond_horizon`).
+        # A model run needs a forcing for every day it simulates, and nothing
+        # upstream refuses a future window — Archive answers day 400 without
+        # complaint — so without this a simulation of unobtainable weather would
+        # come back looking like an ordinary answer.
+        if beyond_horizon(window_end, today):
+            logger.info(
+                "Green-roof window reaches past the forecast horizon",
+                window=(window_start, window_end),
+                as_of=today.isoformat(),
+            )
+            return NotAvailableResult(
+                reason=(
+                    f"The roof can only be simulated up to {FORECAST_HORIZON_DAYS} days ahead "
+                    f"(through {today + timedelta(days=FORECAST_HORIZON_DAYS):%Y-%m-%d}), because "
+                    f"no weather exists beyond that, and the window asked for ends {window_end}."
+                )
             ).model_dump()
 
         # Checked against the *resolved* window, and still before the fetch: both
@@ -609,7 +632,12 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
         )
 
         try:
-            result_rows = await run_gr2l(rows, parameters)
+            # `ctx.cache` and nothing else decides whether this hop is cached:
+            # a case in replay is served from its committed entry and issues no
+            # HTTP at all, while production's `cache=None` calls GR2L live every
+            # time (`decisions.md` § The response cache). A hit skips the canary
+            # too — there is no service to have moved when nothing is asked.
+            result_rows = await run_gr2l(rows, parameters, cache=ctx.cache)
         except Gr2lConfigError as exc:
             logger.error("GR2L not configured", error=str(exc))
             return ErrorResult(error_type="upstream", error_details=str(exc)).model_dump()

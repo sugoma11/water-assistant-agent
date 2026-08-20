@@ -230,7 +230,9 @@ def test_the_green_roof_tool_seeds_from_the_context_executor(
 ) -> None:
     """The soil-moisture seed is read through ``ctx.db``, not a settings singleton."""
 
-    async def fake_run_gr2l(rows, parameters):
+    async def fake_run_gr2l(rows, parameters, **kwargs):
+        # `**kwargs` absorbs the wrapper's `cache=ctx.cache` (T054): this context
+        # has none, and what it passes is `run_gr2l`'s business, not this test's.
         return [Gr2lResultRow(Date=rows[0].Date, ET_PM=1.0, Ssub=10.0, ET=1.0)]
 
     monkeypatch.setattr(gr2l_module, "run_gr2l", fake_run_gr2l)

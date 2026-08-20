@@ -397,12 +397,34 @@ The blocking phase: no case is reproducible until this lands.
 - [ ] T034 `eval/pins.json` and a `just pins` check covering plan §4's pin list,
   with the card-store and reflection-model entries stubbed until P4 and P8 fill
   them. → T033
-- [ ] T035a Tests for the context and the cache (**packet P1a**): `connect_asof`
+- [x] T035a Tests for the context and the cache (**packet P1a**): `connect_asof`
   bounds every one of the five tables; the as-of cut is identical under at least
   two host `TZ` settings — nothing else in the pin set can detect a violation; a
   production-clocked context reflects a date change on the next query without a
   rebuild; cache round-trip, canary divergence and unfillable miss.
   → T020, T021
+  Done: `tests/assistant/test_context.py` (9 cases) and `tests/assistant/test_cache.py`
+  (8 cases). Every `connect_asof` bound is checked against an independent raw
+  query over the pinned `data/water.duckdb` — never against another view — so
+  the test can't pass by agreeing with its own implementation; the fixed `as_of`
+  (2026-01-01) sits inside four tables' records and past `radiation`'s, exercising
+  both a real truncation and a full pass-through in the same parametrized run. The
+  `TZ` case is the one place a same-process assertion would have been too weak: a
+  mid-run `os.environ['TZ']` write is not guaranteed to reach every
+  timezone-aware code path without `time.tzset()`, so it spawns three fresh
+  interpreters (`UTC`, `America/New_York`, `Asia/Tokyo`) and diffs their output
+  instead. The rebuild test drives `ScenarioContext` through a mutable-clock
+  closure across a date change and asserts the later query's bound moved with no
+  explicit rebuild call, plus a companion white-box check that the connection
+  object itself is untouched across two same-day queries. The cache tests cover
+  round-trip (including key-order independence, since canonicalization is
+  `ResponseCache`'s job), both unfillable-miss shapes (`allow_live=False` and a
+  raising live fetch, the latter asserted to carry the nearest captured request),
+  canary first-capture-then-verify, canary divergence blocking the pending entry,
+  and that a hit never consults the canary at all. `uv run ruff check .` and
+  `uv run pytest` both clean — 103 passed, 15 pre-existing unrelated `ruff`
+  findings in `notebooks/`, `scripts/count_tokens.py` and
+  `src/experiments/text2sql/train_gepa.py` untouched.
 - [ ] T035b Tests for the DB seams and the sub-agent (**packet P1b**): two
   contexts with different `as_of` running the same query concurrently — through
   the sub-agent path as well — each seeing its own bound; the T028 rewrite pinned

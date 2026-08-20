@@ -37,6 +37,7 @@ from water_assistant_agent.assistant.tools.gr2l import make_green_roof_balance_t
 from water_assistant_agent.assistant.tools.site import site_now
 from water_assistant_agent.assistant.tools.warehouse import SETTINGS_EXECUTOR
 from water_assistant_agent.assistant.tools.weather import make_weather_forecast_tool
+from water_assistant_agent.assistant.tools.weather_client import make_weather_client
 
 logger = structlog.get_logger(__name__)
 
@@ -116,17 +117,19 @@ def production_context() -> ScenarioContext:
     no connection opened until the first query — production has no case to be
     bounded by, and importing the service must not touch DuckDB.
 
-    ``weather`` is ``None`` on purpose: no tool reads ``ctx.weather`` yet (both
-    wrappers still call ``fetch_daily_weather`` directly), and a placeholder
-    client would be the wrong one — the only implementation today is
-    Archive-only. T043's composite fills it, and until then a premature consumer
-    fails loudly instead of silently reading the wrong source.
+    ``weather`` is the same :func:`make_weather_client` composite a case gets,
+    over the same two bindings: the settings executor, so the station serves any
+    window the site's own record covers, and ``cache=None``, so the Archive half
+    fetches live every time. Production is the one context that must **not**
+    cache Open-Meteo: its clock advances, and an entry keyed on absolute dates
+    would keep returning the forecast a window once got after those days had
+    become observations.
     """
     if _ProductionContextHolder.instance is None:
         _ProductionContextHolder.instance = ScenarioContext.bound(
             clock=site_now,
             db=SETTINGS_EXECUTOR,
-            weather=None,
+            weather=make_weather_client(SETTINGS_EXECUTOR, None),
             cache=None,
         )
     return _ProductionContextHolder.instance

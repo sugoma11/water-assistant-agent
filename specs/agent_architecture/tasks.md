@@ -926,11 +926,52 @@ process and neither sees the other's data or clock.
   the oracle's case — no gap filling, and no per-day fallback.
   `uv run ruff check .` and `uv run pytest` clean — 141 passed, same 15
   pre-existing findings. Tests for the derivation are T055's.
-- [ ] T043 Composite `WeatherClient` at layer 2, constructed with the case's
+- [x] T043 Composite `WeatherClient` at layer 2, constructed with the case's
   as-of executor: the station serves when the record covers the **whole** window,
   tested through the as-of view; everything else, including every window reaching
   past `as_of`, falls to Archive whole. Every window has exactly one provenance;
   the response echoes the source. → T042, T022
+  Done. `CompositeWeatherClient` and `make_weather_client(db, cache)` in
+  `weather_client.py`. Coverage is one arithmetic comparison over one query:
+  `daily_rows` returns only complete days, so `len(rows) == (end - start).days +
+  1` **is** whole-window coverage, and a partly covered window falls through
+  with no second query and no per-day patching. Nothing tests a date against a
+  hardcoded record span — the executor is the only thing consulted, so a case's
+  as-of view is what decides, and a window past `as_of` finds nothing there and
+  goes to Archive without a special case for the future.
+  Both construction paths now fill: `ScenarioContext(...)` passes
+  `make_weather_client` its own `db` and `cache` (the parameter, formerly
+  `Callable[[Any, Any], Any]`, is now the named `WeatherClientFactory`, and
+  `bound`'s `weather`/`cache`/`db` are typed too, via a `TYPE_CHECKING` import
+  so `context.py` still pulls no httpx at import), and `production_context()`
+  builds the same composite over `SETTINGS_EXECUTOR`. Both wrappers now read
+  `ctx.weather`, and `fetch_daily_weather` leaves the tool layer entirely.
+  Two consequences worth naming.
+  **`ArchiveWeatherClient`'s cache became optional, and production passes
+  `None`.** A committed entry is keyed on absolute dates, so on an advancing
+  clock it would keep serving the *forecast* a window once returned after those
+  same days had become observations — harmless for a frozen case, wrong for the
+  running service. `cache=None` fetches live and records nothing, the same shape
+  T023 gave `run_gr2l`.
+  **`schemas.py` was touched, minimally and unavoidably.** `WeatherResult.backend`
+  is now `source: Literal["station", "forecast", "archive"]` (T045 drops
+  `"forecast"`). The row's "the response echoes the source" cannot be expressed
+  otherwise — the field has to be able to say `station` — and "backend" was
+  Open-Meteo's vocabulary for a thing that is now a mast on the roof. T046's
+  deferral of the `elevation` removal to P2b stands untouched; this is a
+  different field, and P2a/P2b are sequential, so there is no concurrent edit to
+  conflict with. The agent-facing docstring follows the rename and now tells the
+  agent to disclose a station-served window, which §3.3 requires of the answer
+  and nothing else in the payload could support.
+  Three tests in `test_factories_and_pins.py` stopped monkeypatching
+  `fetch_daily_weather` — there is nothing there to patch — and now inject a
+  `RecordingWeatherClient` through `ctx.weather`, which is a stronger assertion
+  in the same shape T035c set: a wrapper that reached past its context would
+  have passed the monkeypatched version. One test added: both construction paths
+  produce a `CompositeWeatherClient` whose station half holds *that* context's
+  executor.
+  `uv run ruff check .` and `uv run pytest` clean — 142 passed, same 15
+  pre-existing findings.
 - [ ] T044 Station windows bypass the response cache entirely — a pure function of
   the pinned DB, so record, replay and off are all no-ops there and a miss must not
   raise. The record's first and last complete day join `eval/pins.json`, read from

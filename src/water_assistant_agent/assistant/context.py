@@ -10,7 +10,7 @@ case with ``clock = lambda: case.as_of``. See ``agent_architecture.md`` §4 and
 
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING
 
 import duckdb
 import structlog
@@ -18,7 +18,11 @@ import structlog
 from water_assistant_agent.assistant.agents.text_to_sql.executor import (
     DuckDbQueryExecutor,
 )
-from water_assistant_agent.assistant.ports import QueryResult
+from water_assistant_agent.assistant.ports import QueryResult, ReadOnlyWarehouseQuery
+
+if TYPE_CHECKING:
+    from water_assistant_agent.assistant.cache import ResponseCache
+    from water_assistant_agent.assistant.tools.weather_client import WeatherClient
 
 logger = structlog.get_logger(__name__)
 
@@ -28,6 +32,17 @@ Clock = Callable[[], datetime]
 Production passes ``site_now`` (advances every call); the harness passes a
 closure returning one case's frozen ``as_of``. Nothing downstream may capture the
 value this returns at construction time and reuse it — every read calls it again.
+"""
+
+WeatherClientFactory = Callable[
+    [ReadOnlyWarehouseQuery, "ResponseCache | None"], "WeatherClient"
+]
+"""Builds one context's weather client from **both** halves' bindings.
+
+``make_weather_client`` is the production implementation. The signature takes the
+executor as well as the cache because the composite's station half reads the
+as-of views: a factory taking only the cache could not build it
+(``agent_architecture.md`` §4).
 """
 
 # The five tables an as-of connection bounds. Also the allow-list that makes the
@@ -121,8 +136,8 @@ class ScenarioContext:
         self,
         clock: Clock,
         db_path: str,
-        weather_client_factory: Callable[[Any, Any], Any],
-        http_cache: Any,
+        weather_client_factory: WeatherClientFactory,
+        http_cache: "ResponseCache | None",
     ) -> None:
         self.clock = clock
         self.db = AsOfQueryExecutor(db_path, clock)
@@ -136,9 +151,9 @@ class ScenarioContext:
         cls,
         *,
         clock: Clock,
-        db: Any,
-        weather: Any = None,
-        cache: Any = None,
+        db: ReadOnlyWarehouseQuery,
+        weather: "WeatherClient | None" = None,
+        cache: "ResponseCache | None" = None,
     ) -> "ScenarioContext":
         """Build a context around collaborators that already exist.
 

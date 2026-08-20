@@ -1,4 +1,4 @@
-"""Pure async Open-Meteo client that emits GR2L-ready daily weather rows.
+"""Daily weather: the two sources, the window rules, and the client that picks between them.
 
 No ADK imports — this is the reusable seam behind both ``get_weather_forecast_tool``
 and ``predict_green_roof_water_balance_tool``. It fetches the seven daily variables
@@ -7,6 +7,13 @@ GR2L needs, transposes Open-Meteo's column-oriented response into row-oriented
 requires (``gs = shortwave_radiation_sum × 100`` to J/cm²/day; wind requested in
 km/h). See ``weather_tool.md`` for the conversion rationale.
 
+There are exactly **two sources**, chosen in code from the window and never named
+by the agent: the site's own station (:mod:`weather_station`, whenever the record
+covers the whole window) and Open-Meteo's ERA5 Archive for everything else.
+:class:`CompositeWeatherClient` is where that choice is made and
+:func:`make_weather_client` is what a :class:`~..context.ScenarioContext` calls to
+build one.
+
 :func:`fetch_daily_weather` takes an **absolute** window only. Relative windows are
 resolved by :func:`resolve_window` in the tool wrappers, before the client is ever
 called, because Open-Meteo's own ``past_days`` silently carries a seven-day forecast
@@ -14,6 +21,7 @@ tail: ``past_days=5`` returns five past days *plus* today and six forecast days,
 the rows are indistinguishable once transposed.
 """
 
+import asyncio
 from datetime import date, timedelta
 from typing import Protocol, runtime_checkable
 
@@ -21,8 +29,18 @@ import httpx
 import structlog
 
 from water_assistant_agent.assistant.cache import ResponseCache
+from water_assistant_agent.assistant.ports import ReadOnlyWarehouseQuery
 from water_assistant_agent.assistant.tools.schemas import DailyWeatherRow, WeatherResult
-from water_assistant_agent.assistant.tools.site import SITE_LATITUDE, SITE_LONGITUDE
+from water_assistant_agent.assistant.tools.site import (
+    SITE_ELEVATION_M,
+    SITE_LATITUDE,
+    SITE_LONGITUDE,
+    SITE_TIMEZONE,
+)
+from water_assistant_agent.assistant.tools.weather_station import (
+    STATION_SOURCE,
+    StationWeatherSource,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -362,7 +380,7 @@ async def fetch_daily_weather(
         longitude=payload.get("longitude", longitude),
         elevation=payload.get("elevation", 0.0),
         timezone=payload.get("timezone", "auto"),
-        backend=backend,
+        source=backend,
         data=rows,
     )
 
@@ -374,9 +392,9 @@ class WeatherClient(Protocol):
     Every consumer — the standalone tool, GR2L, the irrigation calculator, the
     plot tool — resolves an absolute window through one object implementing this,
     and sees the same rows, units and day boundary regardless of which concrete
-    source answered (`agent_architecture.md` §3.3). :class:`ArchiveWeatherClient`
-    is the first implementation; the composite adding the station half is a later
-    packet.
+    source answered (`agent_architecture.md` §3.3).
+    :class:`CompositeWeatherClient` is what a context actually holds;
+    :class:`ArchiveWeatherClient` is its Open-Meteo half.
     """
 
     async def fetch(self, *, start_date: str, end_date: str) -> WeatherResult:
@@ -401,11 +419,16 @@ class ArchiveWeatherClient:
     ``decisions.md`` § The response cache. No canary is required here: unlike GR2L,
     Archive's cache is load-bearing only for cost and speed, and carries no
     reproducibility claim (`agent_architecture.md` §5).
+
+    *cache* may be ``None``, which fetches live every time and records nothing.
+    That is production's binding: the running service has no case, and a
+    committed entry keyed on absolute dates would keep serving the *forecast*
+    a window once returned after the same days had become observations.
     """
 
     def __init__(
         self,
-        cache: ResponseCache,
+        cache: ResponseCache | None,
         *,
         latitude: float = SITE_LATITUDE,
         longitude: float = SITE_LONGITUDE,
@@ -416,11 +439,6 @@ class ArchiveWeatherClient:
         self._http_client = httpx.AsyncClient(timeout=_TIMEOUT_SECONDS)
 
     async def fetch(self, *, start_date: str, end_date: str) -> WeatherResult:
-        canonical_request = {
-            "url": ARCHIVE_URL,
-            "params": _build_params(self._latitude, self._longitude, start_date, end_date),
-        }
-
         async def live_fetch() -> dict[str, object]:
             result = await fetch_daily_weather(
                 self._latitude,
@@ -432,5 +450,74 @@ class ArchiveWeatherClient:
             )
             return result.model_dump()
 
+        if self._cache is None:
+            return WeatherResult.model_validate(await live_fetch())
+
+        canonical_request = {
+            "url": ARCHIVE_URL,
+            "params": _build_params(self._latitude, self._longitude, start_date, end_date),
+        }
         cached = await self._cache.fetch(canonical_request, live_fetch)
         return WeatherResult.model_validate(cached)
+
+
+class CompositeWeatherClient:
+    """The :data:`WeatherClient` a context holds: station where it reaches, Archive else.
+
+    Source resolution lives **here**, at layer 2, and not in
+    :func:`fetch_daily_weather`, because the station reads the case's database
+    handle and the pure layer has no channel to a context
+    (``agent_architecture.md`` §3.3). Every consumer — the standalone tool, GR2L,
+    later the irrigation calculator and the plot tool — goes through one of these
+    and therefore sees one provenance per window.
+
+    The rule is whole-window or nothing: the station serves only if it can
+    derive a complete day for **every** day asked for, tested through the as-of
+    view it was constructed with. A window the record covers only partly, and
+    every window reaching past ``as_of`` — where the view has nothing at all —
+    falls to the Archive **whole**. Mixing them per day would make a case's
+    forcing a per-day blend of two instruments with a measured offset between
+    them, and the station's biases undisclosable as one property of one source
+    (``decisions.md`` § Weather sources).
+    """
+
+    def __init__(self, station: StationWeatherSource, archive: WeatherClient) -> None:
+        self._station = station
+        self._archive = archive
+
+    async def fetch(self, *, start_date: str, end_date: str) -> WeatherResult:
+        start, end = date.fromisoformat(start_date), date.fromisoformat(end_date)
+        rows = await asyncio.to_thread(self._station.daily_rows, start, end)
+
+        if len(rows) == (end - start).days + 1:
+            logger.debug("Serving weather from the station", window=(start_date, end_date))
+            return WeatherResult(
+                latitude=SITE_LATITUDE,
+                longitude=SITE_LONGITUDE,
+                elevation=SITE_ELEVATION_M,
+                timezone=SITE_TIMEZONE,
+                source=STATION_SOURCE,
+                data=rows,
+            )
+
+        logger.debug(
+            "Station record does not cover the window; falling to Archive whole",
+            window=(start_date, end_date),
+            station_days=len(rows),
+        )
+        return await self._archive.fetch(start_date=start_date, end_date=end_date)
+
+
+def make_weather_client(
+    db: ReadOnlyWarehouseQuery,
+    cache: ResponseCache | None,
+) -> WeatherClient:
+    """Build the composite for one context — the ``weather_client_factory`` of §4.
+
+    Both halves, in this order: the station reads the as-of views through *db*,
+    the Archive half reads *cache*. A factory taking only *db* could not build
+    the composite, which is why the seam passes both.
+    """
+    return CompositeWeatherClient(
+        StationWeatherSource(db), ArchiveWeatherClient(cache)
+    )

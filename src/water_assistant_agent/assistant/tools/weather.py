@@ -1,14 +1,19 @@
-"""ADK tool: daily weather forecast / archive for the facility.
+"""ADK tool: daily weather for the facility, from whichever source covers the window.
 
-Thin wrapper over :func:`weather_client.fetch_daily_weather`, exposed as a
-standalone agent tool (reusable without GR2L). The location is pinned to the
-site (see :mod:`site`), so the agent supplies only a date window. Returns
-GR2L-ready daily rows so the same output can be fed straight into the green-roof
-water-balance tool.
+Thin wrapper over ``ctx.weather``, exposed as a standalone agent tool (reusable
+without GR2L). The location is pinned to the site (see :mod:`site`), so the agent
+supplies only a date window. Returns GR2L-ready daily rows so the same output can
+be fed straight into the green-roof water-balance tool.
+
+This wrapper is **layer 1 and nothing else**: it resolves the window against
+``ctx.as_of``, checks the one scope limit, and hands an absolute window to the
+client. Which source answers is layer 2's, decided from the window alone by the
+composite behind ``ctx.weather`` (``agent_architecture.md`` §3.3) — the agent
+names a window and a question, never a provenance.
 
 The tool is produced by :func:`make_weather_forecast_tool`, which closes over one
 :class:`~water_assistant_agent.assistant.context.ScenarioContext`: the window is
-resolved against ``ctx.clock()``, never a wall clock of this module's own, so a
+resolved against ``ctx.as_of``, never a wall clock of this module's own, so a
 case frozen at its ``as_of`` and production's advancing site clock take the same
 path (``agent_architecture.md`` §4). Docstring and signature are the ones ADK
 turns into the tool declaration and are therefore candidate-optimizable text —
@@ -33,7 +38,6 @@ from water_assistant_agent.assistant.tools.weather_client import (
     InvalidWindowError,
     WeatherFetchError,
     beyond_horizon,
-    fetch_daily_weather,
     resolve_window,
 )
 
@@ -56,12 +60,9 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
     ending more than :data:`~..tools.weather_client.FORECAST_HORIZON_DAYS` days
     past ``ctx.as_of`` is this tool's single typed ``not_available``.
 
-    The **source** is still :func:`fetch_daily_weather` rather than
-    ``ctx.weather``: the one :class:`~..tools.weather_client.WeatherClient`
-    implementation that exists today is Archive-only and cannot answer a forecast
-    window, so swapping it in now would break the production tool. T043's
-    composite client is what closes that seam; this task binds the clock, which is
-    the half that leaks time into a case.
+    Rows come from ``ctx.weather`` — the composite that picks the station or the
+    Archive from the window alone — so this wrapper never chooses a provenance
+    and never names one. It reports whichever source answered, under ``source``.
     """
 
     async def get_weather_forecast_tool(
@@ -99,7 +100,7 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
 
         Returns:
             dict: on success ``status='success'`` with the site's
-            ``latitude``/``longitude``/``elevation`` (m), ``timezone``, ``backend``,
+            ``latitude``/``longitude``/``elevation`` (m), ``timezone``, ``source``,
             and ``data`` — one row per day, each carrying the day's date and these
             seven values under short keys:
 
@@ -111,6 +112,11 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
             * ``precip`` — precipitation total, **mm**
             * ``w`` — mean wind speed, **km/h** (10 m above ground)
             * ``gs`` — global (shortwave) radiation total, **J/cm²/day**
+
+            ``source`` says where the whole window came from and is chosen
+            automatically, never by you: ``'station'`` means the site's own
+            instruments — **say so in the answer** — and ``'archive'`` means a
+            reanalysis of the wider area.
 
             When the window ends more than 16 days ahead, ``status='not_available'``
             with a ``reason`` to pass on to the user: no weather exists that far
@@ -148,13 +154,7 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
             ).model_dump()
 
         try:
-            result = await fetch_daily_weather(
-                SITE_LATITUDE,
-                SITE_LONGITUDE,
-                start_date=window_start,
-                end_date=window_end,
-                today=today,
-            )
+            result = await ctx.weather.fetch(start_date=window_start, end_date=window_end)
         except WeatherFetchError as exc:
             # Upstream said what was wrong; passing it on lets the agent fix the window.
             logger.warning("Weather fetch rejected", window=(window_start, window_end), error=str(exc))

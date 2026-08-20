@@ -53,14 +53,18 @@ class DailyWeatherRow(BaseModel):
 
 
 class WeatherResult(BaseModel):
-    """Result of :func:`weather_client.fetch_daily_weather`."""
+    """Daily weather over one absolute window, from whichever source served it."""
 
     status: Literal["success"] = "success"
     latitude: float
     longitude: float
     elevation: float = Field(description="Site elevation, m — use as GR2L hoehe_nn")
     timezone: str
-    backend: Literal["forecast", "archive"]
+    source: Literal["station", "forecast", "archive"] = Field(
+        description="Which source served the whole window — the site's own station, "
+        "or the Open-Meteo reanalysis. Chosen in code from the window, never named "
+        "by the agent; an answer discloses it whenever it is the station"
+    )
     data: list[DailyWeatherRow]
 
 

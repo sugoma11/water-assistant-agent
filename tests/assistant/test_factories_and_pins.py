@@ -50,6 +50,10 @@ from water_assistant_agent.assistant.tools.schemas import (
     WeatherResult,
 )
 from water_assistant_agent.assistant.tools.site import site_now
+from water_assistant_agent.assistant.tools.weather_client import (
+    CompositeWeatherClient,
+    make_weather_client,
+)
 from water_assistant_agent.assistant.tools.warehouse import SETTINGS_EXECUTOR
 from water_assistant_agent.assistant.toolset import (
     GREEN_ROOF_TOOL,
@@ -89,7 +93,7 @@ def _context(as_of: datetime) -> ScenarioContext:
     return ScenarioContext(
         clock=lambda: as_of,
         db_path=DB_PATH,
-        weather_client_factory=lambda db, cache: None,
+        weather_client_factory=lambda db, cache: RecordingWeatherClient(),
         http_cache=None,
     )
 
@@ -106,21 +110,37 @@ class SpyExecutor:
         return QueryResult(columns=("timestamp", "value"), rows=self._rows)
 
 
-def _weather_row(day: str) -> DailyWeatherRow:
-    return DailyWeatherRow(
-        Date=day, tm=10.0, tx=15.0, tn=5.0, rf=70.0, precip=0.0, w=5.0, gs=1000.0
-    )
+class RecordingWeatherClient:
+    """A ``WeatherClient`` that records the windows it was asked for.
 
+    The far side of the weather binding: what a wrapper actually asked its
+    context for, rather than what its context happens to hold.
+    """
 
-def _weather_result(day: str) -> WeatherResult:
-    return WeatherResult(
-        latitude=51.0,
-        longitude=12.0,
-        elevation=140.0,
-        timezone="Europe/Berlin",
-        backend="archive",
-        data=[_weather_row(day)],
-    )
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    async def fetch(self, *, start_date: str, end_date: str) -> WeatherResult:
+        self.calls.append((start_date, end_date))
+        return WeatherResult(
+            latitude=51.0,
+            longitude=12.0,
+            elevation=140.0,
+            timezone="Europe/Berlin",
+            source="archive",
+            data=[
+                DailyWeatherRow(
+                    Date=start_date,
+                    tm=10.0,
+                    tx=15.0,
+                    tn=5.0,
+                    rf=70.0,
+                    precip=0.0,
+                    w=5.0,
+                    gs=1000.0,
+                )
+            ],
+        )
 
 
 def _declaration(tool: Any) -> Any:
@@ -179,70 +199,47 @@ def test_the_toolset_is_declared_in_one_fixed_order() -> None:
 # --- Each tool reads its binding from the context, per call -------------------
 
 
-def test_the_weather_tool_resolves_its_window_against_the_context_clock(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_the_weather_tool_resolves_its_window_against_the_context_clock() -> None:
     """Two contexts asking for the same relative window get two different windows."""
-    seen: list[dict[str, Any]] = []
-
-    async def fake_fetch(latitude, longitude, **kwargs):
-        seen.append(kwargs)
-        return _weather_result(kwargs["start_date"])
-
-    monkeypatch.setattr(weather_module, "fetch_daily_weather", fake_fetch)
-
-    early = build_toolset(_context(EARLY_AS_OF))[2]
-    late = build_toolset(_context(LATE_AS_OF))[2]
+    early_ctx, late_ctx = _context(EARLY_AS_OF), _context(LATE_AS_OF)
+    early = build_toolset(early_ctx)[2]
+    late = build_toolset(late_ctx)[2]
     asyncio.run(early(past_days=1))
     asyncio.run(late(past_days=1))
 
     # `past_days=1` is yesterday relative to *the context's* day, not the host's.
-    assert seen[0]["start_date"] == "2025-12-31"
-    assert seen[1]["start_date"] == "2026-03-14"
-    assert seen[0]["today"] == EARLY_AS_OF.date()
-    assert seen[1]["today"] == LATE_AS_OF.date()
+    assert early_ctx.weather.calls == [("2025-12-31", "2025-12-31")]
+    assert late_ctx.weather.calls == [("2026-03-14", "2026-03-14")]
 
 
-def test_the_weather_tool_reads_the_clock_per_call(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_weather_tool_reads_the_clock_per_call() -> None:
     """A moving clock moves the window without the tool being rebuilt."""
-    seen: list[dict[str, Any]] = []
-
-    async def fake_fetch(latitude, longitude, **kwargs):
-        seen.append(kwargs)
-        return _weather_result(kwargs["start_date"])
-
-    monkeypatch.setattr(weather_module, "fetch_daily_weather", fake_fetch)
-
     now = EARLY_AS_OF
-    ctx = ScenarioContext.bound(clock=lambda: now, db=SpyExecutor())
+    client = RecordingWeatherClient()
+    ctx = ScenarioContext.bound(clock=lambda: now, db=SpyExecutor(), weather=client)
     tool = weather_module.make_weather_forecast_tool(ctx)
 
     asyncio.run(tool(past_days=1))
     now = LATE_AS_OF
     asyncio.run(tool(past_days=1))
 
-    assert [call["today"] for call in seen] == [EARLY_AS_OF.date(), LATE_AS_OF.date()]
+    assert client.calls == [("2025-12-31", "2025-12-31"), ("2026-03-14", "2026-03-14")]
 
 
 def test_the_green_roof_tool_seeds_from_the_context_executor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The soil-moisture seed is read through ``ctx.db``, not a settings singleton."""
-    captured: list[dict[str, Any]] = []
-
-    async def fake_fetch(latitude, longitude, **kwargs):
-        captured.append(kwargs)
-        return _weather_result("2026-01-01")
 
     async def fake_run_gr2l(rows, parameters):
-        return [Gr2lResultRow(Date="2026-01-01", ET_PM=1.0, Ssub=10.0, ET=1.0)]
+        return [Gr2lResultRow(Date=rows[0].Date, ET_PM=1.0, Ssub=10.0, ET=1.0)]
 
-    monkeypatch.setattr(gr2l_module, "fetch_daily_weather", fake_fetch)
     monkeypatch.setattr(gr2l_module, "run_gr2l", fake_run_gr2l)
 
     # `latest_measured_swc` selects `timestamp, "<column>"`, in that order.
     spy = SpyExecutor(rows=[(datetime(2026, 1, 1, 10, 0), 18.5)])
-    ctx = ScenarioContext.bound(clock=lambda: EARLY_AS_OF, db=spy)
+    client = RecordingWeatherClient()
+    ctx = ScenarioContext.bound(clock=lambda: EARLY_AS_OF, db=spy, weather=client)
     tool = gr2l_module.make_green_roof_balance_tool(ctx)
 
     result = asyncio.run(tool("non_irrigated_extensive", past_days=1))
@@ -250,7 +247,7 @@ def test_the_green_roof_tool_seeds_from_the_context_executor(
     assert result["status"] == "success"
     assert spy.queries, "the seed never reached the context's executor"
     assert result["seed"]["source"] == "measured"
-    assert captured[0]["today"] == EARLY_AS_OF.date()
+    assert client.calls == [("2025-12-31", "2025-12-31")]
 
 
 # --- Docstrings are candidate-addressable ------------------------------------
@@ -306,6 +303,26 @@ def test_the_production_context_is_the_lazy_settings_binding() -> None:
     assert ctx.clock is site_now
     assert ctx.db is SETTINGS_EXECUTOR
     assert production_context() is ctx  # one context, not one per import site
+
+
+def test_both_construction_paths_reach_the_composite_weather_client() -> None:
+    """``__init__`` and ``bound`` alike hand a tool the same two-source client (T043).
+
+    Neither may be a special case: production answers the same window from the
+    same source a case would, and a context whose ``weather`` were still ``None``
+    would fail only once a tool reached for it.
+    """
+    harness_ctx = ScenarioContext(
+        clock=lambda: EARLY_AS_OF,
+        db_path=DB_PATH,
+        weather_client_factory=make_weather_client,
+        http_cache=None,
+    )
+
+    for ctx in (harness_ctx, production_context()):
+        assert isinstance(ctx.weather, CompositeWeatherClient)
+        # The station half reads *this* context's executor, not a singleton.
+        assert ctx.weather._station._executor is ctx.db
 
 
 def test_the_module_level_tools_are_gone() -> None:

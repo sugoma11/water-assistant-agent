@@ -19,9 +19,10 @@ the sensors and the researchers speak %θ, so the conversion happens here (via
 
 The tool is produced by :func:`make_green_roof_balance_tool`, which closes over one
 :class:`~water_assistant_agent.assistant.context.ScenarioContext`: the window
-resolves against ``ctx.clock()`` and the soil-moisture seed is read through
-``ctx.db``, so a case sees its own as-of views and its own day, and neither is a
-module-level singleton (``agent_architecture.md`` §4).
+resolves against ``ctx.as_of``, the weather comes from ``ctx.weather`` and the
+soil-moisture seed is read through ``ctx.db``, so a case sees its own as-of views,
+its own day and its own forcing, and none is a module-level singleton
+(``agent_architecture.md`` §4).
 """
 
 import asyncio
@@ -66,7 +67,6 @@ from water_assistant_agent.assistant.tools.swc import (
 from water_assistant_agent.assistant.tools.weather_client import (
     InvalidWindowError,
     WeatherFetchError,
-    fetch_daily_weather,
     resolve_window,
 )
 
@@ -184,10 +184,11 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
     :func:`..toolset.build_toolset` is the one place ``__doc__`` is replaced, by a
     candidate.
 
-    The weather half still goes through :func:`fetch_daily_weather` rather than
-    ``ctx.weather``, for the reason :func:`..tools.weather.make_weather_forecast_tool`
-    gives: today's only client is Archive-only, and T043's composite is what
-    replaces it.
+    Three bindings, then: the clock, the executor, and ``ctx.weather``. The last
+    is what makes the model's forcing the *same* rows the standalone weather tool
+    would report for the same window, from the same source — a retrospective run
+    is forced by the very instruments its measured comparison came from
+    (``decisions.md`` § Weather sources).
     """
 
     async def predict_green_roof_water_balance_tool(
@@ -306,13 +307,7 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
             return ErrorResult(error_details=str(exc)).model_dump()
 
         try:
-            weather = await fetch_daily_weather(
-                SITE_LATITUDE,
-                SITE_LONGITUDE,
-                start_date=window_start,
-                end_date=window_end,
-                today=today,
-            )
+            weather = await ctx.weather.fetch(start_date=window_start, end_date=window_end)
         except WeatherFetchError as exc:
             # Upstream said what was wrong; passing it on lets the agent fix the window.
             logger.warning(

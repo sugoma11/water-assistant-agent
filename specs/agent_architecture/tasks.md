@@ -1826,10 +1826,40 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   writer — hand prose and generated values share one file. → T062, T060
 - [ ] T069 [P] Derive the `roof_reference_ranges` values (normal / low / high per
   roof segment) from the `swc` record under the same drift discipline. → T068
-- [ ] T070 Tests: the ladder's reason codes in priority order; the stated-value
+- [x] T070 Tests: the ladder's reason codes in priority order; the stated-value
   path issuing no I/O at all; `not_available` for both non-modellable roofs; unit
   conversion round-trips; and an irrigation case completing in replay with zero
   cache entries and zero live calls. → T066
+  Done, 58 tests in `tests/assistant/test_irrigation_tool.py`, every clause of
+  the row plus the error taxonomy's three outcomes.
+  **Priority, not correctness.** Each rung is tested against a window that
+  satisfies *every rung below it as well* — rung 1's row is below wilting **and**
+  cold **and** refilling — so a ladder whose comparisons were individually right
+  in the wrong order fails. A separate test pins the two boundaries the seed can
+  land exactly on: `<=` at the wilting point, `>` at the dry threshold, both the
+  controller's way round.
+  **The unit fix is asserted as a conversion.** Each of the four millimetre
+  thresholds is asserted to *be* the %θ one through `theta_pct_to_mm`, in both
+  directions, and the rescaling is measured directly: one millimetre of rain with
+  no ET moves the store 1.43 %θ on a 7 cm roof and 0.67 on the 15 cm one, against
+  exactly 1.0 in the deployed regime whatever the depth. The payload's
+  `min_swc_pct` is checked on the roof where a leaked millimetre value would show
+  (8 %θ is 12 mm on the semi-intensive).
+  **The stated path is asserted from the far side.** Both collaborators raise on
+  use, so "no I/O" is proved rather than inferred from the answer being right —
+  which is the whole of what T16b measures, since a call that quietly fetched
+  would still return the right boolean.
+  **The replay clause is a stated-value case, and the reason is worth recording.**
+  A modelled call's window opens at `ctx.as_of` and runs a week forward, and the
+  station is read *through the as-of view*, so the station can never cover it: the
+  forcing falls to Archive whole and takes one cache entry. Verified — the
+  modelled path in replay with an empty cache returns `upstream`. So T16b is the
+  irrigation shape with zero cache entries, while T07 and T11 each replay from one
+  weather entry, which is what T116 captures. `agent_architecture.md` §3.5's "no
+  cache entry" is about the calculator, not about the forcing; T071 states that
+  distinction in `irrigation_tool.md` rather than leaving it to be rediscovered.
+  `uv run ruff check .` and `uv run pytest` clean — 440 passed, same 15
+  pre-existing findings.
 
 - [ ] T071 Sync `irrigation_tool.md` to what P3 lands: the millimetre balance and
   what the `100/SH_mm` rescaling moves, the decision-diff list as the disclosure

@@ -27,7 +27,7 @@ its own day and its own forcing, and none is a module-level singleton
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -146,12 +146,16 @@ async def _resolve_seed(
     window_start: date,
     sh_cm: float,
     caller_swc_pct: float | None,
+    *,
+    as_of: datetime,
 ) -> SwcSeed:
     """Establish day 1's substrate state, in %θ and in the mm GR2L consumes.
 
     The caller's value wins when given; otherwise the roof's own sensor supplies
-    it, read through *executor*. Propagates :class:`SwcUnavailableError` when
-    neither exists — the tool never falls back to a made-up state.
+    it, read through *executor* at ``min(window_start, as_of)`` — the one seed
+    rule (``swc.seed_bound``), never a bound this wrapper invents. Propagates
+    :class:`SwcUnavailableError` when neither exists — the tool never falls back
+    to a made-up state.
     """
     if caller_swc_pct is not None:
         return SwcSeed(
@@ -161,7 +165,7 @@ async def _resolve_seed(
         )
 
     measured = await asyncio.to_thread(
-        latest_measured_swc, executor, roof_type, window_start
+        latest_measured_swc, executor, roof_type, window_start, as_of=as_of
     )
     return SwcSeed(
         source="measured",
@@ -342,6 +346,7 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
                 window_start,
                 float(ROOF_PRESETS[roof_type]["SH"]),
                 initial_soil_moisture_pct,
+                as_of=ctx.as_of,
             )
         except SwcUnavailableError as exc:
             logger.info("No SWC seed for green-roof model", roof_type=roof_type, error=str(exc))

@@ -15,8 +15,8 @@ This module also owns the *default* seed. GR2L's generic ``theta_01 = 20 mm``
 is not usable here: it sits above ``Ssubmax`` for three of the four roof types,
 so a simulation that fell back to it started from a saturated roof. Instead the
 day-1 state comes from the roof's own sensor — the latest reading at or before
-the window opens — and when no trustworthy reading exists the call fails rather
-than inventing one.
+``min(window_start, as_of)`` (:func:`seed_bound`) — and when no trustworthy
+reading exists the call fails rather than inventing one.
 
 No ADK imports and no settings read: this is a pure seam the tool wrapper and any
 oracle can share. The database arrives as an executor argument — production passes
@@ -26,7 +26,7 @@ that case's ``as_of`` — so a seed can never be read past the cut it is seeding
 """
 
 import dataclasses
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 import structlog
 
@@ -72,6 +72,13 @@ class MeasuredSwc:
     theta_pct: float
     measured_at: datetime
     age_days: int
+    seed_at: datetime
+    """The bound this reading was the latest one at or before — ``min(window_start, as_of)``.
+
+    Carried so the rule is observable rather than inferred from which row came
+    back: two windows that differ only in their case's ``as_of`` must be able to
+    show *why* they were seeded differently.
+    """
 
     @property
     def is_stale(self) -> bool:
@@ -103,15 +110,46 @@ def _record_bounds(
     return first, last
 
 
+def seed_bound(window_start: date, as_of: datetime) -> datetime:
+    """``min(window_start, as_of)`` — the instant a day-1 seed may be read at or before.
+
+    The two halves fail different cases, which is why neither alone is the rule
+    (``decisions.md`` § GR2L argument surface). Bounding at ``as_of`` alone seeds
+    a retrospective window from a reading taken months after it closed; bounding
+    at the window start alone lets a forecast case, whose window opens past its
+    cut, read sensor data from after that cut. Taking the earlier of the two is
+    the only bound that holds for both.
+
+    *as_of* is an instant and is compared as one: it is converted to the naive
+    UTC the five tables store, here rather than by the caller, for
+    ``decisions.md`` § The as-of cut's reason — an aware value compared against a
+    naive column renders in the *host's* session timezone. ``window_start`` is a
+    site calendar day and contributes its own last instant, so a window opening
+    today is still seeded from a reading taken earlier today.
+    """
+    as_of_utc = as_of.astimezone(UTC).replace(tzinfo=None) if as_of.tzinfo else as_of
+    return min(datetime.combine(window_start, datetime.max.time()), as_of_utc)
+
+
 def latest_measured_swc(
     executor: ReadOnlyWarehouseQuery,
     roof_type: str,
     window_start: date,
+    *,
+    as_of: datetime,
 ) -> MeasuredSwc:
-    """Latest trustworthy %θ reading for *roof_type* at or before *window_start*.
+    """Latest trustworthy %θ reading for *roof_type* at or before ``min(window_start, as_of)``.
 
-    Reads ``swc`` through *executor*, so which rows exist is the caller's binding:
-    a case's as-of executor cannot see a reading taken after its ``as_of``.
+    :func:`seed_bound` is the rule, and it is applied **here** rather than left to
+    the executor's own bound. A case's as-of executor already hides post-cut rows,
+    so for the tool the second half is belt and braces — but an oracle imports
+    this function and may hand it an unbounded connection (``agent_architecture.md``
+    §7), and the rule has to hold for whatever executor arrives. Every seeded
+    component calls this one function for exactly that reason.
+
+    Reads ``swc`` through *executor*, so which rows exist is also the caller's
+    binding: a case's as-of executor cannot see a reading taken after its
+    ``as_of`` whatever this function asks for.
 
     Raises :class:`SwcUnavailableError` when the window opens before the sensor
     record starts, or when every candidate reading falls inside a period the
@@ -126,10 +164,10 @@ def latest_measured_swc(
         valid = ", ".join(sorted(ROOF_SWC_COLUMNS))
         raise ValueError(f"No soil-moisture column for roof_type {roof_type!r}. Valid: {valid}.")
 
-    # Readings are taken at or before the day the window opens; the seed
-    # describes the roof's state going into day 1. The failure bound is strict —
-    # a sensor unreliable *from* a date has no good reading on that date.
-    upper_bound = datetime.combine(window_start, datetime.max.time())
+    # The seed describes the roof's state going into day 1, and may not be read
+    # past the case's cut. The failure bound is separate and strict — a sensor
+    # unreliable *from* a date has no good reading on that date.
+    upper_bound = seed_bound(window_start, as_of)
     unreliable_from = _SENSOR_UNRELIABLE_FROM.get(column)
     conditions = [
         f'"{column}" IS NOT NULL',
@@ -146,10 +184,15 @@ def latest_measured_swc(
 
     if not result.rows:
         raise SwcUnavailableError(
-            _unavailable_message(executor, roof_type, column, window_start, unreliable_from)
+            _unavailable_message(
+                executor, roof_type, column, window_start, upper_bound, unreliable_from
+            )
         )
 
     measured_at, theta_pct = result.rows[0]
+    # Age is measured against the window's start, not against the seed bound: a
+    # forecast case seeded at its cut is describing a roof that will have moved on
+    # by the time the window opens, and staleness is what discloses that.
     age_days = (window_start - measured_at.date()).days
     logger.debug(
         "Seeding GR2L from measured SWC",
@@ -157,9 +200,15 @@ def latest_measured_swc(
         column=column,
         theta_pct=theta_pct,
         measured_at=measured_at.isoformat(),
+        seed_at=upper_bound.isoformat(),
         age_days=age_days,
     )
-    return MeasuredSwc(theta_pct=float(theta_pct), measured_at=measured_at, age_days=age_days)
+    return MeasuredSwc(
+        theta_pct=float(theta_pct),
+        measured_at=measured_at,
+        age_days=age_days,
+        seed_at=upper_bound,
+    )
 
 
 def _unavailable_message(
@@ -167,17 +216,24 @@ def _unavailable_message(
     roof_type: str,
     column: str,
     window_start: date,
+    seed_at: datetime,
     unreliable_from: date | None,
 ) -> str:
-    """Explain which gap left the window without a usable seed."""
+    """Explain which gap left the window without a usable seed.
+
+    The day named is *seed_at*'s, not the window's: when ``as_of`` is the binding
+    half of the rule the two differ, and a message naming a day the search never
+    reached would send the agent looking for a reading that does exist.
+    """
     first, last = _record_bounds(executor, column)
+    seed_day = seed_at.date()
     if first is None:
         return (
             f"No soil-moisture record exists for the {roof_type} roof, so its "
             f"substrate state on {window_start:%Y-%m-%d} cannot be established."
         )
     span = f"{first:%Y-%m-%d} to {last:%Y-%m-%d}"
-    if unreliable_from is not None and window_start >= unreliable_from:
+    if unreliable_from is not None and seed_day >= unreliable_from:
         return (
             f"The {roof_type} roof's soil-moisture sensor has been unreliable since "
             f"{unreliable_from:%Y-%m-%d}, and there is no earlier reading to establish "
@@ -185,6 +241,6 @@ def _unavailable_message(
         )
     return (
         f"No soil-moisture measurement exists for the {roof_type} roof at or before "
-        f"{window_start:%Y-%m-%d}, so its substrate state at the start of the window "
+        f"{seed_day:%Y-%m-%d}, so its substrate state at the start of the window "
         f"cannot be established (record: {span})."
     )

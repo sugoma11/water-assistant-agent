@@ -1075,10 +1075,43 @@ process and neither sees the other's data or clock.
   constructing a `WeatherResult` with an elevation it invented.
   `uv run ruff check .` and `uv run pytest` clean — 171 passed, same 15
   pre-existing findings; `just pins` unmoved at 8 pinned, 8 unpinned, 0 moved.
-- [ ] T047 Seed rule `seed_at = min(window_start, as_of)` in
+- [x] T047 Seed rule `seed_at = min(window_start, as_of)` in
   `swc.latest_measured_swc`, with staleness flagging beyond 7 days and the
   never-substitute-a-default rule (`not_available`, never a generic value). Every
   seeded component uses this one rule. → T024
+  Done. `swc.seed_bound(window_start, as_of)` is the rule as a named function,
+  and `latest_measured_swc` gained a **required keyword-only** `as_of` so no
+  caller can seed without stating its cut. The staleness flag and the
+  never-substitute rule were already in place from the original wrapper; what
+  this row adds is the `as_of` half of the bound.
+  **Why the rule lives here and not in the executor.** A case's `AsOfQueryExecutor`
+  already hides post-cut rows, so for the tool path the second half is belt and
+  braces. It is not redundant for the *other* caller: T110's oracles import this
+  very function and may hand it an unbounded connection, and then the executor
+  enforces nothing. Verified against the real DB with exactly that — an
+  unbounded `DuckDbQueryExecutor` — where a window opening 2026-06-01 at `as_of`
+  2026-03-10 12:00 Berlin seeds from the 11:00 UTC reading that day rather than
+  from the record's true last reading on 2026-04-24.
+  **The bound is an instant, compared as one.** `as_of` is converted to naive UTC
+  inside `seed_bound`, not by the caller — `decisions.md` § The as-of cut's
+  reason, since the `swc.timestamp` column is naive UTC and an aware value
+  compared against it renders in the host's session timezone. `window_start`
+  contributes its own last instant (`23:59:59.999999`), so a window opening today
+  is still seeded from a reading taken earlier today; the retrospective check
+  above returns the 23:30 reading with `age_days=0`.
+  **Age stays measured against the window start**, which is what `SwcSeed.age_days`
+  has always documented and what makes staleness disclose the right thing: the
+  forecast case above is seeded at its cut and reports `age_days=83`,
+  `is_stale=True` — the roof will have moved on by the time the window opens, and
+  that is precisely what the answer has to say.
+  Two smaller consequences. `MeasuredSwc` carries `seed_at`, so the rule is
+  observable rather than inferred from which row came back — two cases differing
+  only in `as_of` can show *why* they were seeded differently. And the
+  no-seed message now names the seed bound's day rather than the window's; when
+  `as_of` is the binding half the two differ, and the old wording sent the agent
+  looking for a reading that does exist.
+  `uv run ruff check .` and `uv run pytest` clean — 171 passed, same 15
+  pre-existing findings. Tests for both halves are T054's.
 - [ ] T048 `forcings={"precip": {"2026-07-22": 50.0}}` applied to the fetched rows
   before the GR2L request: sparse, keyed by the row's own field names, validated
   against the window, echoed in the response for argument checking. → T040

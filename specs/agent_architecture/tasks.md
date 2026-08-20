@@ -266,13 +266,30 @@ The blocking phase: no case is reproducible until this lands.
   instant under `TZ=UTC`, `America/New_York` and `Asia/Tokyo`; a context built on
   a mutable clock closure picks up a later date on its next query with no
   explicit rebuild call.
-- [ ] T021 `assistant/cache.py`: `ResponseCache` keyed by the sha256 of the
+- [x] T021 `assistant/cache.py`: `ResponseCache` keyed by the sha256 of the
   canonical request — URL plus sorted query parameters for Open-Meteo, `data[]`
   plus parameters for GR2L — as committed JSON under `eval/cache/`. A miss is
   filled live and recorded, **gated on the service canary matching**; a diverging
   canary and an unfillable miss are both hard failures carrying the unmatched
   request and a diff against the nearest captured request
   (`decisions.md § The response cache`). → T020
+  Done. `ResponseCache` is agnostic of which service it fronts — `key_for` hashes
+  whatever canonical-request mapping the caller builds via `sort_keys=True` JSON,
+  so "sorted query parameters" falls out of canonicalization rather than needing
+  the caller to pre-sort. `Canary(request, live_fetch)` reuses the same
+  request-keyed storage for its own committed entry: `fetch()` checks it before
+  filling any miss, records its first capture as the verification pass that
+  captured it, and raises `CanaryMismatchError` (carrying a unified diff of
+  committed vs. live) on divergence *before* the real request's `live_fetch` ever
+  runs — no entry is recorded from an unverified service. `CacheMissError` covers
+  both hard-failure shapes the row names: `allow_live=False` (replay: nothing may
+  call out) and a `live_fetch` that raises; both carry the unmatched request and,
+  when the cache holds any entries, a `difflib`-nearest committed request plus a
+  unified diff against it. Manually verified all three exit behaviours: a
+  put/fetch round trip returns identical data; a canary whose live response
+  differs from its committed one raises without writing the pending entry; a
+  disabled-live and a raising-live miss both raise `CacheMissError` naming the
+  nearest captured request.
 - [ ] T022 `WeatherClient` protocol plus the cached Archive implementation
   wrapping `fetch_daily_weather`; move the module-level `httpx.AsyncClient`
   singleton behind it. The composite that adds the station half is T043. → T021

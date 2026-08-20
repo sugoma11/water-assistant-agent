@@ -57,7 +57,7 @@ against a document that still contradicts itself.
   cross-reference and no `D1`–`D31` decision id survives anywhere, and every
   `§1.7`/`§1.8` reference is the catalog's, not this file's. Left as-is: §9 lists
   no top-level `harness/`, which is `plan.md` §3 and §10's listing.
-- [ ] T004 [P] Record the plan's verified facts in `findings.md`, dated
+- [x] T004 [P] Record the plan's verified facts in `findings.md`, dated
   2026-08-19, each with how it was verified: GEPA's `frontier_type` default and
   MLflow's non-setting of it; MLflow's `weighted_objective` default and
   `create_metric_from_scorers`' return shape; `roof_type: str` at the tool
@@ -65,6 +65,12 @@ against a document that still contradicts itself.
   reads; `litellm_extra()` forwarding no decoding parameters; the semantic layer
   carrying neither the collection-area value nor an alias map; the GR2L base URL
   resolving to a local service.
+  Eight entries landed, each re-read from source or from `.env` on 2026-08-20 and
+  dated for both readings. Two corrections to what the plan asked for: MLflow
+  ships **no** aggregation callable (`weighted_objective` is docstring text), and
+  the silent default is the *mean of the numeric scorer values* rather than an
+  error — that entry is dated 2026-08-20 alone, since the plan's version of it was
+  wrong. Line citations were re-derived rather than copied.
 - [ ] T005 [P] Add to `decisions.md`: an entry for the GEPA selection decision
   (rejected — `gepa_kwargs={"frontier_type": …}`, with the reason), fold plan
   §2.3's plot-resolution decision into `§ Plotting`, and record plan §8's Q2 and

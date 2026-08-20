@@ -66,6 +66,54 @@ unrecorded.
 `tools/weather.py`, `tools/swc.py` has existing test coverage.
 *Verified:* read from the source tree. *Date:* unrecorded.
 
+**`roof_type` is a plain `str` at the model tool's boundary.**
+`predict_green_roof_water_balance_tool(roof_type: str, …)`
+(`tools/gr2l.py:159-160`). The string is lowercased and looked up in
+`NON_MODELLABLE_ROOFS` at `:237` and in `ROOF_PRESETS` at `:242`, so scope is
+decided in code and nothing renders an enum into the function declaration: a
+caller can still *name* a roof the tool does not model.
+*Verified:* read from source. *Date:* 2026-08-19; re-read 2026-08-20.
+
+**The wetland is still modellable in code.** `NON_MODELLABLE_ROOFS` covers gravel
+aliases only — `gravel`, `gravel_roof`, `kies`, `kiesdach`, `kd`, `qgravel`
+(`tools/gr2l_client.py:39-44`); `ROOF_PRESETS` carries a reachable `wetland`
+entry (`:62-63`); `gr2l.py` routes that roof through `MM_ONLY_ROOFS`
+(`tools/swc.py:51`, read at `gr2l.py:52,78`), which answers in millimetres with
+`swc_pct=None` rather than declining; and the production `ROOT_INSTRUCTION` still
+advertises "four roof segments: wetland, …"
+(`agents/root_agent/agent.py:36`).
+*Verified:* read from source. *Date:* 2026-08-19; re-read 2026-08-20.
+
+**`weather_client` reads the wall clock in two places, and has no station path.**
+`site_now` is imported at `tools/weather_client.py:23` and read at `:151`
+(`today = today or site_now().date()`) and at `:197`, where `_choose_backend`
+compares the window start against `site_now().date()` minus
+`_FORECAST_PAST_LIMIT_DAYS = 92` (`:32`). Nothing in the module reads the
+database.
+*Verified:* read from source. *Date:* 2026-08-19; re-read 2026-08-20.
+
+**The task LLM carries no decoding pins, and no reflection model exists.**
+`settings.litellm_extra()` (`assistant/settings.py:79-86`) forwards `api_base`
+and `api_key` and nothing else — no `temperature`, no `seed`. All four model
+roles resolve to one served model (`.env:59-62`, `openai/qwen3.6-35b-a3b`), and
+no reflection model is configured anywhere, though the pin list requires it to be
+a second model distinct from the task model.
+*Verified:* read from source and `.env`. *Date:* 2026-08-19; re-read 2026-08-20.
+
+**The semantic layer states neither the collection area's value nor an alias
+map.** Every efflux column in `tenants/green_roof/sensordata.py:16-21` is
+described as "Outflow of the Lysimeter (with m² collection area) … (in liter)" —
+the area is named without its number, so the model cannot convert litres to
+millimetres from the schema it is given — and the file carries no alias map at
+all: `Kies`, `KD` and `Kiesdach` appear only inside column names.
+*Verified:* read from source. *Date:* 2026-08-19; re-read 2026-08-20.
+
+**GR2L is served locally.** `.env:56` resolves
+`WATER_ASSISTANT_GR2L_API_BASE_URL` to `http://localhost:8000/api-weinbau`, so
+every capture pass over a model-bearing family needs that service running on the
+capturing host and its canary committed.
+*Verified:* read from `.env`. *Date:* 2026-08-19; re-read 2026-08-20.
+
 **MLflow is already wired for the text2SQL experiments; its worker threads
 drop ContextVars.** MLflow is already wired for the text2SQL experiments
 (`src/experiments/`), including a `CostMeter`, and is the run-ledger sink in
@@ -125,6 +173,32 @@ traces, through `mlflow/tracing/otel/translation/google_adk.py`.
 returning a non-numeric value raises unless an explicit `aggregation`
 callable is supplied (`util.py:200-214`).
 *Verified:* read from installed mlflow source. *Date:* unrecorded.
+
+**MLflow ships no aggregation callable, and the silent default is the mean.**
+The parameter is `aggregation: AggregationFn | None = None`
+(`mlflow/genai/optimize/optimize.py:54`); the `weighted_objective` passed at
+`:182` is defined at `:172` inside that same docstring example, so it is
+illustrative text and not an export. Omitting the argument makes the objective
+the **mean of the numeric scorer values** (`optimize/util.py:200-203`), which is
+a silent reweighting rather than an error; a value that will not convert raises
+instead (`:205-214`). `create_metric_from_scorers` (`util.py:135`) returns
+`(aggregated_score, rationales, individual_scores)` (`:197,203`).
+*Verified:* read from installed mlflow 3.13.0 source. *Date:* 2026-08-20.
+
+**GEPA's Pareto front is over instances unless asked otherwise, and MLflow never
+asks.** `gepa.optimize`'s `frontier_type` defaults to `"instance"`
+(`gepa/api.py:53`, documented at `:135`, forwarded at `:398`), and
+`GepaPromptOptimizer` builds its call as `self.gepa_kwargs | {…}` without ever
+setting the key (`gepa_optimizer.py:349-359`), so candidate selection runs on the
+scalar the `aggregation` callable returns. MLflow's adapter does forward
+per-scorer values — `objective_scores=[result.individual_scores …]`
+(`gepa_optimizer.py:194,206`) — and they reach the logs and the reflective
+dataset, but the non-instance frontiers *raise* when an evaluator supplies none
+(`gepa/core/state.py:210-215`), which is the shape of the code path nothing here
+takes. A caller-supplied `frontier_type` inside `gepa_kwargs` would survive the
+merge, the literal on the right-hand side not carrying that key.
+*Verified:* read from installed mlflow 3.13.0 / gepa 0.1.1 source.
+*Date:* 2026-08-19; re-read 2026-08-20.
 
 **The text2SQL GEPA wiring is not reusable as-is.** `train_gepa.py:42,251`
 uses `GepaPromptOptimizer` for a single registered prompt with a scorer over

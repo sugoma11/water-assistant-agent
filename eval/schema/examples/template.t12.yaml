@@ -1,0 +1,72 @@
+# Worked example of template.schema.json: the catalog's T12 as its machine twin.
+# Illustrative, not the authored template — eval/templates/ is P7's deliverable.
+id: T12
+title: Retention against the manual's target
+category: E
+split: train+seen
+
+question:
+  # The gold set opens a card, so the question names the documentation: the route
+  # cue and the gold set agree, which is what questions.md 1.6 requires of both.
+  documentary_reference: true
+  en:
+    sketch: "Was the retention of the {roof} roof during {event} above the manual's target?"
+    examples:
+      - "Did the gravel roof clear the manual's retention target during the rain of 21-22 July 2025?"
+  de:
+    sketch: "Lag der Rückhalt des {roof} während {event} über dem Zielwert des Betriebshandbuchs?"
+    examples:
+      - "Hat das Kiesdach beim Regen am 21./22. Juli 2025 den Rückhalte-Zielwert aus dem Handbuch erreicht?"
+
+params:
+  roof:
+    description: >-
+      A flux-instrumented roof. Roof is a deliberately shared axis, so train and
+      test_seen may draw the same one.
+    source: roof_pool
+    disjoint_between_splits: false
+  event:
+    description: >-
+      One of the 11 qualifying rain events the pinned record carries
+      (scripts/count_t12_rain_events.py). Disjoint between train and test_seen,
+      which is what 4 + 5 <= 11 buys.
+    source: rain_events
+
+roof_pool: P1f
+
+answer:
+  kind: bool
+  balanced: true
+
+expected_tool_calls:
+  - name: lookup_reference
+    args:
+      topic: retention_target
+  - name: text_to_sql_agent
+must_not_tools: []
+gold_cards:
+  - retention_target
+argument_checks: []
+
+oracle:
+  module: eval.oracles.t12_retention
+  function: materialize
+
+data_requirements:
+  # Outflow and rain over the event window, coverage judged as a period aggregate.
+  # The event is a parameter, so the window anchors on it rather than on as_of.
+  - table: outflow
+    column: "{roof}"
+    window:
+      kind: period
+      anchor: "param:event"
+  - table: wetter
+    column: Rain
+    window:
+      kind: period
+      anchor: "param:event"
+
+notes: >-
+  Retention is (rain - outflow) / rain in mm; the lysimeter collects 1 m², so
+  litres are already millimetres and no area factor is applied. The target itself
+  is authored eval policy in rules_constants.py, not a deployed constant.

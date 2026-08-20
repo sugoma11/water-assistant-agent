@@ -1,0 +1,294 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://water-assistant-agent.local/eval/schema/case.schema.json",
+  "title": "Evaluation case",
+  "description": "One element of eval/cases/{train,test_seen,test_unseen}.json. The two-channel envelope is dictated by MLflow's optimize_prompts, not chosen: `inputs` carries everything predict_fn needs and `expectations` everything a scorer needs, and there is no third place to put anything (agent_architecture.md 6.1, findings.md 'Optimizer internals'). Cases are emitted by the generator and never hand-edited.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["inputs", "expectations"],
+  "properties": {
+    "inputs": { "$ref": "#/$defs/inputs" },
+    "expectations": { "$ref": "#/$defs/expectations" }
+  },
+
+  "$defs": {
+    "tool_name": {
+      "description": "The registered names a root-agent trajectory can contain (agent_architecture.md 0). `query_database_tool` is the sub-agent's inner tool and never appears here.",
+      "enum": [
+        "text_to_sql_agent",
+        "get_weather_forecast_tool",
+        "predict_green_roof_water_balance_tool",
+        "lookup_reference",
+        "calc_irrigation",
+        "plot_timeseries"
+      ]
+    },
+
+    "card_id": {
+      "description": "The eleven reference cards, identical to lookup_reference's `topic` enum (agent_architecture.md 3.2).",
+      "enum": [
+        "irrigation_rule",
+        "irrigation_threshold",
+        "substrate_hydraulics",
+        "irrigation_dose",
+        "heatwave_definition",
+        "retention_target",
+        "roof_reference_ranges",
+        "data_freshness",
+        "roof_directory",
+        "sensor_reference",
+        "et0_method"
+      ]
+    },
+
+    "unit": {
+      "description": "The answer contract's unit vocabulary. `L` and `mm` are one quantity on the lysimeter columns and `%` and `%θ` are one unit; nothing else converts (agent_architecture.md 7).",
+      "enum": ["L", "mm", "°C", "pp", "%θ", "%", "count", null]
+    },
+
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question", "as_of", "case_id", "template_id", "params"],
+      "properties": {
+        "question": {
+          "description": "The paraphrase the agent is shown, EN or DE. Roofs are named in the agent's vocabulary or in alias-covered natural language, never by raw column name.",
+          "type": "string",
+          "minLength": 1
+        },
+        "as_of": {
+          "description": "The scenario clock, an instant in the site's own offset-bearing form. A numeric offset is required and `Z` is not accepted: the stamp must name the Berlin day the case is about, and the conversion to UTC belongs to connect_asof, never to the caller (decisions.md 'The as-of cut').",
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$"
+        },
+        "case_id": {
+          "description": "Template id plus a zero-padded instance number, e.g. T09-0142. Cases are sorted by this field in the emitted array.",
+          "type": "string",
+          "pattern": "^T[0-9]{2}[a-z]?-[0-9]{4}$"
+        },
+        "template_id": {
+          "description": "The catalog template this case instantiates. The unit of analysis for every aggregate and the resampling unit of the paired bootstrap (agent_architecture.md 7).",
+          "type": "string",
+          "pattern": "^T[0-9]{2}[a-z]?$"
+        },
+        "params": {
+          "description": "The sampled parameter values, one key per parameter the template declares. Carried so a case is reproducible from its template and so per-param disjointness between train and test_seen is checkable after the fact.",
+          "type": "object"
+        },
+        "language": {
+          "description": "Reported as a stratum: DE routing accuracy is a measured quantity, not sampling noise (questions.md 1.7).",
+          "enum": ["en", "de"]
+        }
+      }
+    },
+
+    "expectations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "answer",
+        "unit",
+        "answer_metric",
+        "expected_tool_calls",
+        "must_not_tools",
+        "gold_cards",
+        "argument_checks",
+        "pins"
+      ],
+      "properties": {
+        "status": {
+          "description": "The agent's contract status, two-valued and NOT the tool-level outcome enum of section 3. A tool's `not_available` is the upstream cause that can make this correct, not the thing measured.",
+          "enum": ["answered", "not_available"]
+        },
+        "answer": {
+          "description": "The materialized oracle answer: a boolean, a number, an ISO date, or null. Null covers an abstention and a plot deliverable alike.",
+          "oneOf": [
+            { "type": "boolean" },
+            { "type": "number" },
+            { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+            { "type": "null" }
+          ]
+        },
+        "unit": { "$ref": "#/$defs/unit" },
+        "answer_metric": {
+          "description": "`skipped` marks the answer metric legitimately undefined for this case; the aggregation callable turns it into a skip with coverage reported, never into a 0 (agent_architecture.md 7).",
+          "enum": ["scored", "skipped"]
+        },
+        "tolerance": { "$ref": "#/$defs/tolerance" },
+        "expected_tool_calls": {
+          "description": "The gold trajectory. Keeps ADK's own key name, which keeps MLflow's ADK ToolTrajectory scorer available as a cross-check. Calls beyond this set cost nothing.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/expected_tool_call" }
+        },
+        "must_not_tools": {
+          "description": "The listed distractors, and the only route errors that score. An unlisted call is free (decisions.md 'Trajectory scoring and routing probes').",
+          "type": "array",
+          "items": { "$ref": "#/$defs/tool_name" },
+          "uniqueItems": true
+        },
+        "gold_cards": {
+          "description": "Cards the run should have retrieved, scored as recall over the union of every lookup_reference call. Non-empty implies a lookup call in the gold trajectory — see the validator below.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/card_id" },
+          "uniqueItems": true
+        },
+        "argument_checks": {
+          "description": "Declarative conjuncts over tool ARGUMENTS, so the scorer never branches per template and never reads a tool result.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/argument_check" }
+        },
+        "pins": { "$ref": "#/$defs/pins" }
+      },
+
+      "allOf": [
+        {
+          "title": "Validator: `answer_metric: skipped` implies `answer: null`",
+          "if": {
+            "properties": { "answer_metric": { "const": "skipped" } },
+            "required": ["answer_metric"]
+          },
+          "then": { "properties": { "answer": { "type": "null" } } }
+        },
+        {
+          "title": "Validator: non-empty `gold_cards` implies `lookup_reference` in `expected_tool_calls`",
+          "if": {
+            "properties": { "gold_cards": { "minItems": 1 } },
+            "required": ["gold_cards"]
+          },
+          "then": {
+            "properties": {
+              "expected_tool_calls": {
+                "contains": {
+                  "properties": { "name": { "const": "lookup_reference" } },
+                  "required": ["name"]
+                }
+              }
+            }
+          }
+        },
+        {
+          "title": "A numeric answer carries the tolerance it is compared under",
+          "if": {
+            "properties": { "answer": { "type": "number" } },
+            "required": ["answer"]
+          },
+          "then": { "required": ["tolerance"] }
+        }
+      ]
+    },
+
+    "tolerance": {
+      "description": "How the answer metric compares. `exact` takes no value; `abs` and `rel` require one (`rel` as a fraction, so 2 % is 0.02).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["exact", "abs", "rel"] },
+        "value": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "enum": ["abs", "rel"] } }, "required": ["kind"] },
+          "then": { "required": ["value"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "exact" } }, "required": ["kind"] },
+          "then": { "not": { "required": ["value"] } }
+        }
+      ]
+    },
+
+    "expected_tool_call": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "$ref": "#/$defs/tool_name" },
+        "args": {
+          "description": "Illustrative arguments. Scoring reads `argument_checks`, not this object: trajectory is binary over tool names plus those checks, never an argument-exact match.",
+          "type": "object"
+        }
+      }
+    },
+
+    "argument_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "path", "op"],
+      "properties": {
+        "tool": { "$ref": "#/$defs/tool_name" },
+        "path": {
+          "description": "Dotted path into one call's argument object, e.g. `forcings.precip.2026-03-15` or `series.0.source`. It addresses arguments only; there is no path into a tool result.",
+          "type": "string",
+          "minLength": 1
+        },
+        "op": {
+          "description": "`eq` exact match; `set_eq` a set match, for a series selection whose order carries no meaning; `present` a candidate-chosen value that must merely exist and be plausible.",
+          "enum": ["eq", "set_eq", "present"]
+        },
+        "value": {
+          "description": "The expected value for `eq` / `set_eq`. Absent for `present`."
+        },
+        "resolve": {
+          "description": "`window` normalizes the agent's argument through the same layer-1 window resolver the tool uses, against inputs.as_of, before comparing — so a candidate that wrote a relative window scores identically to one that wrote the dates. This is a property of the value, which is why it is a flag rather than a fourth `op` (decisions.md 'Plotting').",
+          "enum": ["none", "window"],
+          "default": "none"
+        },
+        "plausible": {
+          "description": "Bounds for `present`: the value must exist and fall inside them. Carries the counterfactual families, whose arguments are scored on presence and plausibility and never on the tool result.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "min": { "type": "number" },
+            "max": { "type": "number" }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "op": { "enum": ["eq", "set_eq"] } }, "required": ["op"] },
+          "then": { "required": ["value"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "present" } }, "required": ["op"] },
+          "then": { "not": { "required": ["value"] } }
+        },
+        {
+          "if": { "required": ["plausible"] },
+          "then": { "properties": { "op": { "const": "present" } } }
+        },
+        {
+          "if": { "properties": { "resolve": { "const": "window" } }, "required": ["resolve"] },
+          "then": { "properties": { "op": { "enum": ["eq", "set_eq"] } } }
+        }
+      ]
+    },
+
+    "pins": {
+      "description": "The surface this answer was materialized against, stamped per case (agent_architecture.md 6.1). A case whose pins no longer match the run's is not comparable to one that does.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["duckdb_sha256"],
+      "properties": {
+        "duckdb_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "gr2l_canary": {
+          "description": "The committed GR2L request/response canary hash, present exactly where the oracle called the service.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "station_derivation": {
+          "description": "Version of the station derivation — the per-field aggregation, the day boundary, the sentinel filter — which the database hash does not cover.",
+          "type": "string",
+          "minLength": 1
+        },
+        "weather_source": {
+          "description": "The provenance each weather window resolved to while materializing the answer. Empty where no weather was read; two entries where the case made two calls that resolved differently.",
+          "type": "array",
+          "items": { "enum": ["station", "archive"] },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

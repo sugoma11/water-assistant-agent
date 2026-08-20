@@ -135,7 +135,7 @@ against a document that still contradicts itself.
   drops "per the standard rule" (same defect, same gold set — fixed with T07 or
   the convention breaks on its neighbour), T16b drops "does the standard rule say
   to irrigate", and T16a's reference becomes explicit. §4 is now empty and says so.
-- [ ] T010 `eval/schema/case.schema.json` + `eval/schema/template.schema.json`,
+- [x] T010 `eval/schema/case.schema.json` + `eval/schema/template.schema.json`,
   plus the documented projection from template YAML to case JSON. Envelope is
   architecture §6.1 verbatim. Validators: every tool name is a registered name;
   `answer_metric: "skipped"` implies `answer: null`; non-empty `gold_cards` implies
@@ -144,6 +144,21 @@ against a document that still contradicts itself.
   through the layer-1 resolver before comparison and the check never reads a tool
   result. **First writer of ground truth — nothing may emit a case before this
   lands.** → T006, T009
+  Both schemas (draft 2020-12), the projection in `eval/schema/README.md`, a
+  worked template/case pair under `eval/schema/examples/`, and
+  `tests/eval/test_schemas.py` — which exercises each validator twice, once on the
+  example that must pass and once on the mutation that must fail, so no validator
+  can decay into a comment. The tool and card vocabularies live once, in the case
+  schema, and the template schema `$ref`s them. Beyond the three required
+  validators: `as_of` must carry a numeric offset (`Z` is rejected — the stamp has
+  to name the Berlin day), a numeric answer must carry its tolerance, `present`
+  checks take no `value` and may carry `plausible: {min, max}`, and
+  `resolve: "window"` is the plan §2.3 flag, admitted on comparing ops only. The
+  projection's own rule, stated because §6.1 only implies it:
+  **`answer_metric` is `skipped` if and only if `answer` is null** — the plot
+  deliverable and the abstention alike. One constraint is left to the generator
+  because a schema cannot compare sibling arrays: a gold tool may not also be a
+  must-not.
 - [ ] T011 Standing task, closed at the freeze gate: keep `gr2l_tool.md`,
   `weather_tool.md` and `irrigation_tool.md` in step with P2 and P3 as behaviour
   lands — the seed rule, typed outcomes, window resolution, the series cap, the

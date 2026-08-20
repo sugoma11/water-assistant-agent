@@ -1,0 +1,42 @@
+{
+  "inputs": {
+    "question": "Did the gravel roof clear the manual's retention target during the rain of 21-22 July 2025?",
+    "as_of": "2025-08-14T08:00:00+02:00",
+    "case_id": "T12-0001",
+    "template_id": "T12",
+    "params": {
+      "roof": "gravel",
+      "event": "2025-07-21..2025-07-22"
+    },
+    "language": "en"
+  },
+  "expectations": {
+    "status": "answered",
+    "answer": false,
+    "unit": null,
+    "answer_metric": "scored",
+    "tolerance": {
+      "kind": "exact"
+    },
+    "expected_tool_calls": [
+      {
+        "name": "lookup_reference",
+        "args": {
+          "topic": "retention_target"
+        }
+      },
+      {
+        "name": "text_to_sql_agent"
+      }
+    ],
+    "must_not_tools": [],
+    "gold_cards": [
+      "retention_target"
+    ],
+    "argument_checks": [],
+    "pins": {
+      "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+      "weather_source": []
+    }
+  }
+}

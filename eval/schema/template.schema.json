@@ -1,0 +1,231 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://water-assistant-agent.local/eval/schema/template.schema.json",
+  "title": "Question template",
+  "description": "The machine twin of one catalog entry in questions.md 2 — one file per entry under eval/templates/. It carries what generation needs (parameters, pools, validity requirements) and what scoring needs (the A:/Traj:/Must-not:/Cards: fields and the tolerance). The scoring fields are COPIED into every case at generation, never referenced across files, so a scorer reads one record and never opens a second (agent_architecture.md 6.1). The tool and card vocabularies live once, in case.schema.json, and are referenced from here. One constraint is deliberately not expressed below: a gold tool may not also appear in must_not_tools, which compares two sibling arrays and so belongs to the generator's own assertions rather than to a schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "title",
+    "category",
+    "split",
+    "question",
+    "answer",
+    "expected_tool_calls",
+    "must_not_tools",
+    "gold_cards",
+    "oracle"
+  ],
+  "properties": {
+    "id": {
+      "description": "The catalog id, e.g. T09 or T16a. One template file per entry, a/b variants included.",
+      "type": "string",
+      "pattern": "^T[0-9]{2}[a-z]?$"
+    },
+    "title": { "type": "string", "minLength": 1 },
+    "category": {
+      "description": "The catalog's family letter: A pure SQL, B pure lookup, C pure weather, D model chains, E hybrid, F given-values controls, G counterfactuals, H presentation, I modelling availability.",
+      "enum": ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
+    },
+    "split": {
+      "description": "`train+seen` is carried by train and test_seen alike; `unseen` is holdout, and is the b-side of a train-side pair moving exactly one named axis.",
+      "enum": ["train+seen", "unseen"]
+    },
+
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["en", "documentary_reference"],
+      "properties": {
+        "en": { "$ref": "#/$defs/surface" },
+        "de": { "$ref": "#/$defs/surface" },
+        "documentary_reference": {
+          "description": "Whether the question names the documentation, or asks what a documented value is. This is questions.md 1.6's route cue, and it is machine-checkable on purpose: paraphrase generation may neither add nor remove such a reference, and a template whose flag disagrees with its gold set is the T07 / T16a / T16b defect returning.",
+          "type": "boolean"
+        }
+      }
+    },
+
+    "params": {
+      "description": "One entry per `{placeholder}` the question sketch carries. Sampled values are written into the case's inputs.params, and the per-param disjointness constraint is enforced in generation over these keys.",
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/param" }
+    },
+
+    "roof_pool": {
+      "description": "questions.md 1.8's pools. P1 the full roster, P1f its flux-instrumented subset, P2 the substrate roofs both water balances cover, `non_modellable` the two roofs family I samples from outside the pools. Absent where the template names no roof.",
+      "enum": ["P1", "P1f", "P2", "non_modellable"]
+    },
+
+    "answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "description": "`not_available` is an abstention case, whose contract status is not_available and whose answer is null. `artifact` is family H's plot deliverable: status answered, answer null. Both project to answer_metric `skipped`.",
+          "enum": ["bool", "number", "date", "not_available", "artifact"]
+        },
+        "unit": { "$ref": "case.schema.json#/$defs/unit" },
+        "tolerance": { "$ref": "case.schema.json#/$defs/tolerance" },
+        "balanced": {
+          "description": "Rejection-sample until the two classes are ~50/50 within each split. Meaningful for `bool` only, and it is why train's m is an even 4.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "number" } }, "required": ["kind"] },
+          "then": { "required": ["unit", "tolerance"] }
+        },
+        {
+          "if": { "properties": { "balanced": { "const": true } }, "required": ["balanced"] },
+          "then": { "properties": { "kind": { "const": "bool" } } }
+        }
+      ]
+    },
+
+    "expected_tool_calls": {
+      "description": "The gold trajectory, copied into every case. An empty array is meaningful: T18b's abstention has no tool signal at all.",
+      "type": "array",
+      "items": { "$ref": "case.schema.json#/$defs/expected_tool_call" }
+    },
+    "alternative_expected_tool_calls": {
+      "description": "Additional gold trajectories, any one of which satisfies the template. Used only where two routes return the identical number and the docstring recommends either (T25).",
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": { "$ref": "case.schema.json#/$defs/expected_tool_call" }
+      }
+    },
+    "must_not_tools": {
+      "type": "array",
+      "items": { "$ref": "case.schema.json#/$defs/tool_name" },
+      "uniqueItems": true
+    },
+    "gold_cards": {
+      "type": "array",
+      "items": { "$ref": "case.schema.json#/$defs/card_id" },
+      "uniqueItems": true
+    },
+    "argument_checks": {
+      "description": "As in a case, except that a `value` may carry `{param}` placeholders, substituted at generation from the sampled parameters.",
+      "type": "array",
+      "items": { "$ref": "case.schema.json#/$defs/argument_check" }
+    },
+
+    "oracle": {
+      "description": "The function that materializes the answer. It imports the tool chain's own code, so oracle and tool cannot diverge.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["module", "function"],
+      "properties": {
+        "module": { "type": "string", "minLength": 1 },
+        "function": { "type": "string", "minLength": 1 }
+      }
+    },
+
+    "data_requirements": {
+      "description": "The (table, column, window) set questions.md 1.6's three validity predicates are evaluated over — through the as-of view, and anchored at seed_at for seed-bearing families.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/data_requirement" }
+    },
+
+    "notes": {
+      "description": "The catalog's Note: field — why the template exists. Prose, not read by any scorer.",
+      "type": "string"
+    }
+  },
+
+  "allOf": [
+    {
+      "title": "Validator: non-empty `gold_cards` implies `lookup_reference` in `expected_tool_calls`",
+      "if": { "properties": { "gold_cards": { "minItems": 1 } }, "required": ["gold_cards"] },
+      "then": {
+        "properties": {
+          "expected_tool_calls": {
+            "contains": {
+              "properties": { "name": { "const": "lookup_reference" } },
+              "required": ["name"]
+            }
+          }
+        }
+      }
+    }
+  ],
+
+  "$defs": {
+    "surface": {
+      "description": "One language's question surface. `sketch` carries `{param}` placeholders and is what P7's paraphrase generation rewrites; `examples` are hand-written illustrations, not a pool.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sketch"],
+      "properties": {
+        "sketch": { "type": "string", "minLength": 1 },
+        "examples": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "param": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["description"],
+      "properties": {
+        "description": { "type": "string", "minLength": 1 },
+        "pool": {
+          "description": "An explicit value pool. Mutually exclusive with `source`.",
+          "type": "array",
+          "minItems": 1
+        },
+        "source": {
+          "description": "A named derivation the generator resolves against the pinned record — e.g. `rain_events` (scripts/count_t12_rain_events.py's qualifying set), `as_of_band`, `roof_pool`. Mutually exclusive with `pool`.",
+          "type": "string",
+          "minLength": 1
+        },
+        "disjoint_between_splits": {
+          "description": "train ∩ test_seen = ∅ on this parameter's sampled values. True by default and false only where the axis is deliberately shared, as roof is.",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "oneOf": [{ "required": ["pool"] }, { "required": ["source"] }]
+    },
+
+    "data_requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["table", "window"],
+      "properties": {
+        "table": { "enum": ["outflow", "radiation", "swc", "tsoil", "wetter"] },
+        "column": {
+          "description": "A column name, or the literal `{roof}` meaning that roof's column in this table, read off roofs.py — which is where a roof's absence from a table is recorded, and is why P1f exists.",
+          "type": "string",
+          "minLength": 1
+        },
+        "state_column": {
+          "description": "Whether the frozenness predicate applies. A flux resting at zero is reporting the truth, so the run test is for state columns only, and never for the gravel roof's.",
+          "type": "boolean",
+          "default": false
+        },
+        "window": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "anchor"],
+          "properties": {
+            "kind": {
+              "description": "`point` needs its day at 44 of 48 rows; `period` needs 95 % of expected rows with no gap over 24 h.",
+              "enum": ["point", "period"]
+            },
+            "anchor": {
+              "description": "What the window is measured from: the case's `as_of`, the seed rule's `seed_at = min(window_start, as_of)`, or a sampled parameter named `param:<name>`.",
+              "type": "string",
+              "pattern": "^(as_of|seed_at|param:[a-z_]+)$"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -18,7 +18,7 @@
 >
 > Open-Meteo is a free HTTP API, **no API key required**.
 >
-> 🔜 **Planned, not yet built — a second source (architecture §3.3).** Windows the
+> 🔜 **Planned, not yet built — a third source (architecture D26).** Windows the
 > site's own station record covers entirely (`wetter` in `data/water.duckdb`,
 > 2025-01-01 → 2026-04-27) will be served from the **DB**, not from Open-Meteo:
 > real instruments at the roofs' own height instead of a ~31 km ERA5 cell, and a
@@ -223,7 +223,7 @@ schema documents the same two conversions in its field descriptions
    *(Do **not** request `ms`; GR2L would divide an m/s value by 3.6 and under-read
    wind by 3.6×. The same trap sits on the `wetter` table's `windspeed` column,
    documented in m/s — it would need ×3.6 before reaching GR2L. Nothing feeds it
-   there today: `meteo_source="db"` is dropped — see `decisions.md` § Weather sources.)*
+   there today: `meteo_source="db"` is dropped, architecture D12.)*
    Physical caveat (not a unit error): Open-Meteo wind is at **10 m**; FAO
    Penman-Monteith assumes **2 m** and GR2L applies no height correction — a small
    positive bias in ET.
@@ -273,8 +273,8 @@ Real response confirmed:
   entirely null**. So a 65–92-day-back window is accepted by the API, routed to
   Forecast by `_choose_backend` (whose cutoff is 92), and then fails in
   `_transpose` with "returned no data". Archive covers those days (verified
-  complete through today). This is now moot: the Forecast backend is retired and no
-  window routes to it (architecture §3.3).
+  complete through today), so the fix is to lower the routing cutoff — tracked on
+  T030/T031, not done here.
 - **Backends disagree on the same past day.** Forecast serves model output, Archive
   reanalysis. At the site, 2026-06-21 precipitation: **0.00 mm** (Forecast) vs
   **2.50 mm** (Archive); 06-20 mean temp 24.4 vs 26.0 °C. For a water balance that
@@ -287,12 +287,12 @@ Real response confirmed:
   (lat, lon, date-range).
 - Source docs: <https://open-meteo.com/en/docs>
 
-## Station source (planned)
+## Station source (planned, D26)
 
-> 🔜 Not yet built (see `plan.md`). This section is the **mechanism spec**
-> for the station source; the evaluation properties that motivate it — fully
+> 🔜 Not yet built (T031a–d, plan T003). This section is the **mechanism spec**
+> for the third source; the evaluation properties that motivate it — fully
 > offline replay, structural as-of leakage closure, single provenance per
-> window — are argued in `agent_architecture.md` §3.3 and `decisions.md` § Weather sources.
+> window — are argued in `agent_architecture.md` §3.3 and D26.
 
 Windows the site's own record covers **entirely** are served from the `wetter`
 table in `data/water.duckdb` (record span **2025-01-01 → 2026-04-27**) instead
@@ -326,7 +326,7 @@ the model is validated against (T19).
 ### Measured data-quality limits — served uncorrected
 
 Three properties of the station record are scope limits, stated in the thesis
-rather than corrected (`decisions.md` § Weather sources): no calibration factor, no per-day source
+rather than corrected (D26): no calibration factor, no per-day source
 switching, no gap filling — the source serves what the instrument recorded.
 
 - **`tn` is an estimate.** Reconstructed from the coldest interval's mean and
@@ -347,4 +347,4 @@ switching, no gap filling — the source serves what the instrument recorded.
   exactly 0.00 against 6.9 / 9.2 mm at −2 °C), and 54 ERA5-only wet days
   (153 mm) that look like ERA5's known spurious drizzle. Neither source is
   ground truth; the station is chosen for **consistency with the lysimeters**,
-  which sat under that gauge — not for accuracy (`decisions.md` § Weather sources).
+  which sat under that gauge — not for accuracy (D26).

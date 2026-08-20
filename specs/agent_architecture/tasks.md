@@ -384,9 +384,22 @@ The blocking phase: no case is reproducible until this lands.
   monkeypatches `_validated_execute`, so its two fakes gained the matching
   parameters; nothing else about that test changed. `uv run ruff check .` and
   `uv run pytest` clean — 103 passed, same 15 pre-existing findings.
-- [ ] T026 [P] `DuckDbExplainValidator(executor)`: take the executor as a
+- [x] T026 [P] `DuckDbExplainValidator(executor)`: take the executor as a
   constructor argument instead of importing the warehouse singleton
   (`dry_run.py:13`), so the sub-agent has exactly one DB seam. → T020
+  Done. `dry_run.py` no longer imports `tools.warehouse` at all — the `__init__`
+  takes a `ReadOnlyWarehouseQuery` and `avalidate` runs `EXPLAIN` through it.
+  Worth stating why this seam is not cosmetic: `EXPLAIN` binds identifiers
+  against a *catalog*, so a validator left on the unbounded connection would pass
+  SQL the case's own executor is about to run against the as-of views — the two
+  connections agree on names today, but the moment they stop agreeing the
+  pipeline would hand the querier SQL it has already declared valid. The
+  constructor argument is required, with no default, for the same reason T024
+  keeps none: the failure mode `decisions.md` § The construction seam names is a
+  silent fallback that still answers. The only production construction site,
+  `agent.py`'s module-level `_PIPELINE`, now passes T025's `SETTINGS_EXECUTOR`,
+  which keeps it lazy — T027 replaces that line with the per-context build.
+  `uv run ruff check .` and `uv run pytest` clean — 103 passed.
 - [ ] T027 `build_text_to_sql_agent(executor, clock, description=None)`: rebuild
   the pipeline with a context-bound validator and querier and a fresh `Agent` with
   **byte-identical** frozen text; the module singleton becomes the production

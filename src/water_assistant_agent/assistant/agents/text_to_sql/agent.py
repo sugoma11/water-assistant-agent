@@ -28,7 +28,10 @@ from water_assistant_agent.assistant.prompts.agent_instructions import (
     build_agent_instruction,
 )
 from water_assistant_agent.assistant.settings import get_settings
-from water_assistant_agent.assistant.tools.warehouse import query_database_tool
+from water_assistant_agent.assistant.tools.warehouse import (
+    SETTINGS_EXECUTOR,
+    query_database_tool,
+)
 from water_assistant_agent.tenants.green_roof.sensordata import table_schema_dict
 
 logger = structlog.get_logger(__name__)
@@ -38,7 +41,7 @@ On failure: {"status": "error", "error_details": <string>}"""
 
 _PIPELINE = TextToSqlPipeline(
     transpiler=DuckDbSqlTranspiler(sqlglot_schema=build_sqlglot_schema(table_schema_dict)),
-    validator=DuckDbExplainValidator(),
+    validator=DuckDbExplainValidator(SETTINGS_EXECUTOR),
     transpile_fixer=LlmSqlFixer(),
     validate_fixer=LlmSqlFixer(),
     max_retries=get_settings().max_sql_retries,

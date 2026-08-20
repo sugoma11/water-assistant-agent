@@ -37,3 +37,18 @@ SITE_TIMEZONE = "Europe/Berlin"
 def site_now() -> datetime:
     """Current timezone-aware datetime at the research facility."""
     return datetime.now(ZoneInfo(SITE_TIMEZONE))
+
+
+def site_day_expr(column: str = "timestamp") -> str:
+    """SQL turning a **naive UTC** timestamp *column* into the site's calendar day.
+
+    A day is a ``SITE_TIMEZONE`` calendar day everywhere — the station
+    derivation, the semantic layer, every oracle, the plot tool's aggregation —
+    and the five tables hold naive UTC, so a conversion sits at every grouping
+    site. It lives here, in one expression, for the reason ``decisions.md``
+    § The day boundary gives: three call sites that each convert correctly today
+    drift independently tomorrow. Grouping the raw column instead moves rain
+    between days by one to two hours' worth, which is enough to move a peak-day
+    argmax.
+    """
+    return f"(({column}) AT TIME ZONE 'UTC' AT TIME ZONE '{SITE_TIMEZONE}')::DATE"

@@ -875,11 +875,57 @@ process and neither sees the other's data or clock.
   one line.
   `uv run ruff check .` and `uv run pytest` clean — 141 passed, same 15
   pre-existing findings.
-- [ ] T042 `StationWeatherSource` in the pure layer: derive `DailyWeatherRow`s
+- [x] T042 `StationWeatherSource` in the pure layer: derive `DailyWeatherRow`s
   from `wetter` per `weather_tool.md` § Station source — per-field aggregation, the
   `tn` estimator, the `−7999` sentinel filter, UTC→Europe/Berlin **before**
   grouping, and complete days only. Served uncorrected: no calibration, no gap
   filling, no per-day fallback. → T020
+  Done, in `tools/weather_station.py`. Two methods, both taking their data from
+  the executor handed in at construction and nothing else: `daily_rows(start,
+  end)` derives the window's complete days, `record_bounds()` reports the first
+  and last complete day the *executor* can see. Splitting them that way keeps
+  the coverage decision out of this class — T043's composite owns routing, this
+  owns arithmetic. Values are served unrounded: the derivation is pinned, so a
+  rounding step would be part of the pin, and `weather_tool.md` specifies none.
+  **The day boundary is one expression, not one per site.** `site.py` gains
+  `site_day_expr(column)`, the naive-UTC → `SITE_TIMEZONE` day conversion
+  `decisions.md` § The day boundary requires be written once; the semantic
+  layer, the plot tool and the oracles read the same helper as they land. Both
+  queries here group on it, never on the raw column — the two groupings differ
+  on 106 of the record's 482 days by up to 6.664 mm of rain, and 2025-04-20's
+  22:00–23:30 UTC rain (6.664 mm) lands in Berlin's 2025-04-21, where the
+  lysimeters recorded it.
+  **The sentinel filter is a sign test, not an equality test, and this is a
+  finding.** `findings.md` names `−7999`, and 69 rows carry it exactly — but the
+  half-hourly values are themselves means of finer samples, so a half-hour that
+  mixed sentinel and real readings lands anywhere between: the record holds
+  `−7954.5`, `−3365.9`, `−54.99` and eleven others, 88 negative rows in all
+  across 10 UTC days (18 of 48 on 2025-08-28). An equality filter would leave 19
+  of them in, and one `−3365.9` among 48 samples puts that day's mean wind near
+  `−70` m/s — a plausible-looking number in a required field. Wind speed cannot
+  be negative, so `>= 0` is both the correct rule and a strict superset of the
+  sentinel; it cannot discard a real reading. Counting only samples below
+  `−1000` reproduces the "9 days" figure in the packet brief; the tenth day
+  (2025-09-25) carries three contaminated half-hours in the hundreds.
+  **Completeness is exactly 48 rows**, which under local-day grouping also drops
+  the fall-back Sunday (2025-10-26 carries 50 half-hours, a genuine 25-hour
+  day). A 25-hour day is as far from the specified count as a 23-hour one, and
+  the alternative — a DST-aware expected count — is machinery no document asks
+  for; the consequence is conservative, since an unserved day sends its window
+  to the Archive whole rather than mixing provenance. One further exclusion the
+  spec does not name but the sentinel filter creates: a day whose every wind
+  sample is a sentinel has no `w`, and `DailyWeatherRow.w` is required, so the
+  `HAVING` drops it. No day in the record hits it (the worst is 18 of 48), but a
+  null in a required field is not a failure worth discovering at validation.
+  Under this rule the record's complete days run **2025-01-02 → 2026-04-26**,
+  477 of them; the two edge days are partial in local time (the record starts
+  2025-01-01 00:00 UTC = 01:00 Berlin and ends 2026-04-27 09:00 UTC).
+  Served uncorrected, as the row requires: no calibration factor for the ~26 %
+  shortwave offset, though the pyranometer overlap makes it computable — which
+  is precisely `decisions.md` § No fitted correction between the instrument and
+  the oracle's case — no gap filling, and no per-day fallback.
+  `uv run ruff check .` and `uv run pytest` clean — 141 passed, same 15
+  pre-existing findings. Tests for the derivation are T055's.
 - [ ] T043 Composite `WeatherClient` at layer 2, constructed with the case's
   as-of executor: the station serves when the record covers the **whole** window,
   tested through the as-of view; everything else, including every window reaching

@@ -8,12 +8,19 @@ executor and one clock. Production builds the module-level default from the same
 factory (settings executor, site clock); the harness builds one per case from
 ``ctx.db`` and the case's frozen clock, so the sub-agent reads the as-of views
 and nothing else (``agent_architecture.md`` §3.1, §5).
+
+The sqlglot pass is the clock's second half: the views bound rows, not SQL time
+functions, so every ``CURRENT_DATE`` / ``now()`` node is rewritten to an ``as_of``
+literal and the statement is **re-emitted from the rewritten tree**. Executing the
+original string — what this module did while the pass existed only to guard
+read-only — would make the rewrite a silent no-op.
 """
 
 import asyncio
 import functools
 import json
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import sqlglot
@@ -41,6 +48,23 @@ _ERROR_DETAILS = "error_details"
 _MAX_QUERY_ROWS = 100
 _READ_ONLY_QUERY_MSG = "Read-only mode only supports SELECT query expressions."
 _TRUNCATED = "result_is_likely_truncated"
+
+# DuckDB's wall-clock readers that sqlglot gives a node of its own; the rest of
+# the `now()` family parses as `Anonymous` and is matched by name below.
+_TIMESTAMP_NODES = (
+    sqlglot.exp.CurrentTimestamp,
+    sqlglot.exp.CurrentDatetime,
+    sqlglot.exp.Localtimestamp,
+)
+_NOW_FUNCTION_NAMES = frozenset(
+    {
+        "now",
+        "get_current_timestamp",
+        "transaction_timestamp",
+        "current_localtimestamp",
+        "current_localtime",
+    }
+)
 
 # Session-state key under which a successful query stashes its executed result so
 # the ``TextToSqlAgentTool`` wrapper can merge it into the tool result surfaced to
@@ -166,12 +190,64 @@ def make_query_database_tool(
     return query_database_tool
 
 
+def _pin_clock_functions(
+    expression: "sqlglot.exp.Expression",
+    as_of: datetime,
+) -> "sqlglot.exp.Expression":
+    """Replace every wall-clock node in *expression* with an ``as_of`` literal.
+
+    The as-of views bound *rows*, not SQL time functions, so a surviving
+    ``CURRENT_DATE`` would read the host's clock and answer a question about a
+    day the case never reached (``agent_architecture.md`` §5). Rewriting, not
+    rejecting: the sub-agent that emits them is dateless by design — its own
+    instruction tells it to resolve relative phrases against ``CURRENT_DATE`` —
+    so rejection would penalize behaviour no candidate can optimize
+    (``decisions.md`` § The construction seam).
+
+    Each node is pinned in the type it has. A date node becomes the **site-local**
+    calendar date of ``as_of``: that is the day the case is about and the day
+    every oracle groups on (``decisions.md`` § The day boundary), and taking the
+    UTC date instead would move "today" by a whole day for an ``as_of`` in the
+    small hours. A timestamp or time node becomes the same instant converted to
+    **UTC**, the frame the columns' naive timestamps are already in — the same
+    conversion, for the same reason, that ``connect_asof`` applies to the bound
+    (``decisions.md`` § The as-of cut).
+    """
+    as_of_utc = as_of.astimezone(UTC).replace(tzinfo=None)
+    timestamp_literal = as_of_utc.strftime("%Y-%m-%d %H:%M:%S")
+
+    def _pin(node: "sqlglot.exp.Expression") -> "sqlglot.exp.Expression":
+        if isinstance(node, sqlglot.exp.CurrentDate):
+            return sqlglot.exp.cast(
+                sqlglot.exp.Literal.string(as_of.strftime("%Y-%m-%d")), "DATE"
+            )
+        if isinstance(node, _TIMESTAMP_NODES) or _is_now_call(node):
+            return sqlglot.exp.cast(
+                sqlglot.exp.Literal.string(timestamp_literal), "TIMESTAMP"
+            )
+        if isinstance(node, sqlglot.exp.CurrentTime):
+            return sqlglot.exp.cast(
+                sqlglot.exp.Literal.string(as_of_utc.strftime("%H:%M:%S")), "TIME"
+            )
+        return node
+
+    return expression.transform(_pin)
+
+
+def _is_now_call(node: "sqlglot.exp.Expression") -> bool:
+    """True for the ``now()`` family sqlglot parses as an anonymous function."""
+    return (
+        isinstance(node, sqlglot.exp.Anonymous)
+        and str(node.name).lower() in _NOW_FUNCTION_NAMES
+    )
+
+
 async def _validated_execute(
     sql_query: str,
     executor: ReadOnlyWarehouseQuery,
     clock: Clock,
 ) -> dict[str, Any]:
-    """Parse, guard read-only, and execute a DuckDB SQL query."""
+    """Parse, guard read-only, pin the clock, and execute a DuckDB SQL query."""
     try:
         parsed = sqlglot.parse_one(sql_query, read="duckdb")
     except sqlglot.errors.SqlglotError:
@@ -181,7 +257,22 @@ async def _validated_execute(
     if not isinstance(parsed, sqlglot.exp.Query):
         return _build_error(_READ_ONLY_QUERY_MSG)
 
-    return await _execute_and_serialize(sql_query, executor)
+    # What runs is what was parsed and rewritten, re-emitted from the tree. The
+    # pass used to parse for the read-only guard and then execute the original
+    # string, which would have made any rewrite a silent no-op.
+    try:
+        executable_sql = _pin_clock_functions(parsed, clock()).sql(dialect="duckdb")
+    except sqlglot.errors.SqlglotError:
+        logger.warning("Failed to re-emit the parsed SQL query", sql_query=sql_query)
+        return _build_error("Failed to parse the SQL query.")
+
+    if executable_sql != sql_query:
+        logger.debug(
+            "Rewrote the generated SQL before execution",
+            generated=sql_query,
+            executed=executable_sql,
+        )
+    return await _execute_and_serialize(executable_sql, executor)
 
 
 async def _execute_and_serialize(

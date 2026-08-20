@@ -433,11 +433,45 @@ The blocking phase: no case is reproducible until this lands.
   `None` and falls back to `AGENT_DESCRIPTION`, so T029 can thread a candidate's
   text through without the default becoming a second copy of the wording.
   `uv run ruff check .` and `uv run pytest` clean — 103 passed.
-- [ ] T028 Extend the querier's sqlglot pass — today it parses only for the
+- [x] T028 Extend the querier's sqlglot pass — today it parses only for the
   read-only guard and executes the original string, so it must now re-emit what it
   validated — to rewrite `CURRENT_DATE` and `now()`-family nodes to the literal
   `as_of`. Rewrite, never reject: the sub-agent that emits them is dateless by
   design. → T025
+  Done. `_validated_execute` now runs `_pin_clock_functions(parsed, clock())` and
+  executes `.sql(dialect="duckdb")` off the rewritten tree; the original string
+  is no longer executed at all. **Re-emission was the task, not the rewrite** —
+  the guard already parsed and then threw the tree away, so a transform without
+  it would have passed every test that inspected the tree and changed nothing at
+  the database.
+  Coverage is by node type, not by spelling: `exp.CurrentDate` (which is also how
+  sqlglot parses DuckDB's `today()`), `exp.CurrentTimestamp` /
+  `exp.CurrentDatetime` / `exp.Localtimestamp`, `exp.CurrentTime`, plus the rest
+  of the `now()` family — `now`, `get_current_timestamp`, `transaction_timestamp`,
+  `current_localtimestamp`, `current_localtime` — which sqlglot 30.9 parses as
+  `Anonymous` and which are matched by lowercased name.
+  **Which instant each node gets**, since neither §5 nor `decisions.md` settles
+  it and the two answers differ: a date node is pinned to `as_of`'s **site-local**
+  calendar date, a timestamp/time node to the same instant in **UTC**. A date
+  node names the day the case is about — the boundary the oracles group on — and
+  pinning it to the UTC date would move "today" by a whole day for an `as_of`
+  before 02:00 Berlin, where the site-local choice is off by at most the couple of
+  hours by which midnight-UTC misses midnight-Berlin. A timestamp node is compared
+  against the columns' naive UTC values, so it is normalized exactly as
+  `connect_asof` normalizes the bound (`decisions.md` § The as-of cut). Verified
+  at that edge: at `as_of = 2026-04-24 00:30+02:00`, `SELECT CURRENT_DATE, now()`
+  executes as `CAST('2026-04-24' AS DATE), CAST('2026-04-23 22:30:00' AS
+  TIMESTAMP)`.
+  Two consequences worth recording. Re-emission normalizes every statement
+  through sqlglot's generator (`count(*)` → `COUNT(*)`), which is harmless because
+  the pipeline's transpiler already round-trips the builder's SQL through
+  read=duckdb/write=duckdb before the querier ever sees it — the querier's input
+  is sqlglot output already. And a generation failure returns the same
+  `Failed to parse the SQL query.` error as a parse failure rather than falling
+  back to the original string, since the fallback is precisely the silent no-op
+  this task exists to remove. The FR15 session-state stash keeps the model's own
+  `sql_executed` text; the rewrite is logged at debug with both strings.
+  `uv run ruff check .` and `uv run pytest` clean — 103 passed.
 - [ ] T029 `make_*` tool factories closing over `ctx` for the built tools, plus
   `build_toolset(ctx, docstrings=None)` applying docstrings to the produced
   callables so they are candidate-addressable. The text2SQL entry is built per

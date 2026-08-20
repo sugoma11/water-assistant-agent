@@ -1553,12 +1553,48 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   as this packet landed.
   `uv run ruff check .` and `uv run pytest` clean — 281 passed, same 15
   pre-existing findings; `just pins` unmoved at 10 pinned, 6 unpinned, 0 moved.
-- [ ] T061 [P] `assistant/et_fao56.py`: FAO-56 Penman-Monteith ET0 at albedo 0.23,
+- [x] T061 [P] `assistant/et_fao56.py`: FAO-56 Penman-Monteith ET0 at albedo 0.23,
   a verbatim port of `gr2l_model/R/GR2L_function.R` in the weinbau API checkout
   (`findings.md § External sources on this machine`), with the fixed
   `Pressure <- 100` kPa simplification at `:44` carried over deliberately and
   documented as a scope limit — under 1 % of ET0 at 142 m — so the two languages
   agree rather than each being right on its own terms.
+  Done, `:35-71` line by line. `et0_terms` returns every intermediate the R
+  computes, in the R's own order, so the port is checkable *term for term* rather
+  than only at `ET_PM` — the exit criterion is a statement about the terms, and
+  two compensating errors agree at the last line.
+  **The fixed pressure is the smallest of four departures from FAO-56, not the
+  only one.** `Gsc = 0.0820` is defined at `:59` and never used at `:65`, so
+  `R_a` runs ~12× large; `es` at `:36` divides by 238 where eq. 11 has 237.3,
+  while `Delta` at `:50` uses 237.3; and `Rnl` at `:67` takes fourth powers in
+  °C, halving `tn**4` alone, where eq. 39 averages both in kelvin. Measured over
+  four days spread across the year, the routine returns **1.17×–1.38×** a
+  textbook FAO-56, the `Gsc` omission doing most of it — an inflated `Rso` pins
+  the cloudiness factor at its −0.35 floor, so net longwave acts as a small gain
+  instead of tracking cloud. The fixed pressure alone moves ET0 by at most
+  0.10 % here (`gamma` 0.37 % high), which is the "under 1 %" the row asks for,
+  now with the other three sized beside it. All four carried, none repaired, each
+  asserted by a test so a later cleanup fails loudly. Recorded in `findings.md`
+  § External sources on this machine.
+  **Checked against the running endpoint, not only the checkout.** The checkout's
+  `run_GR2L` takes no `albedo` argument and the service does, so they are
+  different builds and "matches the R" was worth pinning down: four days posted
+  at `albedo=0.2` come back within 4e-5 mm of the port, the response's own
+  rounding. The four rows and their served `ET_PM` are committed as a fixture —
+  irrigation is meant to run fully offline (§3.5), so the suite must not call the
+  service, and a test that did would stop testing the port the day the container
+  is down.
+  **Albedo is the one deliberate difference and is therefore a parameter.** The R
+  hard-codes `1 - 0.2`; ET0 is by definition the reference crop's at 0.23 (§3.5),
+  which is the default here, and passing `GR2L_ALBEDO` reproduces the R exactly.
+  A test holds albedo to entering through `Rn` alone.
+  Two guard rails the R does not have: an albedo outside 0-1 is refused, matching
+  `resolve_roof_parameters`, and a latitude with no sunset raises instead of
+  letting `acos` of an out-of-range value produce a `NaN` that would propagate
+  silently through a water balance. Unreachable at 51.35° N, but the core is
+  importable by an oracle.
+  `uv run ruff check .` and `uv run pytest` clean — 338 passed, same 15
+  pre-existing findings; `just pins` unmoved at 10 pinned, 6 unpinned, 0 moved.
 - [ ] T062 `assistant/rules_constants.py`: per-roof wilting / dry / capacity /
   residual authored in the site's own units and converted **once** through
   `swc.theta_pct_to_mm`; hour-based horizons; the heat threshold; the outflow

@@ -491,6 +491,39 @@ serves `POST /predict_gr2l`, the service the response cache's canary is pinned
 against.
 *Verified:* read from the checkout. *Date:* 2026-08-20.
 
+**The R's ET routine departs from FAO-56 in four places, and returns 1.17× to
+1.38× a textbook FAO-56 because of it.** Besides the fixed `Pressure <- 100` kPa
+at `:44`, `GR2L_function.R` defines the solar constant `Gsc = 0.0820` at `:59`
+and never uses it, so `R_a` at `:65` comes out 1/0.082 ≈ 12× too large; `es` at
+`:36` divides by `238 + tm` where FAO-56 eq. 11 has 237.3, though `Delta` at
+`:50` does use 237.3; and `Rnl` at `:67` takes `tx^4 + tn^4 / 2` in **degrees
+Celsius**, where eq. 39 averages both fourth powers in kelvin. The `Gsc`
+omission dominates: an inflated `R_a` inflates `Rso`, which pins the cloudiness
+factor `1.35·(Rs/Rso) − 0.35` near its −0.35 floor, so net longwave becomes a
+small constant *gain* instead of a loss that tracks cloud cover. Over four days
+spread across the year at Leipzig's geometry and albedo 0.23, ET0 comes out
+5.522 / 0.388 / 2.107 / 7.450 mm against a textbook FAO-56's 4.737 / 0.301 /
+1.523 / 6.008 — ratios of 1.17, 1.29, 1.38, 1.24. The fixed pressure is the
+smallest of the four by far: `gamma` runs 0.37 % high and ET0 at most 0.10 %.
+None of this is corrected in `et_fao56.py`, deliberately: the site's irrigation
+thresholds were tuned against this convention's ET, and the port exists so the
+two languages agree rather than each being right on its own terms.
+*Verified:* `et_fao56.py` against a second transcription of the R and against a
+textbook FAO-56 written for the comparison; pressure sensitivity by re-running
+the same days with eq. 7's 99.63 kPa. *Date:* 2026-08-20.
+
+**The deployed endpoint's ET routine still matches the checked-out one.** The
+checkout's `run_GR2L` takes no `albedo` argument and the service does, so the
+running build is newer than `/home/shpilevo/work/ufz/weinbau-api-v1-internal`.
+Posting four days to `POST /predict_gr2l` at `albedo=0.2` — the value the
+checkout hard-codes at `:68` — returns `ET_PM` of 5.6745 / 0.3936 / 2.1606 /
+7.6684, which `et_fao56.py` reproduces to within 4e-5 mm, i.e. to the four
+decimals the response rounds to. Whatever else moved between the two builds, the
+ET routine did not. Those four rows and their served values are committed as a
+fixture in `tests/assistant/test_et_fao56.py`.
+*Verified:* one live POST to the endpoint in `.env:56`, the same one the GR2L
+canary is pinned against. *Date:* 2026-08-20.
+
 **`GR2L_function.R` ends in a top-level demo block, lines 112–129, and
 `plumber.R:11` sources the file** — so building a random 365-day data frame,
 running `run_GR2L` over it and printing the head happens on **every container

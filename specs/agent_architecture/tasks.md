@@ -108,11 +108,20 @@ against a document that still contradicts itself.
   rain on frozen days. Eleven covers train's 4 plus test_seen's 5 disjointly, so
   **T12 returns to test_seen**; §1.7's re-derivation is T006's. §4's T12 item
   removed.
-- [ ] T008 [P] Audit the distractor coverage margin: assert every registered tool
+- [x] T008 [P] Audit the distractor coverage margin: assert every registered tool
   holds at least one must-not slot **inside train**, name the four columns resting
   on a single template, and record the result in `questions.md` §3 as either an
   accepted margin or a second authored slot per tool. This is a validity condition,
   not a nicety (`decisions.md § Trajectory scoring and routing probes`).
+  Audited from §2's must-not lines: 4 / 2 / 1 / 1 / 1 / 1 train-side slots for
+  `text_to_sql_agent` / `get_weather_forecast_tool` / `lookup_reference` / the
+  model tool / `calc_irrigation` / `plot_timeseries`, so Invariant 2 holds and
+  T16a supplies three of the four one-deep columns. **Margin accepted**: 8 of
+  train's 25 templates carry a must-not, so a shotgun candidate hard-fails 32 % of
+  train trajectory — the claim the mitigation actually makes — while a one-deep
+  column is admitted to support no per-tool claim. Second slots are named as
+  available (T03, T05), and `calc_irrigation`'s absence of a clean one is recorded
+  as the reason not to legislate. §4's coverage-margin item removed.
 - [ ] T009 Settle T07's phrasing and the T16a/T16b cue in `questions.md` §2, and
   close both §4 items. T07's wording must stop cueing the docs route against a
   `calc_irrigation` gold set; T16a and T16b must be distinguishable by phrasing

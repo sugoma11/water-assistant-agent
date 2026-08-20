@@ -495,10 +495,38 @@ template implicitly forbade the docs route is deleted, not restated: it scored n
 (T16b, T17b, T18b, T20, T22, T23, T26): no column is empty of train templates. This is the binary
 metric's only defence against a shotgun candidate, since extra calls cost nothing.
 
-Margin, stated because it is thin: four of six columns rest on a single train template each —
-`lookup_reference` on T01, the model tool on T04, `calc_irrigation` on T16a, `plot_timeseries` on
-T24b — and T16a alone supplies three slots. Moving any of T01, T04, T16a or T24b to holdout empties a
-column and voids Invariant 2.
+**Margin — audited, and accepted rather than closed.** Invariant 2 holds, but thinly: counting the
+train-side must-not slots per column,
+
+| Tool | Train-side slots | Templates |
+|---|---:|---|
+| `text_to_sql_agent` | 4 | T15b, T16a, T24a, T27(i,iii) |
+| `get_weather_forecast_tool` | 2 | T16a, T19 |
+| `lookup_reference` | 1 | T01 |
+| `predict_green_roof_water_balance_tool` | 1 | T04 |
+| `calc_irrigation` | 1 | T16a |
+| `plot_timeseries` | 1 | T24b |
+
+Four columns rest on a single template each, and **T16a alone supplies three of them** — so those
+three move together with whatever happens to T16a. Moving any of T01, T04, T16a or T24b to holdout
+empties a column and voids Invariant 2 outright.
+
+What the margin still buys is the claim it exists for. Eight of train's 25 templates carry a
+must-not (T01, T04, T15b, T16a, T19, T24a, T24b, T27), and the same eight carry one in test_seen,
+against 3 of 7 in test_unseen (T16b, T20, T23) — so a call-everything candidate hard-fails **32 % of
+train trajectory** and cannot recover it anywhere, which is what
+`decisions.md § Trajectory scoring and routing probes` needs. What a one-deep column does **not**
+support is a per-tool claim: a candidate that reflexively looks up a card before answering loses
+exactly one train template, which is a weak signal about that one habit rather than about routing.
+
+Accepted at that reading, with the second slots named so authoring them stays a decision rather than
+a discovery — none of them changes §1.7's sizing, since a must-not is a field on an existing
+template: `lookup_reference` on T03 (no card carries a measured aggregate), the model tool on T05
+(T04's own ground — a recorded past fact for which a simulation is the wrong source),
+`plot_timeseries` on T03 or T05 (T24b's presentation-verb ground). `calc_irrigation` has **no clean
+second slot**: every other train template either carries the calculator in its gold set or would
+punish an extra call that costs the answer nothing, which is the design's own rule against listing
+it. That asymmetry is the reason the margin is accepted here rather than legislated away.
 
 `get_weather_forecast_tool`'s standalone identifiability rests on T13, T14, T15b and T18a; T18b's
 gold set is deliberately empty. The model tool is sole-necessary across families D and G because it
@@ -515,6 +543,3 @@ so a candidate that skips them loses nothing and one that calls them pays nothin
 - **The T16a / T16b cue.** Must-nots are symmetric, so phrasing alone must cue docs versus
   calculator, and a docs lookup before calculating is defensible behaviour that currently fails T16b.
   Settling it makes the transfer axis measurable rather than a phrasing artifact.
-- **Coverage margin.** No tool is short of a train-side distractor, but four columns hold exactly
-  one. Deciding whether that margin is acceptable, or whether a second slot is authored per tool,
-  blocks the shotgun-mitigation claim.

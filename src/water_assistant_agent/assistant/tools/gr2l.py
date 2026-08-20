@@ -59,6 +59,11 @@ from water_assistant_agent.assistant.tools.schemas import (
     RoofParameters,
     SwcSeed,
 )
+from water_assistant_agent.assistant.tools.series import (
+    MAX_SERIES_DAYS,
+    WEEK_DAYS,
+    roof_periods,
+)
 from water_assistant_agent.assistant.tools.site import (
     SITE_ELEVATION_M,
     SITE_LATITUDE,
@@ -444,8 +449,11 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
             ``seed`` that day 1 started from (its %θ, where it came from, and whether
             the reading was stale — say so in the answer if it was), a ``data`` list
             (one day per row, with ``swc_pct`` and ``Ssub``), and a ``summary``
-            (retention mm/%, driest day, drought flag). With
-            ``evaluate_against_measured`` it also carries ``evaluation``: the
+            (retention mm/%, driest day, drought flag). A window longer than 31
+            days comes back with ``truncated: true`` and an empty ``data``,
+            replaced by ``weekly`` aggregates — the summary still covers the whole
+            run, so answer from those rather than re-running the window in pieces.
+            With ``evaluate_against_measured`` it also carries ``evaluation``: the
             compared days, the overlap window, and the mean and largest
             |predicted − measured| soil moisture in %θ. When the request is outside
             what can be modelled — the gravel roof, or a window with no soil-moisture
@@ -609,6 +617,19 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
                 ).model_dump()
             evaluation = _compare_to_measured(days, measured)
 
+        # The cap is on the response, never on the run: GR2L simulated every day
+        # of the window, and the summary and the comparison above are derived from
+        # the full series. Only what the model reads back is bounded.
+        truncated = len(days) > MAX_SERIES_DAYS
+        weekly = roof_periods(days, WEEK_DAYS) if truncated else None
+        if truncated:
+            logger.info(
+                "Truncating the daily green-roof series",
+                roof_type=roof_type,
+                days=len(days),
+            )
+            days = []
+
         return GreenRoofBalanceResult(
             roof_type=roof_type,
             forcings=applied_forcings or None,
@@ -616,6 +637,8 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
             parameters=parameters,
             seed=seed,
             data=days,
+            truncated=truncated,
+            weekly=weekly,
             summary=summary,
             evaluation=evaluation,
         ).model_dump()

@@ -1173,9 +1173,41 @@ process and neither sees the other's data or clock.
   Python to the same days.
   `uv run ruff check .` and `uv run pytest` clean — 171 passed, same 15
   pre-existing findings. Tests are T054's.
-- [ ] T050 Bounded series in **both** wrappers: cap the daily series at 31 days,
+- [x] T050 Bounded series in **both** wrappers: cap the daily series at 31 days,
   beyond which return the summary plus weekly aggregates and set a truncation flag.
   An absolute Archive window is otherwise unbounded. → T040
+  Done. `tools/series.py` holds `MAX_SERIES_DAYS = 31`, `WEEK_DAYS`, and the two
+  aggregations; `WeatherPeriod` / `RoofPeriod` carry them; both wrappers set
+  `truncated` and empty `data` past the cap. One module for both, because "the
+  same cap in both wrappers" is only true if there is one cap.
+  **The bound is on the response, never on the computation.** GR2L still runs
+  every day — the balance carries state day to day, so a capped simulation would
+  be a *different* simulation — and the summary, the retention totals and T049's
+  measured comparison are all still derived from the full series. Only what the
+  model reads back is bounded.
+  **Each field is aggregated the way that field is defined**, which for the
+  weather row is the station derivation's own rule: `tx` the span's hottest day,
+  `tn` its coldest night, `precip` and `gs` totals, the rest means. A weekly `tx`
+  as a mean of daily maxima would be a number no instrument ever recorded. For
+  the roof rows fluxes accumulate and states average, with `min_swc_pct` kept
+  beside the mean because a mean water content hides exactly the day a drought
+  question asks about, and day 1's null flux terms are skipped rather than read
+  as zeros.
+  **Fixed-size buckets from the window's first day, not ISO weeks** — an ISO
+  bucketing makes the first and last bucket's length depend on which weekday the
+  window opened, so two windows of equal length would summarize differently. The
+  last bucket is short and reports its own `days` (a 32-day window gives four
+  sevens and a four).
+  The weather tool gained a whole-window `summary` too, since §3.3 asks for
+  "summary statistics **plus** weekly aggregates" and `WeatherResult` had no
+  summary at all; GR2L's `summary` already covered the window. It is the same
+  function over one bucket, so the summary can never disagree with the weeks it
+  summarizes. Both are `null` on an untruncated response, which keeps the
+  common-case payload byte-identical to before this row.
+  Verified at the boundary: 31 days returns 31 daily rows with `truncated: false`
+  and no aggregates; 32 returns none, `truncated: true`, and five buckets.
+  `uv run ruff check .` and `uv run pytest` clean — 171 passed, same 15
+  pre-existing findings. Tests are T054's.
 - [ ] T051 Wetland out of scope (plan §2.4): add the wetland and its aliases to
   `NON_MODELLABLE_ROOFS`, delete `MM_ONLY_ROOFS` and the mm-only branch, leave the
   `wetland` preset in `ROOF_PRESETS` unchanged and unreachable so the preset pin

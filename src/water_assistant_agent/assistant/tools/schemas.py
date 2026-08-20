@@ -52,6 +52,43 @@ class DailyWeatherRow(BaseModel):
     gs: float = Field(description="Global radiation, J/cm²/day")
 
 
+class WeatherPeriod(BaseModel):
+    """Daily weather rows aggregated over a span — one week, or a whole window.
+
+    Field names are the daily row's, and each is aggregated the way that field is
+    defined: ``tx`` is the span's hottest day, ``tn`` its coldest night,
+    ``precip`` and ``gs`` totals, the rest means. See :mod:`series`.
+    """
+
+    start: str
+    end: str
+    days: int
+    tm: float | None = Field(description="Mean temperature over the span, °C")
+    tx: float = Field(description="Highest daily maximum, °C")
+    tn: float = Field(description="Lowest daily minimum, °C")
+    rf: float | None = Field(description="Mean relative humidity, %")
+    precip: float | None = Field(description="Total precipitation, mm")
+    w: float | None = Field(description="Mean wind speed, km/h")
+    gs: float | None = Field(description="Total global radiation, J/cm²/day summed")
+
+
+class RoofPeriod(BaseModel):
+    """GR2L days aggregated over a span: fluxes accumulated, states averaged."""
+
+    start: str
+    end: str
+    days: int
+    ET_PM: float | None = Field(description="Potential ET over the span, mm")
+    ET: float | None = Field(description="Actual ET over the span, mm")
+    Qdown: float | None = Field(description="Percolation sub→ret over the span, mm")
+    Qup: float | None = Field(description="Capillary uptake ret→sub over the span, mm")
+    OUT: float | None = Field(description="Outflow / runoff over the span, mm")
+    Ssub: float | None = Field(description="Mean substrate storage, mm")
+    Sret: float | None = Field(description="Mean retention storage, mm")
+    swc_pct: float | None = Field(description="Mean substrate water content, %θ")
+    min_swc_pct: float | None = Field(description="Driest day in the span, %θ")
+
+
 class WeatherResult(BaseModel):
     """Daily weather over one absolute window, from whichever source served it.
 
@@ -73,6 +110,17 @@ class WeatherResult(BaseModel):
         "by the agent; an answer discloses it whenever it is the station"
     )
     data: list[DailyWeatherRow]
+    truncated: bool = Field(
+        default=False,
+        description="The window is longer than the daily-series cap, so `data` is "
+        "empty and `summary` plus `weekly` carry the window instead",
+    )
+    summary: WeatherPeriod | None = Field(
+        default=None, description="The whole window aggregated (truncated responses only)"
+    )
+    weekly: list[WeatherPeriod] | None = Field(
+        default=None, description="Consecutive weekly aggregates (truncated responses only)"
+    )
 
 
 class Gr2lRequest(BaseModel):
@@ -235,6 +283,14 @@ class GreenRoofBalanceResult(BaseModel):
     parameters: RoofParameters
     seed: SwcSeed
     data: list[GreenRoofDay]
+    truncated: bool = Field(
+        default=False,
+        description="The window is longer than the daily-series cap, so `data` is "
+        "empty and `weekly` carries the run beside the summary",
+    )
+    weekly: list[RoofPeriod] | None = Field(
+        default=None, description="Consecutive weekly aggregates (truncated responses only)"
+    )
     summary: GreenRoofSummary
     evaluation: MeasuredComparison | None = Field(
         default=None,

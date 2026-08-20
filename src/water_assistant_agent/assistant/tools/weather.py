@@ -28,6 +28,11 @@ import structlog
 from google.adk.tools.tool_context import ToolContext
 
 from water_assistant_agent.assistant.tools.schemas import ErrorResult, NotAvailableResult
+from water_assistant_agent.assistant.tools.series import (
+    MAX_SERIES_DAYS,
+    WEEK_DAYS,
+    weather_periods,
+)
 from water_assistant_agent.assistant.tools.site import (
     SITE_ELEVATION_M,
     SITE_LATITUDE,
@@ -118,6 +123,11 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
             instruments — **say so in the answer** — and ``'archive'`` means a
             reanalysis of the wider area.
 
+            A window longer than 31 days comes back with ``truncated: true``, an
+            empty ``data``, and instead a ``summary`` over the whole window plus
+            ``weekly`` aggregates — same fields, one row per week. Answer from
+            those; do not re-request the window in pieces to get the days back.
+
             When the window ends more than 16 days ahead, ``status='not_available'``
             with a ``reason`` to pass on to the user: no weather exists that far
             out, so that is a scope limit, not a malfunction — say so instead of
@@ -167,6 +177,23 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
                     "Please try a different date window."
                 )
             ).model_dump()
+        # Bounded here, at layer 1, and not in the client: the cap is on what the
+        # model reads back, and GR2L consumes the same client's rows in full.
+        if len(result.data) > MAX_SERIES_DAYS:
+            logger.info(
+                "Truncating the daily weather series",
+                window=(window_start, window_end),
+                days=len(result.data),
+            )
+            result = result.model_copy(
+                update={
+                    "truncated": True,
+                    "summary": weather_periods(result.data, len(result.data))[0],
+                    "weekly": weather_periods(result.data, WEEK_DAYS),
+                    "data": [],
+                }
+            )
+
         # The site's own coordinates and surveyed height, not the source's. Only
         # `elevation` is *composed* here rather than overwritten: `WeatherResult`
         # does not carry one, because no weather source can know the height of a

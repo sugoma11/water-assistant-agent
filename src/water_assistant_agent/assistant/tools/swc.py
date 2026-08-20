@@ -18,20 +18,19 @@ day-1 state comes from the roof's own sensor — the latest reading at or before
 the window opens — and when no trustworthy reading exists the call fails rather
 than inventing one.
 
-No ADK imports: this is a pure seam the tool wrapper and any oracle can share.
+No ADK imports and no settings read: this is a pure seam the tool wrapper and any
+oracle can share. The database arrives as an executor argument — production passes
+the settings-built singleton, a case passes ``ctx.db``, whose views are bounded at
+that case's ``as_of`` — so a seed can never be read past the cut it is seeding
+(``agent_architecture.md`` §5, ``decisions.md`` § The construction seam).
 """
 
 import dataclasses
-import functools
 from datetime import date, datetime
 
 import structlog
 
-from water_assistant_agent.assistant.agents.text_to_sql.executor import (
-    DuckDbQueryExecutor,
-    create_duckdb_connection,
-)
-from water_assistant_agent.assistant.settings import get_settings
+from water_assistant_agent.assistant.ports import ReadOnlyWarehouseQuery
 
 logger = structlog.get_logger(__name__)
 
@@ -90,26 +89,12 @@ def mm_to_theta_pct(storage_mm: float, sh_cm: float) -> float:
     return storage_mm / (sh_cm * _MM_PER_CM) * 100.0
 
 
-class _ExecutorHolder:
-    """Module-level singleton holder for the read-only DuckDB executor."""
-
-    instance: DuckDbQueryExecutor | None = None
-
-
-def _get_executor() -> DuckDbQueryExecutor:
-    """Lazily create and cache the module-level executor."""
-    if _ExecutorHolder.instance is None:
-        factory = functools.partial(
-            create_duckdb_connection,
-            db_path=get_settings().duckdb_path,
-        )
-        _ExecutorHolder.instance = DuckDbQueryExecutor(connection_factory=factory)
-    return _ExecutorHolder.instance
-
-
-def _record_bounds(column: str) -> tuple[datetime | None, datetime | None]:
+def _record_bounds(
+    executor: ReadOnlyWarehouseQuery,
+    column: str,
+) -> tuple[datetime | None, datetime | None]:
     """First and last timestamp carrying a reading for *column*."""
-    result = _get_executor().execute_query(
+    result = executor.execute_query(
         f'SELECT min(timestamp), max(timestamp) FROM swc WHERE "{column}" IS NOT NULL'  # noqa: S608 - column from ROOF_SWC_COLUMNS
     )
     if not result.rows:
@@ -118,8 +103,15 @@ def _record_bounds(column: str) -> tuple[datetime | None, datetime | None]:
     return first, last
 
 
-def latest_measured_swc(roof_type: str, window_start: date) -> MeasuredSwc:
+def latest_measured_swc(
+    executor: ReadOnlyWarehouseQuery,
+    roof_type: str,
+    window_start: date,
+) -> MeasuredSwc:
     """Latest trustworthy %θ reading for *roof_type* at or before *window_start*.
+
+    Reads ``swc`` through *executor*, so which rows exist is the caller's binding:
+    a case's as-of executor cannot see a reading taken after its ``as_of``.
 
     Raises :class:`SwcUnavailableError` when the window opens before the sensor
     record starts, or when every candidate reading falls inside a period the
@@ -150,10 +142,12 @@ def latest_measured_swc(roof_type: str, window_start: date) -> MeasuredSwc:
         f'SELECT timestamp, "{column}" FROM swc '  # noqa: S608 - column from ROOF_SWC_COLUMNS
         f"WHERE {' AND '.join(conditions)} ORDER BY timestamp DESC LIMIT 1"
     )
-    result = _get_executor().execute_query(query)
+    result = executor.execute_query(query)
 
     if not result.rows:
-        raise SwcUnavailableError(_unavailable_message(roof_type, column, window_start, unreliable_from))
+        raise SwcUnavailableError(
+            _unavailable_message(executor, roof_type, column, window_start, unreliable_from)
+        )
 
     measured_at, theta_pct = result.rows[0]
     age_days = (window_start - measured_at.date()).days
@@ -169,13 +163,14 @@ def latest_measured_swc(roof_type: str, window_start: date) -> MeasuredSwc:
 
 
 def _unavailable_message(
+    executor: ReadOnlyWarehouseQuery,
     roof_type: str,
     column: str,
     window_start: date,
     unreliable_from: date | None,
 ) -> str:
     """Explain which gap left the window without a usable seed."""
-    first, last = _record_bounds(column)
+    first, last = _record_bounds(executor, column)
     if first is None:
         return (
             f"No soil-moisture record exists for the {roof_type} roof, so its "

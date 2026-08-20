@@ -25,6 +25,7 @@ from typing import Any
 import structlog
 from google.adk.tools.tool_context import ToolContext
 
+from water_assistant_agent.assistant.ports import ReadOnlyWarehouseQuery
 from water_assistant_agent.assistant.tools.gr2l_client import (
     NON_MODELLABLE_ROOFS,
     ROOF_PRESETS,
@@ -56,6 +57,7 @@ from water_assistant_agent.assistant.tools.swc import (
     mm_to_theta_pct,
     theta_pct_to_mm,
 )
+from water_assistant_agent.assistant.tools.warehouse import get_duckdb_executor
 from water_assistant_agent.assistant.tools.weather_client import (
     InvalidWindowError,
     WeatherFetchError,
@@ -128,6 +130,7 @@ def _summarize(
 
 
 async def _resolve_seed(
+    executor: ReadOnlyWarehouseQuery,
     roof_type: str,
     window_start: date,
     sh_cm: float,
@@ -136,8 +139,8 @@ async def _resolve_seed(
     """Establish day 1's substrate state, in %θ and in the mm GR2L consumes.
 
     The caller's value wins when given; otherwise the roof's own sensor supplies
-    it. Propagates :class:`SwcUnavailableError` when neither exists — the tool
-    never falls back to a made-up state.
+    it, read through *executor*. Propagates :class:`SwcUnavailableError` when
+    neither exists — the tool never falls back to a made-up state.
     """
     if caller_swc_pct is not None:
         return SwcSeed(
@@ -146,7 +149,9 @@ async def _resolve_seed(
             substrate_storage_mm=round(theta_pct_to_mm(caller_swc_pct, sh_cm), 3),
         )
 
-    measured = await asyncio.to_thread(latest_measured_swc, roof_type, window_start)
+    measured = await asyncio.to_thread(
+        latest_measured_swc, executor, roof_type, window_start
+    )
     return SwcSeed(
         source="measured",
         swc_pct=round(measured.theta_pct, 2),
@@ -306,6 +311,7 @@ async def predict_green_roof_water_balance_tool(
     window_start = date.fromisoformat(weather.data[0].Date)
     try:
         seed = await _resolve_seed(
+            get_duckdb_executor(),
             roof_type,
             window_start,
             float(ROOF_PRESETS[roof_type]["SH"]),

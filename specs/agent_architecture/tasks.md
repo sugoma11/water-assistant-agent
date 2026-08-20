@@ -329,8 +329,27 @@ The blocking phase: no case is reproducible until this lands.
   call for the same rows/parameters issues zero HTTP calls; a service whose
   canary response changes between two cached calls raises
   `CanaryMismatchError` before the second call's own data request is ever sent.
-- [ ] T024 [P] `tools/swc.py`: take the executor from `ctx` instead of building a
+- [x] T024 [P] `tools/swc.py`: take the executor from `ctx` instead of building a
   connection from global settings; the module stays pure and ADK-free. → T020
+  Done. `_ExecutorHolder` / `_get_executor` are gone, and with them the
+  `settings` and `create_duckdb_connection` imports: `latest_measured_swc`,
+  `_record_bounds` and `_unavailable_message` all take
+  `executor: ReadOnlyWarehouseQuery` as their **first, required** parameter — the
+  port (`ports.py`), not `DuckDbQueryExecutor`, so `ctx.db`'s `AsOfQueryExecutor`
+  satisfies it without swc.py naming a concrete class. No production default is
+  left inside the module: the row's "instead of" is only real if the settings
+  path cannot be reached from here, and a silent fallback to an unbounded
+  connection is precisely what `decisions.md` § The construction seam rejects.
+  The one production caller, `gr2l.py`'s `_resolve_seed`, gained the same
+  parameter and `predict_green_roof_water_balance_tool` passes
+  `get_duckdb_executor()` — warehouse's existing lazy singleton rather than a
+  second one, which collapses the "independent second seam" `findings.md`
+  § Codebase seams records at `swc.py:99-107` into one production executor. That
+  call is the single expression T029/T066 will replace with `ctx.db`. Nothing
+  else calls into `swc`, and `latest_measured_swc`'s own SQL is unchanged, so
+  the bound is entirely the caller's binding. `uv run ruff check .` and
+  `uv run pytest` clean — 103 passed, the same 15 pre-existing findings in
+  `notebooks/`, `scripts/count_tokens.py` and `train_gepa.py`.
 - [ ] T025 [P] `tools/warehouse.py`: `make_query_database_tool(executor, clock)`
   returning a closure that preserves the exact name, signature and docstring of
   `query_database_tool` — the frozen instruction names the tool and ADK derives

@@ -428,6 +428,20 @@ false-positives on 63 healthy days.
 *Verified:* threshold sweeps of all three predicates over
 `data/water.duckdb`. *Date:* 2026-08-17.
 
+**What the record supports as a heatwave definition.** T08's duration rule is
+authored eval policy, so the pinned station record is what bounds it. Counting a
+heatwave day as one inside a run of consecutive Europe/Berlin days at or above
+the deployed controller's 24 °C heat threshold: a **2**-day run marks 65 days
+over 6 months, **3** days marks 53 over the same 6 (per month 1 / 4 / 12 / 15 /
+16 / 5), and **4** days marks 44 over only 4. Raising the threshold to 30 °C
+collapses it — 12 days over 3 months at a 2-day run, and 4 days in a single month
+at 3 days, which would make T08's count zero in almost every sampled month.
+`rules_constants.py` therefore carries 3 days at 24 °C, the definition that keeps
+the question answerable across the most months without being satisfied by every
+warm spell.
+*Verified:* run-length scan over daily `max(Tmax)` from `wetter`, grouped by
+Europe/Berlin day. *Date:* 2026-08-20.
+
 **Per-column healthy ranges, the basis of `roofs.py`'s plausibility bounds.**
 Over the whole record, half-hourly: `QGravel` 0.000–8.923 %θ (band median
 0.034), `QEx1` 3.518–35.803, `QEx2` 1.038–25.846, `QIn` 3.981–33.566, and

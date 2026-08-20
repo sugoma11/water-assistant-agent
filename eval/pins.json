@@ -18,7 +18,7 @@
     "reflection_model": null,
     "reflection_model_canary_sha256": null,
     "roofs_version": "1.0",
-    "rules_constants_version": null,
+    "rules_constants_version": "1.0",
     "station_derivation": {
       "derivation_sha256": "da6c872647ed04026a92d0127323cda5ce65002bc4fd077bb300463041109ae3",
       "first_complete_day": "2025-01-02",

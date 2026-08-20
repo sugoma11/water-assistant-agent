@@ -1595,12 +1595,45 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   importable by an oracle.
   `uv run ruff check .` and `uv run pytest` clean — 338 passed, same 15
   pre-existing findings; `just pins` unmoved at 10 pinned, 6 unpinned, 0 moved.
-- [ ] T062 `assistant/rules_constants.py`: per-roof wilting / dry / capacity /
+- [x] T062 `assistant/rules_constants.py`: per-roof wilting / dry / capacity /
   residual authored in the site's own units and converted **once** through
   `swc.theta_pct_to_mm`; hour-based horizons; the heat threshold; the outflow
   epsilon; both dose fields. Two constants have no deployed source and are flagged
   in-module as **eval policy** — the heatwave duration rule T08 counts against, and
   T12's retention target. One module, versioned, duplicated nowhere. → T060
+  Done. The %θ values are `irrigation_tool.md` § Units' and the millimetres come
+  out of `swc.theta_pct_to_mm` against `roofs.py`'s substrate height — 3.5 / 7.0 /
+  15.4, 2.8 / 7.0 / 15.4, 15.0 / 24.0 / 33.0, residual 1.75 and 3.75 — matching
+  that table exactly. A test asserts each millimetre value *is that function of
+  that height* rather than a constant that happens to agree, which is the property
+  a second conversion downstream would break.
+  **Three provenances, labelled, because they are three different kinds of
+  claim.** Most values are the deployed controller's, carried verbatim including
+  the flat 22 %θ capacity that GR2L measures differently — a test pins that
+  disagreement at 12.6 mm on the semi-intensive roof rather than letting it be
+  noticed later as a bug. Two are eval policy with no deployed source. One, the
+  per-roof dose in millimetres, is **owed by the site** and left `None`: it is
+  policy the tool states rather than computes, so a plausible number invented here
+  would be indistinguishable from the site's own once an answer quotes it. The
+  deployed valve minutes (30 / 30 / 31) are what a disclosure can honestly say
+  meanwhile, which is why "both dose fields" is one value and one hole.
+  **Both eval-policy constants were chosen against the record, then fixed.**
+  Three days at 24 °C marks 53 heatwave days across six months (1 / 4 / 12 / 15 /
+  16 / 5); four days empties two of those months and a 30 °C threshold leaves the
+  whole record with one, which would make T08's count zero in almost every
+  sampled month. The retention target is 50 % — the figure a green-roof manual
+  conventionally states — and the committed `t12_rain_events.md` shows it splits
+  the 41 (event, roof) pairs 25/16 with 8 of 11 events carrying both classes, the
+  headroom §2's T12 entry asks for. A test reads that table rather than trusting
+  the number, so a target no longer supported by the record fails. Measurement in
+  `findings.md` § Data record.
+  **The horizons stay in hours and `horizon_rows` does the one conversion**, so
+  48 h is 2 daily rows here and 48 hourly rows at the site. It raises on a step
+  coarser than the horizon instead of returning zero rows: an empty window still
+  produces a decision, and that decision would look like every other one.
+  `rules_constants_version` pinned at `1.0`.
+  `uv run ruff check .` and `uv run pytest` clean — 359 passed, same 15
+  pre-existing findings; `just pins` unmoved at 11 pinned, 5 unpinned, 0 moved.
 - [ ] T063 `assistant/irrigation.py`: `simulate_store` / `summarize` /
   `irrigation_decision`, pure, no LLM. Preserves the deployed controller's
   semantics exactly — one store, the stress coefficient evaluated on the previous

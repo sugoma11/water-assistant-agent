@@ -51,11 +51,19 @@ against a document that still contradicts itself.
   (rejected — `gepa_kwargs={"frontier_type": …}`, with the reason), fold plan
   §2.3's plot-resolution decision into `§ Plotting`, and record plan §8's Q2 and
   Q3 as accepted risks under `§ Trajectory scoring and routing probes`.
-- [ ] T006 Rewrite `questions.md` §1.6 and §1.7 so the derived table *is* the
+- [x] T006 Rewrite `questions.md` §1.6 and §1.7 so the derived table *is* the
   stated composition: the abstention band becomes the value the five-template set
   produces, the eight category shares become the derived ones, and `n = templates
   × m` is restated as the rule the numbers are verified against. Close the two
   matching items in §4. (plan §2.1) → T007
+  Re-derived on T007's ledger: `25×4 + 25×5 + 7×8 = 281` (100 / 125 / 56), the
+  eight shares at 19.2 / 9.3 / 15.7 / 12.8 / 18.9 / 6.0 / 11.7 / 6.4 %, abstention
+  43/281 = 15.3 % (12.0 / 12.0 / 28.6 per split). §4's abstention and
+  category-share items removed; the retired 7–10 % band and the eight old target
+  shares are recorded as retired rather than silently dropped. Two consequences
+  outside §1.6/§1.7 were carried so the set stays consistent: §2's legend loses the
+  `train only` split value, and `plan.md` §1.2's arithmetic bullet is updated from
+  276 to 281.
 - [x] T007 Compute T12's qualifying rain-event count over the pinned record and
   P1f's four roofs (`scripts/`, committed with its output). If the count supports
   disjoint train and test_seen event sets, return T12 to test_seen and re-derive

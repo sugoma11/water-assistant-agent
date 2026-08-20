@@ -91,7 +91,10 @@ ones belong in `findings.md` and are recorded there by T004.
   needs that service running and its canary committed.
 - **The catalog's arithmetic reproduces.** 32 entries over 27 families;
   `25×4 + 24×5 + 7×8 = 276`; all eight category counts; 43 abstention instances
-  split 12 / 15 / 16. Nothing in §1.7 needs re-deriving except what §2.1 settles.
+  split 12 / 15 / 16. Nothing in §1.7 needs re-deriving except what §2.1 settles —
+  which it since has: T007 returned T12 to test_seen, so the ledger is
+  `25×4 + 25×5 + 7×8 = 281` and the abstention split is 12 / 15 / 16 of
+  100 / 125 / 56 (`questions.md` §1.7).
 
 ### 1.3 Constraints
 

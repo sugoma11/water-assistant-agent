@@ -3,7 +3,7 @@
 Human-readable spec for the evaluation dataset. Machine-readable twins live in `eval/templates/*.yaml`;
 instantiated cases in `eval/cases/{train,test_seen,test_unseen}.json`, emitted per architecture §6.1.
 Oracles in `eval/oracles/`. **27 template families, 32 entries** counting a/b variants, 7 of them
-holdout; **276 instances** (100 / 120 / 56), derived in §1.7.
+holdout; **281 instances** (100 / 125 / 56), derived in §1.7.
 
 ---
 
@@ -75,7 +75,12 @@ answer against a millimetre oracle as wrong (architecture §7).
   across P1, but it is the tightest date pool in the catalog. **Constant-value rejection is not a
   validity test**: it would delete every dry day, which is precisely the "no" class this rule needs
   (`findings.md`).
-- **Abstention share**: target 7–10 % of instances. The swept set misses it — §1.7 and §4.
+- **Abstention share**: **12.0 % of train, 12.0 % of test_seen, 28.6 % of test_unseen, 15.3 %
+  overall** — what the five-template abstention set (T17a, T17b, T18a, T18b, T27) produces at §1.7's
+  m, stated rather than steered. An earlier draft targeted 7–10 %; hitting a band would take a
+  per-template m, which makes n unverifiable against `templates × m` and is what §1.7's derivation
+  rule exists to prevent. The holdout's share is fixed by its list — two of its seven templates are
+  abstentions — and is not a sampling choice at all.
 - **Paraphrases**: EN + DE, 50/50 within each split, style pools disjoint between train and test,
   colloquial German included.
 - **Roof vocabulary**: questions name roofs in the agent's own vocabulary (`non_irrigated_extensive`,
@@ -87,9 +92,10 @@ answer against a millimetre oracle as wrong (architecture §7).
 Three splits: **train**, **test_seen**, **test_unseen**. Train's number is a selection score, not a
 training accuracy; the reporting rules over these splits are architecture §7's.
 
-**Template ledger.** 32 entries = 7 holdout (T16b, T17b, T18b, T20, T22, T23, T26) + 1 train-only
-(T12) + 24 carried by both train and test_seen. So train holds **25** templates, test_seen **24**,
-test_unseen **7**.
+**Template ledger.** 32 entries = 7 holdout (T16b, T17b, T18b, T20, T22, T23, T26) + 25 carried by
+both train and test_seen. So train holds **25** templates, test_seen **25**, test_unseen **7**. T12
+sits in both since the pinned record carries 11 qualifying rain events, enough for disjoint train and
+test_seen event sets (§2's T12 entry, [`t12_rain_events.md`](./t12_rain_events.md)).
 
 **Sizing.** Counts are derived from `templates × m`, never chosen: errors cluster by template, so
 m ≈ 5 captures most of the achievable trajectory power and further instances asymptote.
@@ -97,36 +103,42 @@ m ≈ 5 captures most of the achievable trajectory power and further instances a
 | Split | Templates | m | n |
 |---|---|---|---|
 | train | 25 | 4 | **100** |
-| test_seen | 24 | 5 | **120** |
+| test_seen | 25 | 5 | **125** |
 | test_unseen | 7 | 8 | **56** |
 
-`25×4 = 100`, `24×5 = 120`, `7×8 = 56`, total **276**. Train's m is a flat 4 rather than a 3–4 band
+`25×4 = 100`, `25×5 = 125`, `7×8 = 56`, total **281**. Train's m is a flat 4 rather than a 3–4 band
 because the balance rule needs an even m ≥ 4 on every bool template and 8 of train's 25 are bool; a
 per-template m makes n unverifiable against the product.
 
-**Category shares are outputs of that product, not targets.** Each train+test_seen template
-contributes 9 instances, T12 contributes 4, each holdout template 8.
+**Category shares are outputs of that product, not targets**, and this table **is** the suite's
+stated composition. Each template contributes 9 instances where it is carried by train and
+test_seen, 8 where it is holdout.
 
 | Category | Families | Instances | Share |
 |---|---|---|---|
-| Pure SQL | A | 54 | 19.6 % |
-| Pure lookup (incl. abstention) | B | 26 | 9.4 % |
-| Pure weather (incl. abstention) | C | 44 | 15.9 % |
-| Model chains (incl. availability abstention) | D + I | 36 | 13.0 % |
-| Hybrid / full chain | E | 48 | 17.4 % |
-| Given-values controls | F | 17 | 6.2 % |
-| Counterfactual | G | 33 | 12.0 % |
-| Presentation (plot) | H | 18 | 6.5 % |
+| Pure SQL | A | 54 | 19.2 % |
+| Pure lookup (incl. abstention) | B | 26 | 9.3 % |
+| Pure weather (incl. abstention) | C | 44 | 15.7 % |
+| Model chains (incl. availability abstention) | D + I | 36 | 12.8 % |
+| Hybrid / full chain | E | 53 | 18.9 % |
+| Given-values controls | F | 17 | 6.0 % |
+| Counterfactual | G | 33 | 11.7 % |
+| Presentation (plot) | H | 18 | 6.4 % |
 
-Sum 276, 100.0 %. These miss the shares previously named as targets (28 / 12 / 10 / 12 / 20 / 4 / 8
-/ 6) by up to 8.6 pp — §4. **Abstention lands at 43/276 = 15.6 %** (T17a 9, T17b 8, T18a 9, T18b 8,
-T27 9) against §1.6's 7–10 %: train 12/100 = 12.0 %, test_seen 15/120 = 12.5 %, test_unseen
-16/56 = 28.6 % (fixed by the holdout list). §4.
+Sum 281, 100.0 %. An earlier draft named eight target shares (28 / 12 / 10 / 12 / 20 / 4 / 8 / 6),
+set before the template set settled; they are **retired, not approximated** — the derived shares miss
+them by up to 8.8 pp, and steering to them would take a per-template m, which contradicts the
+derivation rule above. Composition is therefore verified against the product, and a share moves only
+when a template is authored or retired.
+
+**Abstention lands at 43/281 = 15.3 %** (T17a 9, T17b 8, T18a 9, T18b 8, T27 9): train
+12/100 = 12.0 %, test_seen 15/125 = 12.0 %, test_unseen 16/56 = 28.6 %, the last fixed by the holdout
+list rather than sampled. §1.6 states those as the suite's shares.
 
 **Generation constraints**, enforced in generation and not achieved by independent resampling:
 - **Per-param disjointness, per discrete value.** train ∩ test_seen = ∅ on every sampled param —
-  T02/T09/T13's `thr`, T01/T05's `month`, T21/T22's override values, T27's window and alias. Without
-  it the memorized-constant detector fails open.
+  T02/T09/T13's `thr`, T01/T05's `month`, T12's `event`, T21/T22's override values, T27's window and
+  alias. Without it the memorized-constant detector fails open.
 - **`as_of` is a striped partition, never a cut point.** Bands are disjoint but interleaved over
   ~2025-06-01 → 2026-04-24; a contiguous split strands summer on one side and makes T02/T08/T20
   unbalanceable.
@@ -178,7 +190,7 @@ answerable cases, and I's point is the roofs they exclude.
 Legend — **Q** question sketch · **DE** example German paraphrase · **A** answer type (unit,
 tolerance) · **Traj** gold trajectory · **Must-not** listed distractors · **Cards** gold reference
 cards (architecture §3.2) · **Oracle** logic · **Note** purpose · **Split** `train+seen` |
-`train only` | `unseen`.
+`unseen` — the two the ledger admits, since T007 retired the train-only entry.
 
 ### A. Pure SQL — negative controls for `lookup_reference` / `get_weather_forecast_tool`
 
@@ -503,13 +515,6 @@ so a candidate that skips them loses nothing and one that calls them pays nothin
 - **The T16a / T16b cue.** Must-nots are symmetric, so phrasing alone must cue docs versus
   calculator, and a docs lookup before calculating is defensible behaviour that currently fails T16b.
   Settling it makes the transfer axis measurable rather than a phrasing artifact.
-- **Abstention share.** §1.6 targets 7–10 %; the swept set yields 15.6 % overall and 12.0 % on train.
-  Either the band widens to match a five-template abstention set, or abstention templates take a
-  lower m and n stops being `templates × m`. Blocks freezing §1.7's numbers.
-- **Category shares.** The eight previously stated shares were targets set before the template set
-  settled; derived shares miss them by up to 8.6 pp (Pure SQL 19.6 % vs 28 %, hybrid 17.4 % vs 20 %,
-  pure weather 15.9 % vs 10 %). Either the derived table becomes the suite's stated composition, or m
-  varies per template — which contradicts §1.7's derivation rule. Blocks the suite-composition claim.
 - **Coverage margin.** No tool is short of a train-side distractor, but four columns hold exactly
   one. Deciding whether that margin is acceptable, or whether a second slot is authored per tool,
   blocks the shotgun-mitigation claim.

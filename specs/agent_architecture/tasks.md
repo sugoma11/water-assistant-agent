@@ -841,12 +841,40 @@ process and neither sees the other's data or clock.
   `uv run ruff check .` and `uv run pytest` clean — 137 passed, the same 15
   pre-existing findings, all in `notebooks/`, `scripts/count_tokens.py` and
   `src/experiments/`.
-- [ ] T041 Typed `not_available` on `get_weather_forecast_tool` for the **single**
+- [x] T041 Typed `not_available` on `get_weather_forecast_tool` for the **single**
   scope limit: a well-formed window whose end lies more than 16 days past
   `ctx.as_of`. No back-window cap, no coverage class, no cutoff class — the old
   three-class split is deleted, not narrowed (`decisions.md § Window resolution and
   the scenario clock`). Enforced against `ctx.as_of` and asserted by a harness
   test. → T040
+  Done. `FORECAST_HORIZON_DAYS = 16` and `beyond_horizon(end_date, as_of)` in
+  `weather_client.py`; the wrapper checks it between `resolve_window` and the
+  fetch and returns `NotAvailableResult`. The check runs on the **resolved**
+  window, so one rule binds both window forms — `forecast_days=18` and an
+  explicit end date 17 days out abstain identically, and neither is a count
+  comparison. There was no three-class split left to delete: T040 had already
+  removed `_MAX_FORECAST_DAYS`, and the back-window and coverage classes never
+  existed in code (the old `_choose_backend` cutoff is a *routing* read, not an
+  abstention, and T045 deletes it).
+  **Asserted here, not by a harness test**, because there is no harness yet —
+  P6a builds it. Four tests in `test_weather_window.py`, whose scope this widens
+  from `resolve_window` to "what window the tool accepts, and against what":
+  the boundary is exact (`as_of + 16` succeeds, `as_of + 17` abstains); no
+  source is reached on the abstaining call, so a `not_available` can never be a
+  disguised fetch failure; the relative form is bound by the same check; and a
+  400-day back window still succeeds, since only the forward side is bounded.
+  The `as_of` used (2026-03-15) puts both sides of the boundary in the real
+  past, so a wrapper reading a wall clock would pass neither test.
+  Two docstring additions, both load-bearing for the agent rather than cosmetic:
+  the `Returns` block now names the `not_available` branch and tells the agent to
+  report it rather than retry with different arguments, and `forecast_days` says
+  outright that nothing exists more than 16 days ahead. **`gr2l.py` is
+  deliberately not given the same check** — the row names one tool, and T054's
+  beyond-horizon test belongs to the packet that owns that wrapper's argument
+  surface; `beyond_horizon` is written as a free function so wiring it there is
+  one line.
+  `uv run ruff check .` and `uv run pytest` clean — 141 passed, same 15
+  pre-existing findings.
 - [ ] T042 `StationWeatherSource` in the pure layer: derive `DailyWeatherRow`s
   from `wetter` per `weather_tool.md` § Station source — per-field aggregation, the
   `tn` estimator, the `−7999` sentinel filter, UTC→Europe/Berlin **before**

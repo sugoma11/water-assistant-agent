@@ -16,20 +16,23 @@ turns into the tool declaration and are therefore candidate-optimizable text —
 """
 
 from collections.abc import Awaitable, Callable
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 import structlog
 from google.adk.tools.tool_context import ToolContext
 
-from water_assistant_agent.assistant.tools.schemas import ErrorResult
+from water_assistant_agent.assistant.tools.schemas import ErrorResult, NotAvailableResult
 from water_assistant_agent.assistant.tools.site import (
     SITE_ELEVATION_M,
     SITE_LATITUDE,
     SITE_LONGITUDE,
 )
 from water_assistant_agent.assistant.tools.weather_client import (
+    FORECAST_HORIZON_DAYS,
     InvalidWindowError,
     WeatherFetchError,
+    beyond_horizon,
     fetch_daily_weather,
     resolve_window,
 )
@@ -49,6 +52,9 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
     The returned callable keeps the exact name, signature and docstring of the
     tool the root instruction names, because ADK derives the declaration from the
     function itself; only the clock the window resolves against is bound here.
+    That clock is also what the forecast horizon is measured from: a window
+    ending more than :data:`~..tools.weather_client.FORECAST_HORIZON_DAYS` days
+    past ``ctx.as_of`` is this tool's single typed ``not_available``.
 
     The **source** is still :func:`fetch_daily_weather` rather than
     ``ctx.weather``: the one :class:`~..tools.weather_client.WeatherClient`
@@ -88,7 +94,8 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
                 week's observations only. Nothing bounds how far back it may reach.
             forecast_days: Number of days from **today** forward to include (0-16).
                 Combine it with ``past_days`` to span both sides of today; with
-                neither given, the window is the coming 7 days.
+                neither given, the window is the coming 7 days. Nothing is
+                available more than 16 days ahead.
 
         Returns:
             dict: on success ``status='success'`` with the site's
@@ -105,7 +112,11 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
             * ``w`` — mean wind speed, **km/h** (10 m above ground)
             * ``gs`` — global (shortwave) radiation total, **J/cm²/day**
 
-            On failure ``status='error'`` with ``error_details``.
+            When the window ends more than 16 days ahead, ``status='not_available'``
+            with a ``reason`` to pass on to the user: no weather exists that far
+            out, so that is a scope limit, not a malfunction — say so instead of
+            retrying with different arguments. On failure ``status='error'`` with
+            ``error_details``.
         """
         # Resolved before the fetch: Open-Meteo's own past_days silently appends a
         # seven-day forecast tail, which would land in `data` unlabelled. The day
@@ -118,6 +129,23 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
         except InvalidWindowError as exc:
             logger.info("Rejected weather window", error=str(exc))
             return ErrorResult(error_details=str(exc)).model_dump()
+
+        # The one scope limit this tool signals. Nothing upstream enforces it —
+        # the reanalysis serves any date it holds — so a window past the horizon
+        # would otherwise come back looking like an ordinary answer.
+        if beyond_horizon(window_end, today):
+            logger.info(
+                "Weather window reaches past the forecast horizon",
+                window=(window_start, window_end),
+                as_of=today.isoformat(),
+            )
+            return NotAvailableResult(
+                reason=(
+                    f"Weather is only available up to {FORECAST_HORIZON_DAYS} days ahead "
+                    f"(through {today + timedelta(days=FORECAST_HORIZON_DAYS):%Y-%m-%d}), and "
+                    f"the window asked for ends {window_end}."
+                )
+            ).model_dump()
 
         try:
             result = await fetch_daily_weather(

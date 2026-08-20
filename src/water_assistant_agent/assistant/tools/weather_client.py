@@ -37,6 +37,17 @@ _FORECAST_PAST_LIMIT_DAYS = 92
 # bare call still means "the coming week" after resolution.
 _DEFAULT_FORECAST_DAYS = 7
 
+FORECAST_HORIZON_DAYS = 16
+"""How far past ``as_of`` a weather window may reach — the tool's one scope limit.
+
+Load-bearing in code rather than upstream: Open-Meteo's Archive backend answers
+day 400 past a case's ``as_of`` without complaint (it is still the real past),
+so nothing but this check stops a future-facing window from being served as
+though it were observed (``agent_architecture.md`` §3.3, ``decisions.md``
+§ Typed abstention). It bounds only the **forward** side; nothing bounds how far
+back a window may reach.
+"""
+
 # The seven daily variables GR2L consumes, in Open-Meteo naming.
 _DAILY_VARS = ",".join(
     (
@@ -199,6 +210,19 @@ def resolve_window(
     if start > end:
         raise InvalidWindowError(f"start_date {start} is after end_date {end}.")
     return start.isoformat(), end.isoformat()
+
+
+def beyond_horizon(end_date: str, as_of: date) -> bool:
+    """True when *end_date* reaches further than :data:`FORECAST_HORIZON_DAYS` past *as_of*.
+
+    Checked on the **resolved** window, so both window forms are bound by one
+    rule, and against the case's ``as_of`` rather than a wall clock, so the limit
+    a case is scored on is the limit it was generated under. A window this
+    returns ``True`` for is a scope limit — ``not_available`` — never an argument
+    fault: mixing the two would make the false-abstention metric uninterpretable
+    (``decisions.md`` § Typed abstention).
+    """
+    return date.fromisoformat(end_date) > as_of + timedelta(days=FORECAST_HORIZON_DAYS)
 
 
 def _choose_backend(start_date: str | None, today: date) -> str:

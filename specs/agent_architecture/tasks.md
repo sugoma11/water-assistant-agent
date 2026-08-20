@@ -1861,11 +1861,44 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   `uv run ruff check .` and `uv run pytest` clean — 440 passed, same 15
   pre-existing findings.
 
-- [ ] T071 Sync `irrigation_tool.md` to what P3 lands: the millimetre balance and
+- [x] T071 Sync `irrigation_tool.md` to what P3 lands: the millimetre balance and
   what the `100/SH_mm` rescaling moves, the decision-diff list as the disclosure
   it is, the reason-code ladder as implemented, and the R endpoint recorded as a
   deliverable **outside** this testbed rather than as pending work — its pending
   working-tree edits belong to this pass. → T065, T066, T067
+  Done, and the working-tree edits are committed with it — they were the D-id
+  dereferencing and the wetland's exit from scope, both true of the code as of
+  this packet.
+  **A new section, *The decisions this moves*,** carries the disclosure: 19 of
+  930, the dominant `cooling_requested → refill_forecast` pair and why the
+  semi-intensive roof moves the other way, pointing at the committed table rather
+  than restating it. § Units gains the rescaling as the two figures a reader can
+  check — 1.43 %θ per mm at 7 cm, 0.67 at 15 cm, against a flat 1.0 in the
+  deployed balance — and the fact that millimetres are what runs while the
+  deployed regime stays reachable for the replay.
+  **A *tool surface* section** the file did not have: the signature, why it takes
+  no dates, the payload, all-or-none on the stated arguments, and the three
+  `not_available` triggers.
+  **Three corrections where the spec had drifted from the code**, which is what
+  the packet exit asks for beyond the row's list. The ET0 bullet named the fixed
+  pressure as *the* departure from FAO-56; T061 measured four, and the routine
+  returns 1.17–1.38× a textbook FAO-56 — that is now stated with the sentence
+  that makes it deliberate, since the site's thresholds were tuned against this
+  convention's ET. The balance's pseudo-code still carried the `ks = 1.0`
+  open-water arm, which left with the wetland. And "fully offline" needed
+  splitting: the *calculator* is offline, and a modelled call still fetches a
+  forcing that cannot be a station window, because its own window opens at the
+  case's `as_of`.
+  `first_outflow_date`'s omission is recorded in § What is dropped with its
+  reason — it can name the seed step's artifact as the refill day — because it is
+  the one dropped function whose absence is a correction rather than a scope cut.
+  Left alone deliberately: `agent_architecture.md` §0's status table still reads
+  "to build" for this row. It is stale for every landed packet — weather still
+  says "no station source" after P2a, GR2L "no `forcings`" after P2b — so
+  repairing this one row would make the table *more* misleading, not less. It
+  wants one pass of its own.
+  `rumdl check` clean on the file; `uv run ruff check .` and `uv run pytest`
+  clean — 440 passed, same 15 pre-existing findings.
 
 **Exit:** the port reproduces the deployed controller before the unit fix, the
 diff list exists, and the irrigation spec contradicts nothing in the code.

@@ -400,10 +400,39 @@ The blocking phase: no case is reproducible until this lands.
   `agent.py`'s module-level `_PIPELINE`, now passes T025's `SETTINGS_EXECUTOR`,
   which keeps it lazy — T027 replaces that line with the per-context build.
   `uv run ruff check .` and `uv run pytest` clean — 103 passed.
-- [ ] T027 `build_text_to_sql_agent(executor, clock, description=None)`: rebuild
+- [x] T027 `build_text_to_sql_agent(executor, clock, description=None)`: rebuild
   the pipeline with a context-bound validator and querier and a fresh `Agent` with
   **byte-identical** frozen text; the module singleton becomes the production
   default built from it. → T025, T026
+  Done. The factory builds a fresh `TextToSqlPipeline` whose validator is
+  `DuckDbExplainValidator(executor)` and a fresh `Agent` whose tools are
+  `make_query_builder_tool(pipeline)` and `make_query_database_tool(executor,
+  clock)` — the same executor object in both DB seams, so the SQL the pipeline
+  approves and the SQL that runs meet one catalog. `text_to_sql_agent =
+  build_text_to_sql_agent(SETTINGS_EXECUTOR, site_now)`, so `bootstrap.py`, the
+  root agent and the chat service are untouched and there is no second
+  construction path.
+  **Byte-identical, verified rather than asserted:** the frozen strings moved to
+  module constants (`AGENT_NAME`, `AGENT_DESCRIPTION`, `STATIC_INSTRUCTION`,
+  built once at import) and `sha256(name | description | static_instruction)` of
+  the production agent is `ba967291…`, unchanged from the pre-refactor commit;
+  the hash over both tools' `(__name__, __doc__)` pairs is `5295be11…`, likewise
+  unchanged. `query_builder_tool` had to become a closure too — it captured the
+  module-level `_PIPELINE`, which no longer exists — and its docstring is
+  therefore indented one level deeper in source; that is invisible because
+  CPython 3.13 strips a docstring's common leading whitespace at compile time,
+  and ADK dedents besides. Nothing outside this module imported `_PIPELINE` or
+  `query_builder_tool`.
+  What is deliberately **not** per-context: the transpiler and the two
+  `LlmSqlFixer`s are stateless configuration and are now module-level singletons
+  shared by every build (§3.1's "transpiler, fixers, models and prompt strings
+  are shared"). The model is the exception to object sharing — `_build_model()`
+  runs per build, since a `LiteLlm` is cheap and two rollouts should not share a
+  client; the *text* that pins it, `settings.text_to_sql_agent_model`, is the
+  same, which is the sense in which §3.1 means shared. `description` defaults to
+  `None` and falls back to `AGENT_DESCRIPTION`, so T029 can thread a candidate's
+  text through without the default becoming a second copy of the wording.
+  `uv run ruff check .` and `uv run pytest` clean — 103 passed.
 - [ ] T028 Extend the querier's sqlglot pass — today it parses only for the
   read-only guard and executes the original string, so it must now re-emit what it
   validated — to rewrite `CURRENT_DATE` and `now()`-family nodes to the literal

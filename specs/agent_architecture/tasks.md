@@ -740,10 +740,43 @@ The blocking phase: no case is reproducible until this lands.
   §3.1's two halves in one test. T026's seam gets a direct case: two validators
   on two spies each run their own `EXPLAIN`. `uv run ruff check .` and
   `uv run pytest` clean — 115 passed, same 15 pre-existing findings.
-- [ ] T035c Tests for the factories and the pins (**packet P1c**):
+- [x] T035c Tests for the factories and the pins (**packet P1c**):
   `build_toolset` produces independent toolsets for two `as_of` values in
   parallel; the production defaults are the factories' own output, not a second
   construction path; `just pins` fails on a moved hash. → T029, T030, T034
+  Done: `tests/assistant/test_factories_and_pins.py`, 19 cases. The parallel case
+  runs two toolsets' **sub-agent queriers** — `toolset[0].agent.tools[1]`, the
+  deepest point a context's binding has to reach — through `asyncio.gather` over
+  interleaved calls, four each, and checks both counts against an independent raw
+  query on the pinned file (T035a/T035b's rule: never against a second view). It
+  asserts up front that the two expected counts differ, so a fixture that stopped
+  discriminating fails loudly instead of passing vacuously.
+  Each binding is asserted from the **far side**, since a test that only walked
+  the object graph would pass against a tool that holds a context and then reads
+  a singleton anyway: the weather tool is checked by the `today` a faked
+  `fetch_daily_weather` was handed (two contexts asking `past_days=1` get
+  2025-12-31 and 2026-03-14), the GR2L tool by a spy executor recording that the
+  seed query reached `ctx.db`, and the clock is shown to be read *per call* by
+  moving a mutable closure between two calls on one tool.
+  "No second construction path" gets a case with teeth of its own:
+  `hasattr(weather_module, "get_weather_forecast_tool")` is asserted **false** —
+  a module-level tool is exactly the unbound singleton this seam removes — plus
+  `production_context()` being the same object every call, holding `site_now`
+  and `SETTINGS_EXECUTOR` themselves, and `root_agent` matching a fresh
+  `build_root_agent(production_context())` name for name and docstring for
+  docstring while sharing no tool objects with it.
+  Both docstring failure modes are covered from both sides: a candidate's text
+  reaches the ADK *declaration* (not merely `__doc__`), an omitted component
+  keeps the production wording, an unknown tool name raises, and
+  `build_root_agent(docstrings=…, tools=…)` raises.
+  **Five mutations were run to check the tests bite**, not assumed: binding the
+  toolset's sub-agent to `SETTINGS_EXECUTOR` fails the parallel case alone;
+  restoring `site_now()` in the weather wrapper fails the window case; seeding
+  GR2L from `get_duckdb_executor()` fails the seed case; making `build_toolset`
+  drop the docstrings fails the declaration case; and making `check_pins` never
+  return 1 fails the moved-hash case. Each mutation fails exactly the case that
+  claims that seam. `uv run ruff check .` and `uv run pytest` clean — 134 passed,
+  same 15 pre-existing findings.
 - [ ] T036 Smoke-run the chat UI against the refactored service and confirm the
   prose answer path is unchanged. → T030
 

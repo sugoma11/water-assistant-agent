@@ -37,7 +37,7 @@ class _FakeState(dict):
 def _stub_execute(monkeypatch: pytest.MonkeyPatch) -> None:
     """Replace the DuckDB execution path so no real database is needed."""
 
-    async def fake_validated_execute(sql_query: str) -> dict:
+    async def fake_validated_execute(sql_query: str, executor: object, clock: object) -> dict:
         return dict(_SUCCESS_RESULT)
 
     monkeypatch.setattr(warehouse, "_validated_execute", fake_validated_execute)
@@ -69,7 +69,7 @@ async def test_tool_writes_result_into_state(_stub_execute: None) -> None:
 
 @pytest.mark.asyncio
 async def test_error_result_writes_no_state(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_error(sql_query: str) -> dict:
+    async def fake_error(sql_query: str, executor: object, clock: object) -> dict:
         return {"status": "error", "error_details": "boom"}
 
     monkeypatch.setattr(warehouse, "_validated_execute", fake_error)

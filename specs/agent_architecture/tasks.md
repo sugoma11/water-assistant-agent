@@ -350,11 +350,40 @@ The blocking phase: no case is reproducible until this lands.
   the bound is entirely the caller's binding. `uv run ruff check .` and
   `uv run pytest` clean — 103 passed, the same 15 pre-existing findings in
   `notebooks/`, `scripts/count_tokens.py` and `train_gepa.py`.
-- [ ] T025 [P] `tools/warehouse.py`: `make_query_database_tool(executor, clock)`
+- [x] T025 [P] `tools/warehouse.py`: `make_query_database_tool(executor, clock)`
   returning a closure that preserves the exact name, signature and docstring of
   `query_database_tool` — the frozen instruction names the tool and ADK derives
   the declaration from the function. Keep the module-level tool as the production
   default bound to the settings executor and `site_now`. → T020
+  Done. The former module-level `def` moved **inside** the factory verbatim, so
+  the production default is now `make_query_database_tool(SETTINGS_EXECUTOR,
+  site_now)` and name, signature and docstring are identical to a context-bound
+  tool *by construction* rather than by a copy someone must keep in step — there
+  is one construction path, which is also what T035c will assert for the other
+  factories. Verified the text that actually reaches the model: ADK's
+  `FunctionTool(...)._get_declaration()` over the closure yields
+  `name='query_database_tool'` and a `description` byte-identical to the
+  pre-refactor one (the docstring's deeper source indentation is removed by
+  ADK's own dedent, so the declaration is unchanged), with `tool_context` still
+  absent from the parameter schema. `__qualname__` is reset to
+  `query_database_tool` as well — ADK reads only `__name__`, but a
+  `<locals>`-qualified name would otherwise surface in logs and reprs.
+  Two supporting changes the row does not name but the factory forces. First,
+  `SETTINGS_EXECUTOR`: `make_query_database_tool` takes an executor *object*,
+  the default is built while the module is still importing, and
+  `DuckDbQueryExecutor` connects in `__init__` — so a bare
+  `get_duckdb_executor()` there would have opened a DuckDB connection at import
+  time, which nothing does today. `_SettingsExecutor` is a two-line
+  `ReadOnlyWarehouseQuery` that forwards to the existing lazy singleton per
+  query, keeping import-time behaviour exactly as it was. It is also what T026
+  and T027 hand their production defaults. Second, `_validated_execute` and
+  `_execute_and_serialize` now take the executor explicitly instead of reaching
+  for `get_duckdb_executor()` at the bottom — the whole point of the seam — and
+  `_validated_execute` also carries the `clock` through to T028's rewrite; it is
+  threaded but not yet read in this commit. `tests/assistant/test_phase3_fr15.py`
+  monkeypatches `_validated_execute`, so its two fakes gained the matching
+  parameters; nothing else about that test changed. `uv run ruff check .` and
+  `uv run pytest` clean — 103 passed, same 15 pre-existing findings.
 - [ ] T026 [P] `DuckDbExplainValidator(executor)`: take the executor as a
   constructor argument instead of importing the warehouse singleton
   (`dry_run.py:13`), so the sub-agent has exactly one DB seam. → T020

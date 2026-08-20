@@ -1783,13 +1783,42 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   deployed capacity are common in this record and T067's table will show it.
   `uv run ruff check .` and `uv run pytest` clean — 382 passed, same 15
   pre-existing findings.
-- [ ] T067 Decision-diff harness: replay a historical window through **both** unit
+- [x] T067 Decision-diff harness: replay a historical window through **both** unit
   regimes with the same Python ET0, so unit handling is the only variable, and emit
   a markdown table of every date and roof where the irrigate decision flips, with
   the driving feature values. This is the evidence the site re-tunes against, and
   the bound on what the testbed's irrigation answers say about the deployed
   system. Commit the emitted table beside the script, the way T007's rain-event
   count is committed — the list is the deliverable, not the run. → T065
+  Done. `scripts/irrigation_decision_diff.py` and the committed
+  `specs/agent_architecture/irrigation_decision_diff.md`.
+  **19 of 930 decisions flip — 2.0 %** — over the catalog's `as_of` band,
+  2025-06-01 → 2026-04-24, 310 days × 3 roofs (18 band days uncoverable, all of
+  them windows running past the station record's end). The millimetre balance
+  irrigates on 8 the deployed one does not and declines on 11 it does. Both arms
+  take the same station rows, the same `et_fao56` ET0, the same measured seed and
+  the same trigger levels: `Regime` is the only argument that changes, which is
+  what T063 put it there for.
+  **Both arms are reported in %θ, and that is what makes the table readable.**
+  The millimetre thresholds *are* the %θ ones converted, so expressed in %θ the
+  two arms are compared against identical numbers and a flip is never a threshold
+  moving — only a trajectory. The rescaling is visible directly: 1.43 %θ per mm
+  on the 7 cm roofs against the deployed 1.0, and 0.67 on the 15 cm.
+  **The dominant pair is `cooling_requested → refill_forecast`, 8 of 19**, all on
+  the two extensive roofs: a shallow roof fills 1.43× faster in millimetres, so
+  rain the deployed balance did not think would refill it now does, and the rule
+  waits instead of watering. The semi-intensive roof moves the other way — three
+  flips are `refill_forecast → cooling_requested` — because 0.67× makes the same
+  rain insufficient. Deep roofs get harder to move and shallow ones easier, which
+  is the physics the fix restores, seen in decisions.
+  **The forcing is what the station recorded, not the forecast the site had.**
+  Both arms see the identical rows, so forecast error is held out of the
+  comparison rather than shared unequally between them.
+  The number lives in that file and is not restated in `findings.md`: the table
+  *is* the measurement, and a second copy is a second thing to keep true. T071
+  cites it as the disclosure it is.
+  `uv run ruff check .` and `uv run pytest` clean — 382 passed, same 15
+  pre-existing findings.
 - [ ] T068 `values_for(card_id)`: project `rules_constants.py` and `roofs.py` into
   each `provenance: rendered` card's `values:` / `applies_to:` / `not_applicable:`
   blocks, plus the drift test asserting the committed card equals it and a

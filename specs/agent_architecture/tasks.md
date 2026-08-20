@@ -17,6 +17,65 @@ else.
 
 ---
 
+## Work packets — the unit of execution
+
+A phase is not a session. The binding constraint is neither task count nor code
+volume — every module P1 and P2 touch is small, 2,505 lines across all of them —
+but **the specification re-read** (the four core documents are 2,604 lines, the
+three tool specs another 1,207) and **the debugging loop**. A packet is therefore
+sized so that one session reads a few hundred lines of specification, edits six
+to ten files, and fails in **one library's vocabulary** rather than three.
+
+Three rules make a packet fit:
+
+1. **Read the sections, not the documents.** Each packet below names its own; a
+   session that opens all four core documents has spent a quarter of its window
+   before writing a line.
+2. **Commit at every packet boundary.** A session that starts from a dirty tree
+   spends its opening on reconstructing what the last one was doing.
+3. **Write findings back as you go** — measurements into `findings.md`, decisions
+   into `decisions.md`, consequences into `plan.md`. Anything re-derived in a
+   later session is a session half spent.
+
+| Packet | Tasks | Sections to read | Exit |
+|---|---|---|---|
+| **P0** specification reconciliation | T001–T010 | all four core documents — cross-document consistency *is* the deliverable, so this one must not be split | no document references a file, section or decision id that does not exist |
+| **P1a** context, cache, clock | T020–T023, T031, T035a | arch §4, §5 (as-of views, response cache); `decisions.md § The construction seam`, `§ The response cache`, `§ The as-of cut`, `§ Window resolution and the scenario clock`; `findings.md § Codebase seams` | as-of bound on all five tables; the cut identical under two host `TZ`s; cache round-trip, canary divergence, unfillable miss |
+| **P1b** DB seams, frozen sub-agent | T024–T028, T035b | arch §3.1, §5 (generated-SQL bullet); `decisions.md § The construction seam`; `findings.md § Codebase seams` (executor injectability, `AgentTool` name) | two contexts' sub-agents run one query concurrently, each on its own bound; the `CURRENT_DATE` rewrite pinned |
+| **P1c** factories, pins, smoke | T029, T030, T032–T034, T035c, T036 | arch §2, §5's pin list; `decisions.md § Model pinning`, `§ Replication and the LLM cache` | independent toolsets for two `as_of` values; `just pins` verifies; the chat UI unchanged |
+| **P2a** weather: window, horizon, sources | T040–T045, T055 | arch §3.3; `weather_tool.md § Station source` + the two unit conversions; `decisions.md § Weather sources`, `§ Typed abstention`, `§ The day boundary`; `findings.md § Weather source measurements`, `§ Data record` | station derivation field by field; midnight-straddling rain in the right Berlin day; routing at both record edges; a station case in replay with **zero** cache entries and zero live calls |
+| **P2b** GR2L: seed, counterfactuals, scope, taxonomy | T046–T054, and **T115 pulled forward** | arch §3.4 + §3's preamble; `gr2l_tool.md`; `decisions.md § GR2L argument surface`, `§ Bounded series`, `§ Tool errors and harness exclusion`; `findings.md § Data record` (QWetland) | T054's list green; `roof_type` pinned as `str`; a model case in replay issues no live call; the GR2L canary committed |
+| **P3a** roof table, ET0, constants | T060–T062 | arch §1 principle 4, §3.5; `irrigation_tool.md § Units`, `§ Which extensive roof is which`; `findings.md § Not every roof is instrumented`, `§ The lysimeter collection area` | one roof table feeds `swc` and the presets with no value changes |
+| **P3b** bucket, faithfulness, unit fix, tool | T063–T067, T070 | `irrigation_tool.md` in full; `decisions.md § The irrigation calculator`, `§ No fitted correction between the instrument and the oracle` | the port reproduces the deployed controller **before** the unit fix; the diff list exists |
+| **P4** cards | T068, T069, T080–T084 | arch §3.2; `decisions.md § Retrieval` | a lookup case in replay with zero cache entries and zero live calls; every drift test green |
+| **P5** plotting | T090–T097, T099 | arch §3.6; `decisions.md § Plotting`, `§ Bounded series` | a `model` + `weather` + `measured` plot issues no live call in replay |
+| **P5f** frontend render | T098 | the existing tool-result component; arch §3.6's headless paragraph | the chat renders a plot from the stashed payload |
+| **P6a** rollout, contract | T100, T101, T104 | arch §2 (contract), §6, §7's exclusion paragraph; `decisions.md § The answer contract`, `§ Tool errors and harness exclusion` | one case runs end to end; an injected `upstream` error marks `harness_error` where an `invalid_argument` does not; `parse_failure` reported apart from a wrong answer |
+| **P6b** scoring | T102 | arch §7 in full, §6.1's `expectations` fields; `decisions.md § Trajectory scoring and routing probes`, `§ Plotting` (skip), `§ Retrieval` (card recall) | four metrics over fixture results, each with its edge case: unit normalization, binary trajectory, skip **and** coverage on both users, false abstention kept separate |
+| **P6c** pre-freeze text, pilot oracles | T103, T105, T106, T011 | arch §3.1; `questions.md` §1.6 and the T01/T07/T09 entries | the semantic layer carries the area *value* and the alias map; three oracles reproduce hand-computed answers |
+| **P6d** pilot and freeze | T107 | — | three repeats on T01/T07/T09, paired; the freeze recorded |
+| **P7a1** oracles, measured families | T110 (A, B, C, H) | `questions.md` §2 those families; arch §3.2, §3.3, §3.6 | each oracle reproduces a hand-checked answer and stamps `expectations.pins` |
+| **P7a2** oracles, model families | T110 (D, E, F, G, I) | `questions.md` §2 those families; arch §3.4, §3.5; `decisions.md § The irrigation calculator` | same, and every oracle imports the very function its tool calls |
+| **P7b** filters, instantiation | T111 | `questions.md` §1.6, §1.8; `findings.md § Validity-predicate specificity`, `§ Zero-outflow days`, both outage entries | the filters reject the known bad windows and accept the known good ones; T04 balances at ~50/50 |
+| **P7c** paraphrases, splits, emission | T112–T114 | `questions.md` §1.6 (paraphrases, roof vocabulary), §1.7; `decisions.md § Splits, sizing and the holdout`, `§ Case time` | per-parameter disjointness asserted; `as_of` striped; the emitter byte-stable across two runs |
+| **P7d** capture | T116 | `decisions.md § The response cache` | every case replays with zero live calls |
+| **P8a** candidate surface, `predict_fn` | T120, T121, T125 | arch §6, §2's optimizable-text bullet; `decisions.md § The optimizer entry point and the candidate surface`; `findings.md § Optimizer internals` | two records with different `as_of` evaluated concurrently *through* `predict_fn`; the unread-prompt assertion fires when a component is unread |
+| **P8b** scorers, search wiring | T122–T124, T126 | arch §7; `decisions.md § Candidate selection and the scorers' aggregation` | a short search over a handful of train cases completes; the skip semantics run through this repo's own aggregation callable, asserted to be passed — omitting it silently makes the objective the mean of the numeric scorer values |
+| **P8c** measurement run, statistics | T127–T129 | arch §7's reporting rules; `decisions.md § Replication and the LLM cache`; `specs/prompt-tuning-stats/plan.md` §5–§7 | three repeats × two arms; the bootstrap resamples `template_id`; both gaps separate; test_unseen as a win/loss table |
+
+**Sequencing that the table does not show.**
+
+- **P2a and P2b are sequential, not parallel** — T050 caps the weather wrapper
+  P2a has just rewritten, and `schemas.py` belongs to P2b alone.
+- **P3 and P4 need P1 but not P2**, so the rules and card track can run beside
+  the weather and GR2L track. P5 needs both.
+- **T105 and T106 must be committed before P6d opens.** They edit text that is
+  byte-stable after the freeze, and there is no second chance at it.
+- **T115 runs in P2b.** It is the one task whose failure lives outside this
+  repository, and P7d is the worst place to discover it.
+
+---
+
 ## Phase 0 — Specification reconciliation (blocks everything)
 
 Plan §2's five decisions become document edits here. Nothing in P1 may start
@@ -244,13 +303,21 @@ The blocking phase: no case is reproducible until this lands.
 - [ ] T034 `eval/pins.json` and a `just pins` check covering plan §4's pin list,
   with the card-store and reflection-model entries stubbed until P4 and P8 fill
   them. → T033
-- [ ] T035 Tests: `connect_asof` bounds every one of the five tables; the as-of cut
-  is identical under at least two host `TZ` settings (nothing else in the pin set
-  can detect a violation); cache round-trip, canary divergence and unfillable
-  miss; two contexts with different `as_of` running the same query concurrently —
-  through the sub-agent path as well — each seeing its own bound; a
-  production-clocked context reflecting a date change on the next query without a
-  rebuild; the T028 rewrite pinned. → T020, T021, T027, T028
+- [ ] T035a Tests for the context and the cache (**packet P1a**): `connect_asof`
+  bounds every one of the five tables; the as-of cut is identical under at least
+  two host `TZ` settings — nothing else in the pin set can detect a violation; a
+  production-clocked context reflects a date change on the next query without a
+  rebuild; cache round-trip, canary divergence and unfillable miss.
+  → T020, T021
+- [ ] T035b Tests for the DB seams and the sub-agent (**packet P1b**): two
+  contexts with different `as_of` running the same query concurrently — through
+  the sub-agent path as well — each seeing its own bound; the T028 rewrite pinned
+  by test; the context-bound query tool's name, signature and docstring identical
+  to the module-level one. → T027, T028
+- [ ] T035c Tests for the factories and the pins (**packet P1c**):
+  `build_toolset` produces independent toolsets for two `as_of` values in
+  parallel; the production defaults are the factories' own output, not a second
+  construction path; `just pins` fails on a moved hash. → T029, T030, T034
 - [ ] T036 Smoke-run the chat UI against the refactored service and confirm the
   prose answer path is unchanged. → T030
 
@@ -288,10 +355,13 @@ process and neither sees the other's data or clock.
 - [ ] T045 [P] Delete the Forecast backend and `_FORECAST_PAST_LIMIT_DAYS`: with
   two sources chosen from the window, the third backend and its wall-clock cutoff
   have no caller. → T043
-- [ ] T046 [P] Remove `WeatherResult.elevation` from `schemas.py` — the client
-  cannot know the surveyed height. The weather wrapper composes the site's own
+- [ ] T046 Remove `WeatherResult.elevation` from `schemas.py` — the client cannot
+  know the surveyed height. The weather wrapper composes the site's own
   `latitude` / `longitude` / `elevation` into its agent-facing payload; consumers
-  needing `hoehe_nn` take it from `site.py` explicitly.
+  needing `hoehe_nn` take it from `site.py` explicitly. **Lands in packet P2b,
+  not P2a**, though it is a weather change: `schemas.py` is otherwise T052's
+  file, and one packet per file is what keeps the two halves of P2 sequential
+  rather than conflicting. → T043
 - [ ] T047 Seed rule `seed_at = min(window_start, as_of)` in
   `swc.latest_measured_swc`, with staleness flagging beyond 7 days and the
   never-substitute-a-default rule (`not_available`, never a generic value). Every
@@ -544,7 +614,12 @@ the diff list exists.
   as MLflow `train_data` by both the search and the measurement run. → T113, T110
 - [ ] T115 Stand up the GR2L service, record its served build, and commit the
   canary request/response hash to `eval/pins.json`. Capture cannot start without
-  it, and a diverging canary is a hard failure by design. → T034
+  it, and a diverging canary is a hard failure by design. **Pull forward — run it
+  alongside P2b, not here.** It depends only on the canary format T023 fixes, it
+  is the one task that can block a whole phase on something outside this
+  repository, and discovering the service is unreachable during T116 costs a
+  capture session rather than a five-minute check. Listed in P7 because that is
+  where its output is consumed. → T023, T034
 - [ ] T116 Capture pass in record mode over every case, then commit `eval/cache/`;
   re-run in replay and assert zero live calls. Family H is part of the capture
   surface wherever a plot fetches weather or GR2L itself. → T114, T115
@@ -614,26 +689,28 @@ the diff list exists.
 
 ## Summary
 
-**96 tasks** across nine phases, 16 of them parallelizable.
+**98 tasks** across nine phases, 15 of them parallelizable, executed as **23
+packets** — one session each, mapped above.
 
-| Phase | Tasks | Parallelizable | Gates |
-|---|---|---|---|
-| P0 specification reconciliation | 11 | 6 | T010 blocks every ground-truth writer |
-| P1 injection seam | 17 | 4 | blocks P2–P8 entirely |
-| P2 tool completeness | 16 | 3 | blocks P5, P7 |
-| P3 rules | 11 | 2 | blocks P4 |
-| P4 cards | 5 | — | — |
-| P5 plotting | 10 | 1 | — |
-| P6 harness and pilot | 8 | — | **T107 freezes the testbed** |
-| P7 oracles and generation | 7 | — | T115 gates capture |
-| P8 optimizer | 10 | — | — |
-| final | 1 | — | — |
+| Phase | Tasks | Parallelizable | Packets | Gates |
+|---|---|---|---|---|
+| P0 specification reconciliation | 11 | 6 | 1 | T010 blocks every ground-truth writer |
+| P1 injection seam | 19 | 4 | 3 | blocks P2–P8 entirely |
+| P2 tool completeness | 16 | 2 | 2 | blocks P5, P7 |
+| P3 rules | 11 | 2 | 2 | blocks P4 |
+| P4 cards | 5 | — | 1 | — |
+| P5 plotting | 10 | 1 | 2 | — |
+| P6 harness and pilot | 8 | — | 4 | **T107 freezes the testbed** |
+| P7 oracles and generation | 7 | — | 5 | T115, pulled forward to P2b, gates capture |
+| P8 optimizer | 10 | — | 3 | — |
+| final | 1 | — | — | — |
 
-**Parallel opportunities.** P0's documentation edits (T001–T005) touch five
+**Parallel opportunities.** P0's documentation edits (T001–T005, T008) touch six
 different files and run together. Inside P1, T024, T025 and T026 are independent
 seams over the same context. P3 and P4 depend on P1 but not on P2, so the rules
 and card track can run beside the weather and GR2L track; P5 needs both. Within
-P2, T045, T046 and T053 are independent cleanups.
+P2, T045 and T053 are independent cleanups — T046 is not, since `schemas.py` is
+T052's file.
 
 **The one irreversible edge** is T107. Two of its prerequisites — T105 and T106 —
 edit text that is byte-stable afterwards, so neither can be deferred past the

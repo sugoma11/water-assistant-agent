@@ -44,11 +44,19 @@ against a document that still contradicts itself.
   only), `:63` (`wetland` preset), `swc.py:51` + `gr2l.py:52,78` (the mm-only
   route), `agents/root_agent/agent.py:36` ("four roof segments"). §3.4 now states
   the `str` rule as the deliberate opposite of §3.2's `topic` enum.
-- [ ] T003 [P] Repair stale references in `agent_architecture.md`: the header, §0
+- [x] T003 [P] Repair stale references in `agent_architecture.md`: the header, §0
   and §9 point at a `plan.md` that was deleted and at a "plan.md, Open bug
   records" section that never existed — repoint the radiation-offset citation to
   `findings.md` and `decisions.md § The radiation timestamp offset`, and add
   `schema/` and `pins.json` to §9's `eval/` listing. (plan §1.2)
+  The header's and §9's `plan.md` links resolve again — `plan.md` was rewritten,
+  not left deleted — so only §0's "Open bug records" citation was stale; it now
+  names `findings.md` plus the two `decisions.md` entries (the radiation offset
+  and the as-of cut, the row's two claims). §9's `eval/` listing gains `schema/`
+  and `pins.json`. Swept the file for further dangling ids: no `§9`–`§10`
+  cross-reference and no `D1`–`D31` decision id survives anywhere, and every
+  `§1.7`/`§1.8` reference is the catalog's, not this file's. Left as-is: §9 lists
+  no top-level `harness/`, which is `plan.md` §3 and §10's listing.
 - [ ] T004 [P] Record the plan's verified facts in `findings.md`, dated
   2026-08-19, each with how it was verified: GEPA's `frontier_type` default and
   MLflow's non-setting of it; MLflow's `weighted_objective` default and

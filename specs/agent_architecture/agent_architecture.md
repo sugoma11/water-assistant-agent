@@ -40,7 +40,7 @@ these strings are what trajectory scoring matches.
 | `ScenarioContext`, as-of views | — | to build | three paths bypass the seam: `swc.py` opens its own connection, both tool wrappers import the fetch function directly, the sub-agent reaches the warehouse singleton from two places |
 | response cache | — | to build | — |
 | harness · scorers · oracles · cases | — | to build | — |
-| pinned evaluation database | — | built | present and readable from this checkout; `radiation` is stamped an hour behind the other four tables and the as-of cut is host-timezone dependent (`plan.md`, Open bug records) |
+| pinned evaluation database | — | built | present and readable from this checkout; `radiation` is stamped an hour behind the other four tables (`findings.md`; `decisions.md` § The `radiation` timestamp offset) and the as-of cut is host-timezone dependent (`findings.md`; `decisions.md` § The as-of cut) |
 
 What exists is sound at the *client* layer — pure, ADK-free `weather_client` /
 `gr2l_client` / `swc` seams behind thin ADK wrappers. What is missing is the
@@ -875,7 +875,7 @@ src/water_assistant_agent/assistant/
               knowledge/store.py · knowledge/cards/*.yaml   (card store)
               tools/{lookup,plot,irrigation}.py · tools/roofs.py
 data/water.duckdb      (sha256 to pin)
-eval/          [to build] cache/ templates/ oracles/ cases/
+eval/          [to build] schema/ templates/ oracles/ cases/ cache/ · pins.json
 specs/agent_architecture/   agent_architecture.md · questions.md · decisions.md ·
                             findings.md · plan.md
 ```

@@ -549,11 +549,43 @@ The blocking phase: no case is reproducible until this lands.
   `uv run pytest` both clean — 103 passed, 15 pre-existing unrelated `ruff`
   findings in `notebooks/`, `scripts/count_tokens.py` and
   `src/experiments/text2sql/train_gepa.py` untouched.
-- [ ] T035b Tests for the DB seams and the sub-agent (**packet P1b**): two
+- [x] T035b Tests for the DB seams and the sub-agent (**packet P1b**): two
   contexts with different `as_of` running the same query concurrently — through
   the sub-agent path as well — each seeing its own bound; the T028 rewrite pinned
   by test; the context-bound query tool's name, signature and docstring identical
   to the module-level one. → T027, T028
+  Done: `tests/assistant/test_db_seams.py`, 12 cases. The concurrency pair runs
+  two `ScenarioContext`s (bounds 2026-01-01 and 2026-03-15, ~3,500 `outflow` rows
+  apart) through `asyncio.gather` over **interleaved** calls — four each,
+  alternating — first at the executor seam and then through the sub-agent path
+  proper, `build_text_to_sql_agent(ctx.db, ctx.clock).tools[1]`, which is the
+  packet's exit criterion. Expected counts come from an independent raw query
+  against the pinned file rather than from a second view, as in T035a.
+  The rewrite is pinned from the executor's side: a `SpyExecutor` records the SQL
+  it is **handed**, so the assertions are about what reached the database, not
+  about the parse tree — a tree-inspecting test would pass against exactly the
+  no-op T028 removes. Cases: `CURRENT_DATE` → the site-local date literal; the
+  five-spelling `now()` family → the UTC instant (11:00 Berlin in January
+  becoming `10:00:00`, with the date node in the same statement keeping the
+  site's day); the executed string differing from the original; a dateless
+  `CURRENT_DATE - INTERVAL 7 DAY` query against the real as-of view returning the
+  same non-zero count as its literal equivalent — under the wall clock that
+  window is empty, so it can only pass if the tool used the context's clock; the
+  clock read per call through a mutable closure; and the read-only guard still
+  rejecting `DROP TABLE` with nothing reaching the executor.
+  Both mutations were run to check the tests have teeth rather than assuming it.
+  Executing `sql_query` instead of the re-emitted string — the exact silent no-op
+  — fails 5 cases; binding the sub-agent's query tool to `SETTINGS_EXECUTOR`
+  instead of the context's executor fails the sub-agent concurrency case alone,
+  which is the one that would otherwise have been satisfied by an unbound
+  singleton answering plausibly.
+  The frozen-text cases compare a context-bound tool against the production
+  default on `__name__`, `__qualname__`, `inspect.signature` and `__doc__`, and
+  two built agents on name, description, `static_instruction` and both tool
+  docstrings, while asserting the agents and their tools are distinct objects —
+  §3.1's two halves in one test. T026's seam gets a direct case: two validators
+  on two spies each run their own `EXPLAIN`. `uv run ruff check .` and
+  `uv run pytest` clean — 115 passed, same 15 pre-existing findings.
 - [ ] T035c Tests for the factories and the pins (**packet P1c**):
   `build_toolset` produces independent toolsets for two `as_of` values in
   parallel; the production defaults are the factories' own output, not a second

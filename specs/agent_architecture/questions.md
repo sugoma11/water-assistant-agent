@@ -83,6 +83,15 @@ answer against a millimetre oracle as wrong (architecture §7).
   abstentions — and is not a sampling choice at all.
 - **Paraphrases**: EN + DE, 50/50 within each split, style pools disjoint between train and test,
   colloquial German included.
+- **Route cue — the documentary reference**: a question that names the documentation ("per the
+  manual", "as the operations manual defines it", "the manual's target"), or that asks what a
+  documented value *is*, routes to `lookup_reference`; a question asking only for a decision or a
+  measured number about the site routes to the tool that computes it. This is the convention that
+  separates T16a from T16b — identical inputs, symmetric must-nots, so **phrasing is the only
+  discriminator** — and it is why T07 and T11 name no manual against a `calc_irrigation` gold set.
+  It binds paraphrase generation as hard as it binds authoring: **a paraphrase may neither add nor
+  remove a documentary reference**, in either language, and one that does is a defect in the
+  paraphrase rather than a hard case.
 - **Roof vocabulary**: questions name roofs in the agent's own vocabulary (`non_irrigated_extensive`,
   …) or in natural language the semantic layer's alias map covers ("das Kiesdach", "KD", "the roof
   without irrigation") — **never raw column names** (`Extensiv1`, `Sumpf2`, `QGravel`).
@@ -316,12 +325,16 @@ green-roof tool fetches its own weather.
 
 ### E. Hybrid / full chain
 
-**T07 — irrigation check per manual**
-Q: "Does the {roof} roof need irrigation right now, according to the operations manual?" · DE: "Muss
-das unbewässerte Extensivdach heute bewässert werden?" · roof ∈ P2
+**T07 — irrigation check, current state**
+Q: "Does the {roof} roof need irrigation right now?" · DE: "Muss das unbewässerte Extensivdach heute
+bewässert werden?" · roof ∈ P2
 A: bool (balanced) · Traj: {calc_irrigation} · Cards: [] · Split: train+seen
 Oracle: `irrigation_decision` on the measured seed plus a 48 h lookahead.
-Note: measured-now twin of T11's predictive decision. **Phrasing open — §4.**
+Note: measured-now twin of T11's predictive decision. The phrase "according to the operations manual"
+is **deleted, not reworded**: it named the documentation against a `calc_irrigation` gold set, which
+is §1.6's route cue pointing the other way, and it collided with T16a's docs probe. What is left is
+an operational question with no values supplied — the shape the self-contained calculator answers,
+and the shape the deployed assistant is actually asked.
 
 **T08 — heatwave days (manual definition)**
 Q: "How many heatwave days, as defined in the operations manual, occurred in {month}?"
@@ -331,11 +344,12 @@ Oracle: definition constants → count on the station daily record. The consecut
 authored eval policy in `rules_constants.py`; the deployed controller carries only a heat threshold.
 
 **T11 — irrigation decision tomorrow**
-Q: "Does the {roof} roof need irrigation tomorrow, per the standard rule?" · roof ∈ P2
+Q: "Does the {roof} roof need irrigation tomorrow?" · roof ∈ P2
 A: bool (balanced) · Traj: {calc_irrigation} · Split: train+seen
 Oracle: `irrigation_decision` over the calculator's own modelled features.
 Note: predictive twin of T07; the dose, where the answer is yes, is the fixed per-roof constant
-stated for disclosure, not a computed volume.
+stated for disclosure, not a computed volume. "Per the standard rule" is dropped for T07's reason —
+same gold set, same route cue.
 
 **T12 — retention vs target**
 Q: "Was the retention of the {roof} roof during {event} above the manual's target?" · roof ∈ P1f
@@ -373,23 +387,29 @@ between them, so balanced sampling must correct for it or route both sides to on
 ### F. Given-values controls
 
 **T16a — rule applied to stated values**
-Q: "Soil moisture is at 12 %θ and only 2 mm of rain is forecast — should we irrigate, per the manual?"
+Q: "Soil moisture is at 12 %θ and only 2 mm of rain is forecast — **what does the operations manual
+say**, should we irrigate?"
 A: bool (balanced) · Traj: {lookup_reference} · Must-not: `text_to_sql_agent`,
 `get_weather_forecast_tool`, `calc_irrigation` · Cards: `irrigation_rule`, `irrigation_threshold`
 · Split: train+seen · Oracle: the rule on the stated values.
 Note: catches reflexive fetches for values already given, and carries three of train's six distractor
 slots. The two cards must between them state the ladder *and* the per-roof numbers, or the docs half
-of the probe is unanswerable by construction (architecture §3.2). **Cue phrasing open — §4.**
+of the probe is unanswerable by construction (architecture §3.2). The documentary reference is the
+whole cue (§1.6) and is now explicit rather than a trailing "per the manual", since it is what makes
+the `calc_irrigation` must-not fair against T16b's identical inputs.
 
 **T16b — calculator isolation**
-Q: "Given SWC {x} %θ and {y} mm of rain in the next 48 h for the {roof} roof, does the standard rule
-say to irrigate?" · roof ∈ P2; stated values are soil moisture in %θ, max air temperature and 48 h
+Q: "The {roof} roof is at {x} %θ with {y} mm of rain forecast for the next 48 h — should we
+irrigate?" · roof ∈ P2; stated values are soil moisture in %θ, max air temperature and 48 h
 forecast rain, per architecture §3.5
 A: bool (balanced) · Traj: {calc_irrigation} · Must-not: `lookup_reference` · Split: unseen
 Oracle: `calc_irrigation` on the stated values.
 Note: identical inputs to T16a with symmetric must-nots, so the probe binds in both directions —
 T16a trains the docs direction, T16b tests transfer to the calculator direction, which T07 and T11
-still teach in train. **Cue phrasing open — §4.**
+still teach in train. "Does the standard rule say to irrigate" is dropped: it read as a documentary
+reference and therefore cued T16a's route against T16b's gold set. What separates the two is now one
+thing only, and it is the thing §1.6 states — T16a asks what the manual says, T16b asks for a
+decision.
 
 ### G. Counterfactuals
 
@@ -537,9 +557,13 @@ so a candidate that skips them loses nothing and one that calls them pays nothin
 
 ## 4 Open
 
-- **T07's phrasing.** "According to the operations manual" cues the docs route against a
-  `calc_irrigation` gold set, colliding with T16a's probe. Wording left as-is. Settling it decides
-  whether T07 is a clean E-family positive or a second docs-vs-calculator probe.
-- **The T16a / T16b cue.** Must-nots are symmetric, so phrasing alone must cue docs versus
-  calculator, and a docs lookup before calculating is defensible behaviour that currently fails T16b.
-  Settling it makes the transfer axis measurable rather than a phrasing artifact.
+Nothing. The six items this section carried are settled and each is written where it binds, not
+here: the suite's composition and abstention share in §1.6 and §1.7, T12's event basis in §2 and
+[`t12_rain_events.md`](./t12_rain_events.md), the distractor margin in §3, and the T07 / T16a / T16b
+phrasing in §1.6's route cue. One residual is deliberately *not* closed and lives in
+`decisions.md § Trajectory scoring and routing probes` as an accepted risk: a candidate that looks
+the rule up before calculating still fails T16b, and the cue makes that defensible behaviour
+distinguishable rather than impossible.
+
+New items belong here only while their resolution is scheduled; anything settled moves into the
+section it governs.

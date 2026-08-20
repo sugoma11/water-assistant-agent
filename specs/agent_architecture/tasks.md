@@ -122,11 +122,19 @@ against a document that still contradicts itself.
   column is admitted to support no per-tool claim. Second slots are named as
   available (T03, T05), and `calc_irrigation`'s absence of a clean one is recorded
   as the reason not to legislate. §4's coverage-margin item removed.
-- [ ] T009 Settle T07's phrasing and the T16a/T16b cue in `questions.md` §2, and
+- [x] T009 Settle T07's phrasing and the T16a/T16b cue in `questions.md` §2, and
   close both §4 items. T07's wording must stop cueing the docs route against a
   `calc_irrigation` gold set; T16a and T16b must be distinguishable by phrasing
   alone, since their must-nots are symmetric. The pilot freezes T07's route, so
   this cannot wait for P6.
+  Settled by one convention rather than four rewordings — §1.6's **route cue**: a
+  documentary reference, or a question asking what a documented value is, routes
+  to `lookup_reference`; a question asking for a decision or a measured number
+  routes to the tool that computes it, and a paraphrase may neither add nor remove
+  such a reference. Under it T07 drops "according to the operations manual", T11
+  drops "per the standard rule" (same defect, same gold set — fixed with T07 or
+  the convention breaks on its neighbour), T16b drops "does the standard rule say
+  to irrigate", and T16a's reference becomes explicit. §4 is now empty and says so.
 - [ ] T010 `eval/schema/case.schema.json` + `eval/schema/template.schema.json`,
   plus the documented projection from template YAML to case JSON. Envelope is
   architecture §6.1 verbatim. Validators: every tool name is a registered name;

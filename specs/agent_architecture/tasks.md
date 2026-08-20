@@ -71,10 +71,15 @@ against a document that still contradicts itself.
   the silent default is the *mean of the numeric scorer values* rather than an
   error — that entry is dated 2026-08-20 alone, since the plan's version of it was
   wrong. Line citations were re-derived rather than copied.
-- [ ] T005 [P] Add to `decisions.md`: an entry for the GEPA selection decision
+- [x] T005 [P] Add to `decisions.md`: an entry for the GEPA selection decision
   (rejected — `gepa_kwargs={"frontier_type": …}`, with the reason), fold plan
   §2.3's plot-resolution decision into `§ Plotting`, and record plan §8's Q2 and
   Q3 as accepted risks under `§ Trajectory scoring and routing probes`.
+  New entry `§ Candidate selection and the scorers' aggregation` (both rejections:
+  the `frontier_type` passthrough and the absent-by-default `aggregation`), three
+  new rejected alternatives under `§ Plotting` for the resolved range, and Q2/Q3
+  as two accepted risks with their escape hatches named. `plan.md` §2.2, §2.3 and
+  §8 now point at where each landed, so no decision lives only in the plan.
 - [x] T006 Rewrite `questions.md` §1.6 and §1.7 so the derived table *is* the
   stated composition: the abstention band becomes the value the five-template set
   produces, the eight category shares become the derived ones, and `n = templates

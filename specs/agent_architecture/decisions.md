@@ -369,13 +369,31 @@ summary statistics, no series.
   is derived from the variable in code, adding no model-owned field to fumble.
 - *Echoing the plot spec into the final message as the answer.* A transcription
   slip inside a perfectly executed call would score as a wrong answer.
+- *Scoring the resolved range off the tool's echoed spec.* The family's scored
+  surface includes the absolute range, and when the candidate wrote "last month"
+  the only absolute range in existence sits in the tool's *result* — which is
+  exactly what `argument_checks` may never read (architecture §6.1). A
+  result-reading check scores the resolver, not the agent. The scorer resolves
+  the **argument** through the same layer-1 resolver instead, against the case's
+  `as_of`.
+- *Dropping the relative window forms from the plot signature* so `start` / `end`
+  are always absolute and comparable as written. It buys the comparison by
+  reversing a decision already taken for the weather tool (**Window resolution
+  and the scenario clock**) and splits one window vocabulary into two.
+- *A new `op` meaning "compare after resolving".* The `op` vocabulary is the
+  scorer's arithmetic; resolution is a property of the value being compared, so
+  it rides as a flag on the check and leaves `eq`, `set_eq` and `present`
+  meaning what they mean everywhere else.
 
 **Validity conditions:** the scored surface is the agent-supplied half of the
 spec; derived fields — unit, axis, aggregation — are constant across candidates
-and discriminate nothing, so scoring them inflates every candidate equally. And
-the answer metric is *skipped* for this family rather than scored 0: comparing
-a null answer against an oracle would charge the family's share of the suite
-against fully correct cases.
+and discriminate nothing, so scoring them inflates every candidate equally. The
+resolved-argument comparison is what keeps that surface fair: "last month" and
+the two dates it denotes must score identically, or the family measures date
+arithmetic rather than source and variable selection. And the answer metric is
+*skipped* for this family rather than scored 0: comparing a null answer against
+an oracle would charge the family's share of the suite against fully correct
+cases.
 
 ---
 
@@ -422,6 +440,29 @@ tool's contract mandates.
   because the pair probes routing only through symmetric must-nots — which is
   what makes the question phrasing load-bearing, since the wording must cue the
   intended route unambiguously.
+- **Two must-nots rest on candidate-owned text.** T19 and T23 forbid the weather
+  tool because the green-roof tool fetches its own weather — a fact principle 5
+  requires the baseline's docstring to state, and a docstring is candidate-owned.
+  The surface carrying it that no candidate can rewrite is the tool's response
+  echo, which the agent sees only *after* the call the must-not is about.
+  Accepted rather than repaired: moving the disclosure into the signature or the
+  registered name would take self-containment out of the optimizable surface,
+  and disclosure quality is part of what the search is meant to move. The failure
+  is self-inflicted and legible — a candidate that deletes the disclosure and
+  then fetches weather loses trajectory while its answer stays right, which
+  surfaces as a trajectory-only loss on those two templates.
+- **T15a's gold set punishes an equivalent route.** Its gold set is
+  `{text_to_sql_agent}`, but the station weather path derives `precip` from the
+  same column and returns the identical number, so a candidate that answers
+  correctly through the weather tool alone scores 0 on trajectory: an extra call
+  is free, a missing gold call is fatal. The same shape as the T16a/T16b risk
+  above, and accepted on the same ground — the wording cues the intended route,
+  and the template's discriminating work is the tense pair on the *answer* side,
+  T15b's must-not carrying the routing half. Naming both routes gold, as T25
+  does, stays available if the pilot shows candidates actually take the weather
+  route here; it is not taken pre-emptively, because it would make T15a's
+  trajectory satisfiable by either tool and drop it from the templates on which
+  the database route is sole-necessary.
 
 **Validity condition:** the shotgun mitigation is void unless every registered
 tool holds a must-not slot **inside train**. A distractor slot living only in
@@ -653,6 +694,41 @@ scenario context and reads candidate text back through the registry.
 - Candidate text is injected by a process-global patch for the duration of a
   batch (`findings.md`, Optimizer internals): one candidate per process, and
   any other in-process reader of those prompts sees candidate text.
+
+---
+
+## Candidate selection and the scorers' aggregation
+
+Selection runs on **one scalar per record**: what an explicit `aggregation`
+callable returns from the four scorers. The per-scorer values are logged and
+reach GEPA's reflective dataset, where reflection reads them as text; they do
+not hold a front.
+
+**Rejected:**
+
+- *Asking for a per-objective front through the optimizer's escape-hatch keyword
+  arguments* — `gepa_kwargs={"frontier_type": "objective"}`, the only way to make
+  the four metrics select without being blended. It would in fact arrive: the
+  default is `"instance"`, the entry point never sets the key, and a caller's
+  value survives the merge (`findings.md`, Optimizer internals). That is the
+  objection rather than the recommendation — a headline claim would rest on an
+  undocumented passthrough of an `@experimental` API whose failure mode is not an
+  error but a *different selection rule*, and the non-instance frontiers raise
+  only when no objective scores arrive at all, which is not the case here. The
+  same shape as the validation-set keyword rejected under **Splits, sizing and
+  the holdout**, refused for the same reason.
+- *Omitting `aggregation` and letting the library's default stand.* There is no
+  shipped callable to fall back on: the parameter defaults to `None` and the
+  metric then averages the numeric scorer values (`findings.md`), which is a
+  weighting nobody chose, and it raises outright on the two metrics that must
+  skip. An explicit callable is mandatory whatever the front does.
+
+**Validity conditions:** because selection is blended, the weights inside
+`aggregation` are part of the method and are pre-registered with the budget and
+the hyperparameters (**Splits, sizing and the holdout**), never adjusted after a
+test number is seen. And the per-scorer values must still reach the reflective
+dataset unblended — reflection over a single float is what **The optimizer entry
+point and the candidate surface** already rejects.
 
 ---
 

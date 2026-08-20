@@ -145,7 +145,8 @@ Rejected: passing `gepa_kwargs={"frontier_type": "objective"}`. It works, and it
 is the only way to make the original claim true, but it rests a thesis claim on
 an undocumented passthrough of an `@experimental` API whose failure mode is
 quiet. The explicit `aggregation` callable stays mandatory regardless — §7's
-"skipped, not scored 0" needs it (`optimize/util.py:200-214`).
+"skipped, not scored 0" needs it (`optimize/util.py:200-214`). Recorded by T005
+as `decisions.md § Candidate selection and the scorers' aggregation`.
 
 ### 2.3 The plot family's resolved range is scored as a normalized argument
 
@@ -157,7 +158,8 @@ paid for that decision on the weather tool), and the scorer resolves the
 *argument* through the same layer-1 resolver before comparing. The check stays
 arguments-only, never reads the result, and a candidate that supplies "last
 month" scores identically to one that supplies the dates. The case schema
-carries this as a resolution flag on the check, not as a new `op`.
+carries this as a resolution flag on the check, not as a new `op`. Folded by
+T005 into `decisions.md § Plotting`.
 
 ### 2.4 The wetland leaves both water-balance tools; `roof_type` stays a string
 
@@ -360,18 +362,15 @@ a model case completes with entries and no live call.
   time, and the candidate instruction forbids clarifying questions. Mitigation is
   disclosure, plus a spot-check of the German pool before splits are cut.
 - **Q1 — `data_freshness`'s provenance** (§4 above). Blocks its drift test only.
-- **Q2 — must-nots grounded in candidate-owned text.** T19 and T23 forbid the
-  weather tool on the strength of a disclosure that lives in a docstring the
-  candidate owns (principle 5). The non-rewritable surface is the tool's response
-  echo, which the agent sees only after calling GR2L.
-  `decisions.md § Trajectory scoring and routing probes` permits the ground but
-  rejects probes resting on rewritable text elsewhere; the two need reconciling
-  as an accepted risk or by moving the disclosure.
-- **Q3 — T15a punishes an equivalent route.** Its gold set is
-  `{text_to_sql_agent}`, yet the station weather path derives `precip` from the
-  same column and returns the identical number; missing a gold tool is fatal
-  where extra calls are free. Same shape as the accepted T16a/T16b risk, and
-  currently recorded nowhere.
+- ~~**Q2 — must-nots grounded in candidate-owned text.**~~ Settled by T005 as an
+  accepted risk under `decisions.md § Trajectory scoring and routing probes`: the
+  disclosure stays in the candidate-owned docstring, because moving it would take
+  self-containment out of the optimizable surface, and the failure it exposes is
+  self-inflicted and shows as a trajectory-only loss on T19 and T23.
+- ~~**Q3 — T15a punishes an equivalent route.**~~ Settled by T005 in the same
+  entry, on the T16a/T16b ground: the phrasing cues the route, and naming both
+  routes gold — T25's shape — stays available if the pilot shows candidates
+  taking the weather route.
 - **Q4 — family H's roof pools are notional.** §1.8 assigns H to P1, P1f and P2,
   but T24a fixes both roofs and draws only a `measured` swc series, so no case
   exercises a `model` series or the plot tool's `not_available`. Either an H

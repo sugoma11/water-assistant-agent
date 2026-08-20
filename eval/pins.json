@@ -13,7 +13,7 @@
     },
     "gr2l_base_url_sha256": "ab363c09354977cad56cb6701b7ed09958f1def695323513bce205e46f373662",
     "gr2l_canary_request_sha256": "c24f571f416086968ed9a8ac4d1f30e7b10564756ea427d8f36f99faa94c0906",
-    "gr2l_canary_response_sha256": null,
+    "gr2l_canary_response_sha256": "0c39f945a3f94073847202804d7e21e686dd8651b5ae81cb44bf4d04fbf20faa",
     "gr2l_roof_presets_sha256": "77e80a238b4bed2a26baaa8ea033cdda483bf4ba5c0cfb350e35e667d548775b",
     "reflection_model": null,
     "reflection_model_canary_sha256": null,

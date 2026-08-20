@@ -1707,7 +1707,7 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   arrays through T010's schema — deterministic key order, sorted by `case_id`,
   `indent=2`, trailing newline, generated and never hand-edited. Loadable directly
   as MLflow `train_data` by both the search and the measurement run. → T113, T110
-- [ ] T115 Stand up the GR2L service, record its served build, and commit the
+- [x] T115 Stand up the GR2L service, record its served build, and commit the
   canary request/response hash to `eval/pins.json`. Capture cannot start without
   it, and a diverging canary is a hard failure by design. **Pull forward — run it
   alongside P2b, not here.** It depends only on the canary format T023 fixes, it
@@ -1715,42 +1715,58 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   repository, and discovering the service is unreachable during T116 costs a
   capture session rather than a five-minute check. Listed in P7 because that is
   where its output is consumed. → T023, T034
-  **Blocked on a credential, which is exactly the failure this row was pulled
-  forward to find early — and it found it in one session rather than in a
-  capture session.** The machinery is built and committed; only the value is
-  missing.
-  **What the probe established.** The gateway is up and answering:
-  `GET /api-weinbau/health` returns `gr2l_service_connected: true`, and
-  `POST /api-weinbau/predict_gr2l` exists in its OpenAPI document with an
-  `APIKeyHeader` scheme named `API-KEY` — the header the client already sends.
-  The canary request hash is unchanged from what T023 committed
-  (`c24f571f…`), so the probe body is the pinned one.
-  **What blocks it.** The `GR2L_MODEL_API_KEY` in `.env` is rejected with
-  **401 Unauthorized** — by the client and by a bare `curl` with the same header
-  alike, so it is the key's standing in the gateway's own store, not this
-  repository's request. Minting or rotating one through the gateway's admin
-  endpoints is not something to do unasked. **To finish:** put a key with
-  `predict_gr2l` (or `any`) access in `GR2L_MODEL_API_KEY` and run
-  `just pins-canary`.
-  **The served build is the canary response, not a version string.** The health
-  payload's `tag` is empty in this deployment and the gateway reports a static
-  `1.0.0`, so neither identifies a build. That is the reason §5 pins the service
-  by base URL plus a request/response hash in the first place, and why nothing
-  new was added to the pin list: `gr2l_canary_response_sha256` *is* the record of
-  which build served.
-  **What landed instead**, so the remaining step is one command:
-  `gr2l_client.fetch_canary()` sends `CANARY_REQUEST` through the same
-  `_endpoint()` (extracted from `run_gr2l`, so a probe cannot be addressed to a
-  different deployment than the requests it vouches for);
-  `check_pins.py --capture-gr2l-canary` and `just pins-canary` capture it, refuse
-  to overwrite a hash that has **moved** rather than re-pinning silently, and
-  print what to do; and `LIVE_ONLY_PINS` makes `check()` report a captured pin as
-  pinned instead of failing it as "now uncomputable" — without which committing
-  the first canary would have made `just pins` fail permanently. Verified by
-  temporarily committing a placeholder hash: the check reports
-  `ok … (captured live)`, 9 pinned, and exits 0.
+  Done. `gr2l_canary_response_sha256` is
+  `0c39f945a3f94073847202804d7e21e686dd8651b5ae81cb44bf4d04fbf20faa`, captured
+  from the live service at the pinned base URL against the unchanged
+  `CANARY_REQUEST` (`c24f571f…`, T023's).
+  **The pin is a real model run, not an error body that returned 200** — worth
+  checking, because a hash does not care what it hashes. The response carries
+  `Ssub = 8.0`, exactly the `theta_01` the probe sends, so day 1 seeded the store
+  it was told to; `Qdown`/`Qup`/`OUT` are null, the documented seed-day
+  behaviour; and `ET = 1.045` is `ET_PM · kg · Ssub/Ssubmax` =
+  `2.0901 × 1 × 8.0/16.0` to the digit. The canary therefore pins the model's
+  arithmetic, not merely its availability.
+  **The served build is that hash, and no version string was available to add.**
+  The gateway's health payload carries an empty `tag` and its OpenAPI reports a
+  static `1.0.0`, neither of which identifies a build — which is precisely why §5
+  pins the service by base URL plus a request/response hash. Nothing was added to
+  the pin list.
+  **Machinery.** `gr2l_client.fetch_canary()` sends the probe through the same
+  `_endpoint()` `run_gr2l` uses (extracted here), so a probe cannot vouch for a
+  deployment other than the one real requests reach. `just pins-canary` captures
+  it and **refuses to re-pin a hash that has moved**, printing both values — a
+  moved canary is a hard failure by design, not something to overwrite quietly.
+  `LIVE_ONLY_PINS` teaches `check()` that a captured pin is pinned rather than
+  "now uncomputable"; without it, committing the first canary would have made
+  `just pins` fail permanently. `just pins` now reports 9 pinned, 7 unpinned, 0
+  moved.
+  **Two live probes, same hash** — the service is deterministic across calls,
+  which is the property the pin asserts and not one to take on faith.
+  **The whole path exercised against the real service, once.** A station-forced
+  seven-day window ran end to end — real `wetter` rows, real seed (4.2 %θ →
+  2.94 mm), real GR2L — with `evaluate_against_measured` giving mean 1.57 %θ and
+  max 2.65 %θ against the sensor record. The same window with
+  `forcings={"precip": {"2025-06-12": 50.0}}` moved that day from 2.28 to
+  15.62 %θ and produced 36.34 mm of runoff, so the **model** computed the
+  counterfactual rather than the wrapper adjusting a baseline. Repeating the
+  first request returned a byte-identical result and wrote no new entry: three
+  cache files for canary + two distinct requests. Written to a scratch directory,
+  never `eval/cache/` — that is T116's to commit.
+  **One hazard found by standing the service up, and left for T116 to own.**
+  `gr2l_client` keeps its `httpx.AsyncClient` in a module-level singleton, and
+  httpx binds a connection pool to the loop it was created on. A process that
+  drives cases through **separate `asyncio.run` calls** therefore fails on the
+  second live GR2L call with `RuntimeError: Event loop is closed`, surfacing as
+  an `upstream` error via `CacheMissError`. Observed directly: two `asyncio.run`
+  calls, the first succeeding and the second failing at `run_gr2l`; both calls
+  inside one loop succeed. It is invisible to this packet's tests (fakes) and to
+  production (one loop for the process), and `fetch_canary` closes the client
+  behind itself so the capture command is unaffected — but a capture or search
+  pass that runs a loop per case would hit it on case two. `ArchiveWeatherClient`
+  already owns its client per instance (T022); the GR2L half never got the same
+  treatment. Not fixed here: no row in P2b's list covers it.
   `uv run ruff check .` and `uv run pytest` clean — 254 passed, same 15
-  pre-existing findings; `just pins` unmoved at 8 pinned, 8 unpinned, 0 moved.
+  pre-existing findings.
 - [ ] T116 Capture pass in record mode over every case, then commit `eval/cache/`;
   re-run in replay and assert zero live calls. Family H is part of the capture
   surface wherever a plot fetches weather or GR2L itself. → T114, T115

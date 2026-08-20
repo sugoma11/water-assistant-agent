@@ -242,7 +242,7 @@ standing task it is defined to be.
 
 The blocking phase: no case is reproducible until this lands.
 
-- [ ] T020 `assistant/context.py`: `ScenarioContext(clock, db_path,
+- [x] T020 `assistant/context.py`: `ScenarioContext(clock, db_path,
   weather_client_factory, http_cache)` with `as_of` a property evaluating the
   clock per read, plus `connect_asof(db_path, clock)` building the in-memory
   DuckDB, attaching the pinned file read-only as `src`, and creating one bounded
@@ -250,6 +250,22 @@ The blocking phase: no case is reproducible until this lands.
   is a `DuckDbQueryExecutor` over a **view-recreating factory**, never a bare
   connection, and reconnects when `clock().date()` moves. `as_of` is converted to
   UTC inside the seam, never by the caller (`decisions.md § The as-of cut`).
+  Done. `connect_asof` opens `:memory:`, attaches the pinned file read-only as
+  `src`, and creates the five `main.<table>` views bound by a `TIMESTAMP` literal
+  computed from `clock().astimezone(UTC)` — never a parameter DuckDB would render
+  in its own session timezone, which is the host-`TZ` bug § The as-of cut names.
+  One deviation from §4's literal snippet: `ctx.db` is `AsOfQueryExecutor`, not a
+  bare `DuckDbQueryExecutor` — the class §4 sketches only calls its
+  `connection_factory` once at construction and again on connection errors, so it
+  cannot alone reconnect on `clock().date()` moving. `AsOfQueryExecutor` wraps one
+  `DuckDbQueryExecutor` instance, rebuilding it via the same view-recreating
+  factory the moment `execute_query` sees the bound date has moved, and satisfies
+  the same `execute_query(query) -> QueryResult` contract (`ports.py`'s
+  `ReadOnlyWarehouseQuery`), so P1b's consumers take it exactly as they would the
+  bare class. Manually verified: the bound tracks `clock()` to the same UTC
+  instant under `TZ=UTC`, `America/New_York` and `Asia/Tokyo`; a context built on
+  a mutable clock closure picks up a later date on its next query with no
+  explicit rebuild call.
 - [ ] T021 `assistant/cache.py`: `ResponseCache` keyed by the sha256 of the
   canonical request — URL plus sorted query parameters for Open-Meteo, `data[]`
   plus parameters for GR2L — as committed JSON under `eval/cache/`. A miss is

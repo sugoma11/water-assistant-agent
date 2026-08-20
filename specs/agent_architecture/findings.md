@@ -459,6 +459,37 @@ wetland days in the whole band.
 *Verified:* daily `sum(col)` per outflow column over the band.
 *Date:* 2026-08-17.
 
+## External sources on this machine
+
+Paths outside this repository, recorded here rather than in the plan because a
+checkout location is an environment fact, not a repo-relative reference. Both are
+inputs to P3 and to nothing else.
+
+**The weinbau API, carrying GR2L's R implementation, is checked out at
+`/home/shpilevo/work/ufz/weinbau-api-v1-internal`.** `gr2l_model/R/GR2L_function.R`
+(129 lines) holds the FAO Penman-Monteith ET routine that `et_fao56.py` is a
+verbatim port of, including the fixed `Pressure <- 100` kPa simplification at
+`:44`, and `run_GR2L` itself. `gr2l_model/api/plumber.R` is the endpoint that
+serves `POST /predict_gr2l`, the service the response cache's canary is pinned
+against.
+*Verified:* read from the checkout. *Date:* 2026-08-20.
+
+**`GR2L_function.R` ends in a top-level demo block, lines 112–129, and
+`plumber.R:11` sources the file** — so building a random 365-day data frame,
+running `run_GR2L` over it and printing the head happens on **every container
+start**. (An earlier note placed the block at `:124-141`; that range is wrong for
+the file as it stands.) Nothing in this repository depends on it, and the block is
+outside the request path, so it costs startup time rather than correctness.
+*Verified:* read from the checkout. *Date:* 2026-08-20.
+
+**The deployed irrigation controller is at
+`/home/shpilevo/Downloads/smart_irrigation.py`**, an extraction of the site's own
+`temp/smart_irrigation.py` — the source the bucket model, the reason-code ladder
+and the trigger constants are ported from, and the reference the faithfulness
+golden test replays against before the unit fix. `irrigation_tool.md` already
+names this path in its header.
+*Verified:* file present at that path. *Date:* 2026-08-20.
+
 ## Landed fixes
 
 **Weather window resolution fix.** Before this fix, Open-Meteo defaulted

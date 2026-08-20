@@ -356,7 +356,13 @@ a model case completes with entries and no live call.
   call (`decisions.md § The irrigation calculator`).
 - **R6 — cross-language drift.** The bucket model and its ladder exist in Python
   and in R with no shared CI. No case's answer depends on the R side, so drift is
-  a defect in that deliverable rather than in the evaluation.
+  a defect in that deliverable rather than in the evaluation. The R side is
+  readable from this machine — the weinbau API is checked out at the path
+  `findings.md § External sources on this machine` records — which makes the ET0
+  port a reading rather than a reconstruction (T061), but changes nothing about
+  the risk: reading the file once is not shared CI, and
+  `decisions.md § The irrigation calculator` keeps every conformance artefact out
+  of this repository.
 - **R7 — an ambiguous paraphrase survives the generation filter.** The filter
   tests *oracle* ambiguity, not linguistic ambiguity introduced at paraphrase
   time, and the candidate instruction forbids clarifying questions. Mitigation is

@@ -50,8 +50,8 @@ Three rules make a packet fit:
 | **P1c** factories, pins, smoke | T029, T030, T032–T034, T035c, T036 | arch §2, §5's pin list; `decisions.md § Model pinning`, `§ Replication and the LLM cache` | independent toolsets for two `as_of` values; `just pins` verifies; the chat UI unchanged |
 | **P2a** weather: window, horizon, sources | T040–T045, T055, T056 | arch §3.3; `weather_tool.md § Station source` + the two unit conversions; `decisions.md § Weather sources`, `§ Typed abstention`, `§ The day boundary`; `findings.md § Weather source measurements`, `§ Data record` | station derivation field by field; midnight-straddling rain in the right Berlin day; routing at both record edges; a station case in replay with **zero** cache entries and zero live calls |
 | **P2b** GR2L: seed, counterfactuals, scope, taxonomy | T046–T054, T057, and **T115 pulled forward** | arch §3.4 + §3's preamble; `gr2l_tool.md`; `decisions.md § GR2L argument surface`, `§ Bounded series`, `§ Tool errors and harness exclusion`; `findings.md § Data record` (QWetland) | T054's list green; `roof_type` pinned as `str`; a model case in replay issues no live call; the GR2L canary committed |
-| **P3a** roof table, ET0, constants | T060–T062 | arch §1 principle 4, §3.5; `irrigation_tool.md § Units`, `§ Which extensive roof is which`; `findings.md § Not every roof is instrumented`, `§ The lysimeter collection area` | one roof table feeds `swc` and the presets with no value changes |
-| **P3b** bucket, faithfulness, unit fix, tool | T063–T067, T070, T071 | `irrigation_tool.md` in full; `decisions.md § The irrigation calculator`, `§ No fitted correction between the instrument and the oracle` | the port reproduces the deployed controller **before** the unit fix; the diff list exists |
+| **P3a** roof table, ET0, constants | T060–T062 | arch §1 principle 4, §3.5; `irrigation_tool.md § Units`, `§ Which extensive roof is which`; `findings.md § Not every roof is instrumented`, `§ The lysimeter collection area`, `§ External sources on this machine`; `GR2L_function.R:35-74` in the weinbau checkout | one roof table feeds `swc` and the presets with no value changes; ET0 matches the R routine term for term |
+| **P3b** bucket, faithfulness, unit fix, tool | T063–T067, T070, T071 | `irrigation_tool.md` in full; `decisions.md § The irrigation calculator`, `§ No fitted correction between the instrument and the oracle`; `findings.md § External sources on this machine`; `smart_irrigation.py` | the port reproduces the deployed controller **before** the unit fix; the diff list exists and is committed |
 | **P4** cards | T068, T069, T080–T084 | arch §3.2; `decisions.md § Retrieval` | a lookup case in replay with zero cache entries and zero live calls; every drift test green |
 | **P5** plotting | T090–T097, T099 | arch §3.6; `decisions.md § Plotting`, `§ Bounded series` | a `model` + `weather` + `measured` plot issues no live call in replay |
 | **P5f** frontend render | T098 | the existing tool-result component; arch §3.6's headless paragraph | the chat renders a plot from the stashed payload |
@@ -1503,9 +1503,11 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   `gr2l_client.ROOF_PRESETS` at it with no value changes, so the pins are
   untouched. The catalog's sampling pools are read off this table. → T051
 - [ ] T061 [P] `assistant/et_fao56.py`: FAO-56 Penman-Monteith ET0 at albedo 0.23,
-  a verbatim port of the R implementation, with the fixed-pressure simplification
-  carried over deliberately and documented as a scope limit so the two languages
-  agree.
+  a verbatim port of `gr2l_model/R/GR2L_function.R` in the weinbau API checkout
+  (`findings.md § External sources on this machine`), with the fixed
+  `Pressure <- 100` kPa simplification at `:44` carried over deliberately and
+  documented as a scope limit — under 1 % of ET0 at 142 m — so the two languages
+  agree rather than each being right on its own terms.
 - [ ] T062 `assistant/rules_constants.py`: per-roof wilting / dry / capacity /
   residual authored in the site's own units and converted **once** through
   `swc.theta_pct_to_mm`; hour-based horizons; the heat threshold; the outflow
@@ -1519,9 +1521,13 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   window conventions — returning **bool plus reason code plus the fixed dose
   constant**, never a computed volume. → T062, T061
 - [ ] T064 **Faithfulness before correctness**: a golden-series test asserting the
-  port reproduces the deployed controller element for element *in its original
-  unit regime*, landing **before** the unit fix, so every later difference is
-  attributable to the fix rather than to the port. → T063
+  port reproduces the deployed controller — `smart_irrigation.py`,
+  `findings.md § External sources on this machine` — element for element *in its
+  original unit regime*, landing **before** the unit fix, so every later
+  difference is attributable to the fix rather than to the port. Commit the
+  generated series as a fixture: the controller lives outside any repository, so a
+  test that reads it at run time is a test that stops running the day that file
+  moves. → T063
 - [ ] T065 Carry the balance into millimetres, rescaling each roof's response to
   rain by `100/SH_mm`. The deployed trigger levels are carried verbatim as site
   policy and are **not** re-derived (`decisions.md § No fitted correction between
@@ -1536,7 +1542,8 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   a markdown table of every date and roof where the irrigate decision flips, with
   the driving feature values. This is the evidence the site re-tunes against, and
   the bound on what the testbed's irrigation answers say about the deployed
-  system. → T065
+  system. Commit the emitted table beside the script, the way T007's rain-event
+  count is committed — the list is the deliverable, not the run. → T065
 - [ ] T068 `values_for(card_id)`: project `rules_constants.py` and `roofs.py` into
   each `provenance: rendered` card's `values:` / `applies_to:` / `not_applicable:`
   blocks, plus the drift test asserting the committed card equals it and a

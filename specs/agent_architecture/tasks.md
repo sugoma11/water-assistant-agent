@@ -290,9 +290,27 @@ The blocking phase: no case is reproducible until this lands.
   differs from its committed one raises without writing the pending entry; a
   disabled-live and a raising-live miss both raise `CacheMissError` naming the
   nearest captured request.
-- [ ] T022 `WeatherClient` protocol plus the cached Archive implementation
+- [x] T022 `WeatherClient` protocol plus the cached Archive implementation
   wrapping `fetch_daily_weather`; move the module-level `httpx.AsyncClient`
   singleton behind it. The composite that adds the station half is T043. → T021
+  Done, in `tools/weather_client.py`. `WeatherClient` is a `Protocol` with one
+  method, `fetch(start_date, end_date) -> WeatherResult` — no location argument,
+  since a `WeatherClient` is constructed once per rollout already bound to the
+  site. `ArchiveWeatherClient` implements it, always forcing Open-Meteo's Archive
+  backend (deterministic ERA5 reanalysis, the one Open-Meteo path worth caching)
+  via a new `force_archive` flag on `fetch_daily_weather`, so it never calls
+  `_choose_backend`'s wall-clock read at all — narrower than fixing that read
+  everywhere, which is T031's job, not this one's. `fetch_daily_weather` also
+  gained an optional `client: httpx.AsyncClient | None` parameter, defaulting to
+  the existing module singleton (`tools/weather.py` and `tools/gr2l.py`, both
+  outside this packet, are unaffected); `ArchiveWeatherClient` is the one caller
+  that passes its own owned client, which is the "moved behind it" the row asks
+  for. No canary here — `decisions.md` § The response cache and §5 both name the
+  cache as load-bearing for GR2L only; for weather it is cost/speed, so
+  `ArchiveWeatherClient.fetch` calls `cache.fetch()` with no `canary=`. Manually
+  verified against a fake `httpx` transport: a second `fetch()` for the same
+  window returns the cached `WeatherResult` and the transport records exactly one
+  call.
 - [ ] T023 Route `run_gr2l` through the same cache and add the canary
   request/response hash as the service-version proxy. → T021
 - [ ] T024 [P] `tools/swc.py`: take the executor from `ctx` instead of building a

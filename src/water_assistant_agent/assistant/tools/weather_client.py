@@ -15,12 +15,14 @@ the rows are indistinguishable once transposed.
 """
 
 from datetime import date, timedelta
+from typing import Protocol, runtime_checkable
 
 import httpx
 import structlog
 
+from water_assistant_agent.assistant.cache import ResponseCache
 from water_assistant_agent.assistant.tools.schemas import DailyWeatherRow, WeatherResult
-from water_assistant_agent.assistant.tools.site import site_now
+from water_assistant_agent.assistant.tools.site import SITE_LATITUDE, SITE_LONGITUDE, site_now
 
 logger = structlog.get_logger(__name__)
 
@@ -252,28 +254,13 @@ def _upstream_error(response: httpx.Response, backend: str) -> OpenMeteoError:
     return OpenMeteoError(reason or f"HTTP {response.status_code}", backend=backend)
 
 
-async def fetch_daily_weather(
-    latitude: float,
-    longitude: float,
-    *,
-    start_date: str,
-    end_date: str,
-) -> WeatherResult:
-    """Fetch daily weather for one point over an absolute window, as GR2L-ready rows.
+def _build_params(latitude: float, longitude: float, start_date: str, end_date: str) -> dict[str, object]:
+    """The exact Open-Meteo query parameters :func:`fetch_daily_weather` sends.
 
-    The window is **always explicit**: callers resolve any relative form with
-    :func:`resolve_window` first, so no request can inherit Open-Meteo's implicit
-    seven-day forecast tail. Backend is chosen automatically — Archive for windows
-    older than ~92 days, otherwise Forecast.
-
-    Raises:
-        OpenMeteoError: the backend rejected the request (carries its ``reason``).
-        IncompleteWeatherError: a day in the window has no data for some variable.
+    Shared with :class:`ArchiveWeatherClient`'s cache key so the key can never drift
+    from what the client actually requests.
     """
-    backend = _choose_backend(start_date)
-    url = ARCHIVE_URL if backend == "archive" else FORECAST_URL
-
-    params: dict[str, object] = {
+    return {
         "latitude": latitude,
         "longitude": longitude,
         "daily": _DAILY_VARS,
@@ -283,8 +270,39 @@ async def fetch_daily_weather(
         "end_date": end_date,
     }
 
+
+async def fetch_daily_weather(
+    latitude: float,
+    longitude: float,
+    *,
+    start_date: str,
+    end_date: str,
+    client: httpx.AsyncClient | None = None,
+    force_archive: bool = False,
+) -> WeatherResult:
+    """Fetch daily weather for one point over an absolute window, as GR2L-ready rows.
+
+    The window is **always explicit**: callers resolve any relative form with
+    :func:`resolve_window` first, so no request can inherit Open-Meteo's implicit
+    seven-day forecast tail. Backend is chosen automatically — Archive for windows
+    older than ~92 days, otherwise Forecast — unless *force_archive* selects Archive
+    outright, which :class:`ArchiveWeatherClient` uses to stay wall-clock-free.
+
+    *client* defaults to the module-level singleton when omitted, so existing
+    callers are unaffected; :class:`ArchiveWeatherClient` passes its own owned
+    ``httpx.AsyncClient`` instead of reaching into that shared singleton.
+
+    Raises:
+        OpenMeteoError: the backend rejected the request (carries its ``reason``).
+        IncompleteWeatherError: a day in the window has no data for some variable.
+    """
+    backend = "archive" if force_archive else _choose_backend(start_date)
+    url = ARCHIVE_URL if backend == "archive" else FORECAST_URL
+    params = _build_params(latitude, longitude, start_date, end_date)
+    http_client = client if client is not None else _get_client()
+
     logger.debug("Fetching Open-Meteo weather", backend=backend, url=url, params=params)
-    response = await _get_client().get(url, params=params)
+    response = await http_client.get(url, params=params)
     if response.is_error:
         raise _upstream_error(response, backend)
     payload = response.json()
@@ -298,3 +316,72 @@ async def fetch_daily_weather(
         backend=backend,
         data=rows,
     )
+
+
+@runtime_checkable
+class WeatherClient(Protocol):
+    """Layer-2 weather source, reached through ``ctx.weather``.
+
+    Every consumer — the standalone tool, GR2L, the irrigation calculator, the
+    plot tool — resolves an absolute window through one object implementing this,
+    and sees the same rows, units and day boundary regardless of which concrete
+    source answered (`agent_architecture.md` §3.3). :class:`ArchiveWeatherClient`
+    is the first implementation; the composite adding the station half is a later
+    packet.
+    """
+
+    async def fetch(self, *, start_date: str, end_date: str) -> WeatherResult:
+        """Daily weather over an absolute ``[start_date, end_date]`` window."""
+        ...
+
+
+class ArchiveWeatherClient:
+    """Cached :data:`WeatherClient` implementation over Open-Meteo's Archive backend.
+
+    Always resolves through Archive (ERA5 reanalysis) — deterministic in
+    ``(rows, parameters)`` and therefore the one Open-Meteo path safe to cache — and
+    never touches the wall clock in doing so. Owns one ``httpx.AsyncClient`` for its
+    own lifetime instead of reaching into :func:`fetch_daily_weather`'s module-level
+    singleton, the same construction-seam move
+    :mod:`agents.text_to_sql.executor`-style factories make for the database
+    (`decisions.md` § The construction seam).
+
+    A hit returns straight from *cache*, issuing no request at all. A miss fetches
+    live via :func:`fetch_daily_weather` (``force_archive=True``) and records it,
+    keyed on exactly the query parameters sent — see
+    ``decisions.md`` § The response cache. No canary is required here: unlike GR2L,
+    Archive's cache is load-bearing only for cost and speed, and carries no
+    reproducibility claim (`agent_architecture.md` §5).
+    """
+
+    def __init__(
+        self,
+        cache: ResponseCache,
+        *,
+        latitude: float = SITE_LATITUDE,
+        longitude: float = SITE_LONGITUDE,
+    ) -> None:
+        self._cache = cache
+        self._latitude = latitude
+        self._longitude = longitude
+        self._http_client = httpx.AsyncClient(timeout=_TIMEOUT_SECONDS)
+
+    async def fetch(self, *, start_date: str, end_date: str) -> WeatherResult:
+        canonical_request = {
+            "url": ARCHIVE_URL,
+            "params": _build_params(self._latitude, self._longitude, start_date, end_date),
+        }
+
+        async def live_fetch() -> dict[str, object]:
+            result = await fetch_daily_weather(
+                self._latitude,
+                self._longitude,
+                start_date=start_date,
+                end_date=end_date,
+                client=self._http_client,
+                force_archive=True,
+            )
+            return result.model_dump()
+
+        cached = await self._cache.fetch(canonical_request, live_fetch)
+        return WeatherResult.model_validate(cached)

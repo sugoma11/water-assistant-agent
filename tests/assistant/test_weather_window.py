@@ -55,9 +55,9 @@ def test_explicit_window_passes_through() -> None:
         ({"end_date": "2026-07-05"}, "start_date is missing"),
         ({"start_date": "01/07/2026", "end_date": "2026-07-05"}, "YYYY-MM-DD"),
         ({"start_date": "2026-07-05", "end_date": "2026-07-01"}, "is after"),
-        ({"past_days": -1}, "between 0 and 92"),
-        ({"past_days": 400}, "between 0 and 92"),
-        ({"forecast_days": 30}, "between 0 and 16"),
+        ({"past_days": -1}, "must not be negative"),
+        ({"forecast_days": -3}, "must not be negative"),
+        ({"past_days": 1.5}, "whole number of days"),
         ({"past_days": 0}, "no days at all"),
         ({"forecast_days": 0}, "no days at all"),
     ],
@@ -65,3 +65,24 @@ def test_explicit_window_passes_through() -> None:
 def test_malformed_windows_are_rejected_before_any_fetch(kwargs: dict, message: str) -> None:
     with pytest.raises(InvalidWindowError, match=message):
         resolve_window(today=TODAY, **kwargs)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "window"),
+    [
+        ({"past_days": 400}, ("2025-06-24", "2026-07-28")),
+        ({"forecast_days": 30}, ("2026-07-29", "2026-08-27")),
+        ({"start_date": "1990-01-01", "end_date": "1990-01-02"}, ("1990-01-01", "1990-01-02")),
+    ],
+)
+def test_a_far_reaching_window_resolves_rather_than_failing(
+    kwargs: dict, window: tuple[str, str]
+) -> None:
+    """No cap lives here: reach is a source question, not an argument fault.
+
+    The back window has no bound at all (the reanalysis serves decades) and the
+    forward one is the wrapper's ``not_available`` horizon against ``ctx.as_of``,
+    so neither may be rejected as malformed here (``decisions.md`` § Window
+    resolution and the scenario clock, § Typed abstention).
+    """
+    assert resolve_window(today=TODAY, **kwargs) == window

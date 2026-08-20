@@ -233,9 +233,9 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
             start_date: Window start, ``YYYY-MM-DD`` (give ``end_date`` with it).
             end_date: Window end, ``YYYY-MM-DD``. Required whenever ``start_date`` is
                 given.
-            past_days: Number of **complete past days**, ending yesterday (0-92). It
-                adds no forecast days, so a retention question about last week runs on
-                last week's observations only.
+            past_days: Number of **complete past days**, ending yesterday. It adds no
+                forecast days, so a retention question about last week runs on last
+                week's observations only.
             forecast_days: Number of days from **today** forward (0-16). Combine it
                 with ``past_days`` to simulate across today; with neither given, the
                 window is the coming 7 days.
@@ -295,8 +295,8 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
 
         # Resolved before the fetch: Open-Meteo's own past_days silently appends a
         # seven-day forecast tail, which would be simulated as if it were observed.
-        # The day it resolves against is the context's, read per call.
-        today = ctx.clock().date()
+        # The day it resolves against is `ctx.as_of`'s, read per call.
+        today = ctx.as_of.date()
         try:
             window_start, window_end = resolve_window(
                 start_date, end_date, past_days, forecast_days, today=today

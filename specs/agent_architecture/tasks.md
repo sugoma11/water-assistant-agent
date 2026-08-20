@@ -815,10 +815,32 @@ process and neither sees the other's data or clock.
 
 ## Phase 2 — Tool completeness (weather + GR2L)
 
-- [ ] T040 Resolve `past_days` / `forecast_days` to absolute dates against
+- [x] T040 Resolve `past_days` / `forecast_days` to absolute dates against
   `ctx.as_of` in both wrappers before any client call. Malformed windows — end
   before start, negative counts, unparseable dates — are `error` /
   `invalid_argument`; nothing else in window validity is an error. → T031
+  Done. The resolution half was already in place from T029 (both wrappers call
+  `resolve_window(..., today=…)` before any client), so what this row actually
+  changed is **what counts as malformed**: `_MAX_PAST_DAYS = 92` and
+  `_MAX_FORECAST_DAYS = 16` are deleted along with `_validate_count`'s `maximum`
+  parameter, and the check is now type-and-sign only. Both caps were window
+  *reach*, not window *form*: `decisions.md` § Window resolution and the scenario
+  clock rejects a numeric back-window cap outright (no source imposes one), and
+  the forward cap is a scope limit the wrapper reports as `not_available`
+  (T041) — raising `InvalidWindowError` for either would hand the abstention
+  metric a false positive on an answerable question. The three surviving
+  malformed classes are exactly the row's: unparseable date, negative count,
+  end-before-start (including the pair of zero counts that selects no days).
+  Both wrappers now read `ctx.as_of.date()` rather than `ctx.clock().date()`.
+  Identical value — `as_of` is the property over the same callable — but it is
+  the name the row, §3.3 and §5 all use for the thing a window resolves against,
+  and it reads per call exactly as before.
+  Two agent-facing docstrings lost the stale `(0-92)` on `past_days`, in
+  `weather.py` and `gr2l.py`; `forecast_days`' `(0-16)` stays, because after
+  T041 that bound is real — it is just typed `not_available` instead of `error`.
+  `uv run ruff check .` and `uv run pytest` clean — 137 passed, the same 15
+  pre-existing findings, all in `notebooks/`, `scripts/count_tokens.py` and
+  `src/experiments/`.
 - [ ] T041 Typed `not_available` on `get_weather_forecast_tool` for the **single**
   scope limit: a well-formed window whose end lies more than 16 days past
   `ctx.as_of`. No back-window cap, no coverage class, no cutoff class — the old

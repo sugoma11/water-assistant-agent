@@ -83,9 +83,9 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
                 windows).
             end_date: Window end, ``YYYY-MM-DD``. Required whenever ``start_date`` is
                 given.
-            past_days: Number of **complete past days** to include, ending yesterday
-                (0-92). It adds no forecast days: ask for ``past_days=7`` and you get
-                last week's observations only.
+            past_days: Number of **complete past days** to include, ending yesterday.
+                It adds no forecast days: ask for ``past_days=7`` and you get last
+                week's observations only. Nothing bounds how far back it may reach.
             forecast_days: Number of days from **today** forward to include (0-16).
                 Combine it with ``past_days`` to span both sides of today; with
                 neither given, the window is the coming 7 days.
@@ -109,8 +109,8 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
         """
         # Resolved before the fetch: Open-Meteo's own past_days silently appends a
         # seven-day forecast tail, which would land in `data` unlabelled. The day
-        # it resolves against is the context's, read per call.
-        today = ctx.clock().date()
+        # it resolves against is `ctx.as_of`'s, read per call — never a wall clock.
+        today = ctx.as_of.date()
         try:
             window_start, window_end = resolve_window(
                 start_date, end_date, past_days, forecast_days, today=today

@@ -33,10 +33,6 @@ ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 # windows must use the Archive backend.
 _FORECAST_PAST_LIMIT_DAYS = 92
 
-# Argument limits for the relative window form (Open-Meteo's own documented range).
-_MAX_PAST_DAYS = 92
-_MAX_FORECAST_DAYS = 16
-
 # Open-Meteo's default when a Forecast request names no window at all; kept so a
 # bare call still means "the coming week" after resolution.
 _DEFAULT_FORECAST_DAYS = 7
@@ -108,12 +104,20 @@ def _parse_date(value: str, field: str) -> date:
         ) from None
 
 
-def _validate_count(value: int, field: str, maximum: int) -> int:
-    """Bounds-check one relative-window count."""
+def _validate_count(value: int, field: str) -> int:
+    """Reject a relative-window count that is not a whole number of days ≥ 0.
+
+    Only *malformedness* is checked here. There is deliberately no upper bound:
+    no source imposes one on the back window — the station is bounded by the
+    record it covers, the reanalysis reaches back decades — and the forward
+    horizon is a scope limit the wrapper reports as ``not_available`` against
+    ``ctx.as_of``, never an argument fault (``decisions.md`` § Window resolution
+    and the scenario clock, § Typed abstention).
+    """
     if not isinstance(value, int) or isinstance(value, bool):
         raise InvalidWindowError(f"{field} must be a whole number of days, got {value!r}.")
-    if not 0 <= value <= maximum:
-        raise InvalidWindowError(f"{field} must be between 0 and {maximum}, got {value}.")
+    if value < 0:
+        raise InvalidWindowError(f"{field} must not be negative, got {value}.")
     return value
 
 
@@ -150,10 +154,17 @@ def resolve_window(
     neither                       ``today`` … ``today + 6`` (the old default)
     ============================  ==========================================
 
+    Window validity has exactly two failure modes, and only the first is raised
+    here: a **malformed** window — mixed or half-given forms, an unparseable
+    date, a negative count, a range that ends before it starts — is an argument
+    fault. How far the resolved window reaches is not this function's business;
+    the forward horizon is checked against ``ctx.as_of`` by the wrapper and
+    reported as ``not_available`` (``agent_architecture.md`` §3.3).
+
     Raises:
         InvalidWindowError: mixed window forms, a half-given explicit window, an
-            unparseable date, an out-of-range count, a reversed range, or a pair
-            of counts that selects no days at all.
+            unparseable date, a negative count, a reversed range, or a pair of
+            counts that selects no days at all.
     """
     has_absolute = start_date is not None or end_date is not None
     has_relative = past_days is not None or forecast_days is not None
@@ -171,14 +182,12 @@ def resolve_window(
         start = _parse_date(start_date, "start_date")
         end = _parse_date(end_date, "end_date")
     else:
-        past = 0 if past_days is None else _validate_count(past_days, "past_days", _MAX_PAST_DAYS)
+        past = 0 if past_days is None else _validate_count(past_days, "past_days")
         if past_days is None and forecast_days is None:
             future = _DEFAULT_FORECAST_DAYS
         else:
             future = (
-                0
-                if forecast_days is None
-                else _validate_count(forecast_days, "forecast_days", _MAX_FORECAST_DAYS)
+                0 if forecast_days is None else _validate_count(forecast_days, "forecast_days")
             )
         start = today - timedelta(days=past)
         end = today + timedelta(days=future - 1)

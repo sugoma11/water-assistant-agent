@@ -44,6 +44,7 @@ from water_assistant_agent.assistant.tools.gr2l_client import (
     NON_MODELLABLE_ROOFS,
     ROOF_PRESETS,
     Gr2lConfigError,
+    normalize_roof_type,
     resolve_roof_parameters,
     run_gr2l,
 )
@@ -70,7 +71,6 @@ from water_assistant_agent.assistant.tools.site import (
     SITE_LONGITUDE,
 )
 from water_assistant_agent.assistant.tools.swc import (
-    MM_ONLY_ROOFS,
     SwcUnavailableError,
     daily_mean_swc,
     latest_measured_swc,
@@ -207,19 +207,26 @@ def _apply_forcings(
 def _to_days(
     result_rows: list[Gr2lResultRow],
     parameters: RoofParameters,
-    roof_type: str,
 ) -> list[GreenRoofDay]:
-    """Restate each GR2L day's mm storage as %θ, keeping the mm alongside."""
-    mm_only = roof_type in MM_ONLY_ROOFS
-    days: list[GreenRoofDay] = []
-    for row in result_rows:
-        swc_pct = (
-            None
-            if mm_only or row.Ssub is None
-            else round(mm_to_theta_pct(row.Ssub, parameters.SH), 2)
+    """Restate each GR2L day's mm storage as %θ, keeping the mm alongside.
+
+    One route, no roof-dependent branch: every roof this layer serves is a
+    substrate roof whose storage converts, and the one whose storage did not —
+    the wetland — is declined at entry rather than answered in another unit
+    (``gr2l_client.NON_MODELLABLE_ROOFS``). ``swc_pct`` stays optional only for
+    the null ``Ssub`` an older model build could return.
+    """
+    return [
+        GreenRoofDay(
+            **row.model_dump(),
+            swc_pct=(
+                None
+                if row.Ssub is None
+                else round(mm_to_theta_pct(row.Ssub, parameters.SH), 2)
+            ),
         )
-        days.append(GreenRoofDay(**row.model_dump(), swc_pct=swc_pct))
-    return days
+        for row in result_rows
+    ]
 
 
 def _summarize(
@@ -374,24 +381,26 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
 
         Soil moisture is in **% volumetric water content (%θ)**, the same unit the
         sensors and the ops manual use, both in and out; millimetres of stored water
-        appear alongside for the water balance. The **wetland** roof is the
-        exception — it reports millimetres only, because water ponded above its mat
-        has no %θ equivalent.
+        appear alongside for the water balance.
 
-        Four roofs can be modelled: ``wetland``, ``non_irrigated_extensive``,
-        ``irrigated_extensive``, ``semi_intensive``. The **gravel roof cannot be** —
-        it has no substrate, so there is nothing for the model to simulate, and the
-        tool reports that as ``status='not_available'``. Its measured sensor data is
-        still available through the database.
+        Three roofs can be modelled: ``non_irrigated_extensive``,
+        ``irrigated_extensive``, ``semi_intensive``. The **gravel roof and the
+        wetland cannot be** — the gravel roof has no substrate to simulate, and the
+        wetland ponds water above a mat its sensor cannot measure through — and the
+        tool reports either as ``status='not_available'``. Their measured sensor
+        data is still available through the database, so a question about what
+        those two roofs *did* is a normal database question.
 
         All roofs are segments of the same building, so no location is needed. Past
         and future windows are both supported and resolved automatically; just name
         the dates the question is about (up to 16 days ahead).
 
         Args:
-            roof_type: One of ``wetland``, ``non_irrigated_extensive``,
-                ``irrigated_extensive``, ``semi_intensive`` — selects the roof's
-                physical parameters.
+            roof_type: One of ``non_irrigated_extensive``, ``irrigated_extensive``,
+                ``semi_intensive`` — selects the roof's physical parameters. Name
+                the roof the user actually asked about even when it is the gravel
+                roof or the wetland: the tool answers that it cannot model those,
+                which is the honest answer to give.
             start_date: Window start, ``YYYY-MM-DD`` (give ``end_date`` with it).
             end_date: Window end, ``YYYY-MM-DD``. Required whenever ``start_date`` is
                 given.
@@ -409,8 +418,8 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
                 starting the window a few days early also lets the state settle.
             albedo: Optional override of the roof's surface albedo (0.0-1.0), the
                 fraction of sunlight reflected. **Omit it in normal use** — each roof
-                type has a calibrated default (0.06 for the wetland's open water, 0.2
-                for the vegetated roofs). Pass it only when the user explicitly
+                type has a calibrated default (0.2 for these vegetated roofs). Pass
+                it only when the user explicitly
                 describes a different surface or asks a what-if: e.g. ~0.25-0.3 dry
                 or sparse vegetation, ~0.4-0.6 a light gravel or reflective "cool
                 roof" coating, ~0.8 fresh snow. A higher albedo reflects more energy
@@ -456,12 +465,18 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
             With ``evaluate_against_measured`` it also carries ``evaluation``: the
             compared days, the overlap window, and the mean and largest
             |predicted − measured| soil moisture in %θ. When the request is outside
-            what can be modelled — the gravel roof, or a window with no soil-moisture
-            record to start from — ``status='not_available'`` with a ``reason`` to
+            what can be modelled — the gravel roof or the wetland, or a window with
+            no soil-moisture record to start from — ``status='not_available'`` with
+            a ``reason`` to
             pass on to the user; that is a scope limit, not a malfunction. On failure
             ``status='error'`` with ``error_details``.
         """
-        non_modellable = NON_MODELLABLE_ROOFS.get(roof_type.strip().lower())
+        # Normalized once, here, and every lookup below uses the result — the
+        # scope table, the presets, the soil-moisture column and the echoed
+        # `roof_type` alike (`gr2l_client.normalize_roof_type`).
+        roof_type = normalize_roof_type(roof_type)
+
+        non_modellable = NON_MODELLABLE_ROOFS.get(roof_type)
         if non_modellable is not None:
             logger.info("Green-roof model asked for an unmodellable roof", roof_type=roof_type)
             return NotAvailableResult(reason=non_modellable).model_dump()
@@ -590,7 +605,7 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
                 error_details="The green-roof model service is unavailable. The responsible team is looking into it."
             ).model_dump()
 
-        days = _to_days(result_rows, parameters, roof_type)
+        days = _to_days(result_rows, parameters)
         # Summarized over the rows the model actually ran on: a counterfactual's
         # retention is against its own rain, not against the rain it replaced.
         summary = _summarize(rows, days, parameters)

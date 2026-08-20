@@ -21,14 +21,18 @@
 ## What the model does
 
 GR2L (**G**reen **R**oof, **2 L**ayer) simulates the daily water balance of a
-green roof — this deployment covers four roof types: **wetland**,
+green roof. The **agent-facing tool serves three substrate roof types**:
 **non-irrigated extensive**, **irrigated extensive**, and **semi-intensive**
 (see "Roof types and their parameters" below). It answers questions like
 *"how much water is the roof storing, evaporating, and draining over this
 weather period?"*
 
-The facility's fifth segment, the **gravel roof, is out of scope** — see
-"[The gravel roof cannot be modelled](#the-gravel-roof-cannot-be-modelled)".
+Two of the facility's five segments are **out of scope for the tool** — the
+**gravel roof** and the **wetland** — see
+"[Roofs that cannot be modelled](#roofs-that-cannot-be-modelled)". The wetland's
+GR2L parameterization is **kept, not deleted**: it stays in the roof-type table
+below and in `ROOF_PRESETS`, layer 2 still accepts it, and the exclusion is a
+layer-1 scope decision that can be lifted.
 
 The model runs in two stages per day:
 
@@ -71,8 +75,8 @@ and **not** the location (see "[The site is pinned](#the-site-is-pinned)").
 
 ## The site is pinned
 
-All four roof types are segments of **one building**, so the agent-facing tool
-takes no coordinates. `site.py` holds them and both the weather fetch and the
+All the facility's roof types are segments of **one building**, so the
+agent-facing tool takes no coordinates. `site.py` holds them and both the weather fetch and the
 GR2L request use them:
 
 | GR2L field  | Value      | Source |
@@ -128,7 +132,7 @@ tool docstring says, and it is the *opposite* of the endpoint's rule):
   Windows starting more than ~92 days ago go to the Open-Meteo Archive backend;
   anything more recent (including future days, up to the 16-day forecast horizon)
   goes to the Forecast backend. The agent just names the dates the question is
-  about. (🔜 Planned, architecture D26: windows the site's own station record
+  about. (🔜 Planned, architecture §3.3: windows the site's own station record
   covers entirely will be forced from the DB instead of Open-Meteo — same
   `DailyWeatherRow` shape, same units, resolved in code, still no agent-facing
   source argument. A retrospective run and a forecast run will then be forced by
@@ -178,12 +182,12 @@ S_mm = (θ% / 100) × SH_mm          θ% = S_mm / SH_mm × 100
 Retention and runoff (`OUT`, `retention_mm`) stay in **mm** in both directions —
 they are fluxes, not states, and have no θ equivalent.
 
-> ⚠️ **The wetland reports millimetres only.** Its store is a 17 mm fleece mat
-> plus water ponded above it to the 90 mm standpipe height, and the sensor
-> saturates near 86 % θ (≈14.7 mm), so above the mat θ is not recoverable from
-> mm. `swc_pct` and `min_swc_pct` are `null` for the wetland; answer it in mm.
-> (Its *seed* is still read in %θ from the sensor and converted — that is a
-> lower bound whenever water is ponded above the mat.)
+> ⚠️ **This conversion is why the wetland is out of layer-1 scope.** Its store is
+> a 17 mm fleece mat plus water ponded above it to the 90 mm standpipe height,
+> and the sensor saturates near 86 % θ (≈14.7 mm), so above the mat θ is not
+> recoverable from mm — the tool's %θ-in/%θ-out contract cannot describe it. Its
+> preset is retained for layer 2, where a run is read in mm throughout; see
+> "[Roofs that cannot be modelled](#roofs-that-cannot-be-modelled)".
 
 ## Where day 1's soil moisture comes from
 
@@ -204,41 +208,63 @@ before the day the window opens** (`swc.latest_measured_swc`, `data/water.duckdb
 much older than the window start describes a roof that no longer exists. Beyond
 `swc.STALE_AFTER_DAYS` (7) the seed is flagged `is_stale`; the run still
 proceeds, and **the answer must say what it was seeded from and when**. This is
-not hypothetical: the sensor record currently ends 2026-04-24, and the wetland's
-own record ends earlier still (below), so present-day forecasts are seeded from
-stale readings until the record is refreshed.
+not hypothetical: the sensor record currently ends 2026-04-24, so present-day
+forecasts are seeded from stale readings until the record is refreshed.
 
 **When there is nothing to seed from** — the window opens before the record
 starts, or every candidate reading falls in a period the sensor is known to have
 failed — the tool returns `status='not_available'` with the reason, and does
 **not** substitute a default. GR2L's generic `theta_01 = 20 mm` is not a usable
-fallback here: it is above `Ssubmax` for three of the four roof types, so it
-would silently start the simulation from a saturated roof.
+fallback here: it is above `Ssubmax` for the non-irrigated extensive roof and
+within 3 mm of field capacity for the irrigated extensive, so it would silently
+start the simulation from a saturated roof.
 
-## The gravel roof cannot be modelled
+## Roofs that cannot be modelled
 
-The facility has a fifth segment — the **gravel roof** (`Kies` / `KD` /
-`QGravel`) — and GR2L has nothing to say about it. It has **no substrate**, so
-`SH` and the measured `Ssubmin`/`Ssubmax` bounds the two-layer balance is built
-on do not exist for it; there is no store to fill, drain or evaporate from.
+Two of the facility's five segments are outside the agent-facing tool's scope.
+Both live in `NON_MODELLABLE_ROOFS` and both return `status='not_available'`.
 
-- Asking to model it returns **`status='not_available'`** with a `reason`, not an
-  error. Nothing has malfunctioned — the request is outside the model's scope,
-  and the agent should say so plainly and offer what is available.
-- The gravel roof remains **first-class for measured data**: its soil-moisture,
-  outflow and temperature columns are queried like any other roof's. "How much
-  water ran off the gravel roof in July?" is a normal database question; "how
-  much will it retain next week?" is not answerable.
+**The gravel roof** (`Kies` / `KD` / `QGravel`) has **no substrate**, so `SH` and
+the measured `Ssubmin`/`Ssubmax` bounds the two-layer balance is built on do not
+exist for it; there is no store to fill, drain or evaporate from. There is
+nothing to parameterize and no preset for it anywhere.
+
+**The wetland** (`QWetland`) is a different case: it *has* a preset, and that
+preset is **retained deliberately** — in the roof-type table below, in
+`ROOF_PRESETS`, and in the layer-2 request body. What is withdrawn is layer-1
+service, for two reasons: the tool's %θ contract cannot describe a store whose
+sensor saturates near 86 % θ while water ponds above the mat (see "Units"), and
+the `QWetland` record fails from 2026-03-12 — a flat ~0 %θ to the end of the
+record on 2026-04-24, against a healthy range of 4–96 %θ — leaving nothing
+trustworthy to seed a present-day run from. Lifting the exclusion is a one-line change to
+`NON_MODELLABLE_ROOFS` if the sensor situation improves and the answer is allowed
+to come back in mm.
+
+- Asking to model either returns **`status='not_available'`** with a `reason`,
+  not an error. Nothing has malfunctioned — the request is outside the tool's
+  scope, and the agent should say so plainly and offer what is available.
+- Both remain **first-class for measured data**: their soil-moisture, outflow and
+  temperature columns are queried like any other roof's. "How much water ran off
+  the gravel roof in July?" is a normal database question; "how much will it
+  retain next week?" is not answerable.
+- **Neither roof has an irrigation decision either.** `calc_irrigation` excludes
+  both on its own terms — its rule is built for a classical substrate roof (see
+  [irrigation tool](./irrigation_tool.md)) — so `NON_MODELLABLE_ROOFS` bounds the
+  two water-balance tools alike and no roof answers under one while abstaining
+  under the other.
 
 ## Roof types and their parameters
 
-This deployment models **four roof types**. Each has a fixed substrate height
-`SH`; none of them has a retention layer, so every retention-related parameter
-is pinned to `0` (not the model's generic defaults):
+This deployment carries presets for **four roof types**. The agent-facing tool
+serves the **three substrate roofs**; the **wetland preset is retained but not
+reachable through layer 1** (see
+"[Roofs that cannot be modelled](#roofs-that-cannot-be-modelled)"). Each has a
+fixed substrate height `SH`; none of them has a retention layer, so every
+retention-related parameter is pinned to `0` (not the model's generic defaults):
 
 | Roof type                  | `SH` (cm) | `Ssubmin` (mm) | `Ssubmax` (mm) | `Sretmax` (mm) | `Sret` (mm) | `theta_02` (mm) | `kg` | `albedo` | `open_water` |
 | --------------------------- | --------- | -------------- | -------------- | -------------- | ----------- | ---------------- | ---- | -------- | ------------ |
-| Wetland                     | 1.7       | 1.3            | 90             | 0              | 0           | 0                 | 1    | 0.06     | true         |
+| Wetland ⚠️ *(layer 2 only)*  | 1.7       | 1.3            | 90             | 0              | 0           | 0                 | 1    | 0.06     | true         |
 | Non-irrigated extensive     | 7         | 0.9            | 16.0           | 0              | 0           | 0                 | 1    | 0.2      | false        |
 | Irrigated extensive         | 7         | 3.3            | 22.8           | 0              | 0           | 0                 | 1    | 0.2      | false        |
 | Semi-intensive              | 15        | 6.3            | 45.6           | 0              | 0           | 0                 | 1    | 0.2      | false        |
@@ -264,8 +290,13 @@ is pinned to `0` (not the model's generic defaults):
 > (Moeller et al. 2025, Ecological Engineering 220:107729). So `Ssubmax = 90 mm`
 > is **structural** (the standpipe overflow height), not percentile-derived,
 > while `Ssubmin = 1.3 mm` is the sensor p1 (7.55 % θ × 17 mm mat depth,
-> computed **excluding 2026-02-01 → end of record** where the `QWetland`
-> sensor fails / drains to near-zero). Because the ponded surface behaves like
+> computed **excluding 2026-02-01 → end of record**). That cut-off was chosen
+> before the failure onset was measured: the sensor actually fails from
+> 2026-03-12, so the derivation discarded 40 days of healthy record, and the p1
+> over the corrected window is 6.31 % θ (`Ssubmin = 1.07 mm`). **The value is
+> left as it stands** — the roof presets are pinned (architecture §5) and the
+> wetland sits in `NON_MODELLABLE_ROOFS`, so no layer-1 call reaches this
+> preset; moving it would invalidate the GR2L canary to no effect. Because the ponded surface behaves like
 > open water, the preset also sets `open_water = true`: GR2L evaporates at the
 > potential rate (`ET = ET_PM · kg`, no `Ssub/Ssubmax` throttling) while still
 > tracking the water balance (`Ssub`, `OUT`, …), and `albedo = 0.06` (open
@@ -381,7 +412,7 @@ async def predict_green_roof_water_balance_tool(
 
 | Argument | Required | Meaning |
 | -------- | -------- | ------- |
-| `roof_type` | yes | `wetland`, `non_irrigated_extensive`, `irrigated_extensive`, `semi_intensive` — selects the preset from the roof-type table. Gravel → `not_available` |
+| `roof_type` | yes | `non_irrigated_extensive`, `irrigated_extensive`, `semi_intensive` — selects the preset from the roof-type table. Gravel and wetland → `not_available` |
 | `start_date` / `end_date` | one of the two pairs | Explicit window, `YYYY-MM-DD`. Both dates, or neither |
 | `past_days` / `forecast_days` | one of the two pairs | Relative window: 0–92 back, 0–16 ahead. `past_days` is complete past days ending **yesterday** and carries no forecast tail; the two forms are exclusive. Resolved to absolute dates before the weather fetch — see [weather § Relative windows are resolved first](./weather_tool.md#relative-windows-are-resolved-first) |
 | `initial_soil_moisture_pct` | no | Day-1 soil moisture in **%θ**. Omitted → read from the roof's sensor for the window's first day — see "[Where day 1's soil moisture comes from](#where-day-1s-soil-moisture-comes-from)" |
@@ -399,8 +430,8 @@ Three outcomes:
   `summary` (`retention_mm`/`retention_pct`, `min_substrate_storage_mm`,
   `min_swc_pct`, `drought_stress`, `retention_excludes_seed_day_runoff`).
 - `status='not_available'` with a `reason` — the request is outside what can be
-  modelled: the gravel roof, or a window with no soil-moisture record to start
-  from. Report the scope limit; this is not a fault.
+  modelled: the gravel roof or the wetland, or a window with no soil-moisture
+  record to start from. Report the scope limit; this is not a fault.
 - `status='error'` with `error_details` — something actually failed.
 
 ## Endpoint contract
@@ -460,7 +491,7 @@ A key whose `allowed_predict_endpoints` does not include `predict_gr2l` (or
   "Sretmax":   5.0,   // max retention-layer storage, mm — always 0 (no retention layer)
   "theta_01":  20,    // initial substrate moisture, mm — generic default; DO NOT use it.
                       // The tool sends the roof's measured state, converted %θ → mm
-                      // (20 mm is above Ssubmax for three of the four roof types)
+                      // (20 mm is at or above Ssubmax for both extensive roof types)
   "theta_02":  5,     // initial retention storage, mm — always 0 (no retention layer)
   "kg":        0.35,  // crop / vegetation coefficient (0–1) — always 1 for these roof types
   "albedo":    0.2,   // surface albedo — roof-type DEFAULT (0.06 wetland / 0.2 others);
@@ -478,7 +509,8 @@ A key whose `allowed_predict_endpoints` does not include `predict_gr2l` (or
   `Ssubmax`, `Sret`, `Sretmax`, `theta_02`, and `kg`, do **not** fall back to
   the generic model defaults shown above — use the values from the roof-type
   table instead, keyed by which of the four roof types (wetland, non-irrigated
-  extensive, irrigated extensive, semi-intensive) the agent is modelling.
+  extensive, irrigated extensive, semi-intensive) is being modelled — layer 2
+  accepts all four, the wetland the agent-facing tool declines included.
   `Ssubmin`/`Ssubmax` there are the measured wilting-point / field-capacity
   bounds for this site (wetland: `Ssubmax = 90` is structural — the outlet
   standpipe height; see the roof-type footnote). `lat`, `long` and `hoehe_nn`
@@ -544,7 +576,7 @@ initial stores and computes `ET`; the flux terms are defined from day 2 onward).
 
 - **Soil moisture** is `swc_pct` (%θ) — the unit the sensors and the ops manual
   use, and the one to answer in. `Ssub` is the same state in mm, for the water
-  balance. The wetland has `swc_pct = null`; answer it in mm.
+  balance.
 - **Stormwater retention** over a period ≈ total `precip` in − total `OUT` out.
   Days with `OUT = 0` mean the roof fully absorbed that day's rain. Check
   `summary.retention_excludes_seed_day_runoff` before quoting the number.

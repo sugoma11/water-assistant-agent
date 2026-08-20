@@ -1208,11 +1208,53 @@ process and neither sees the other's data or clock.
   and no aggregates; 32 returns none, `truncated: true`, and five buckets.
   `uv run ruff check .` and `uv run pytest` clean — 171 passed, same 15
   pre-existing findings. Tests are T054's.
-- [ ] T051 Wetland out of scope (plan §2.4): add the wetland and its aliases to
+- [x] T051 Wetland out of scope (plan §2.4): add the wetland and its aliases to
   `NON_MODELLABLE_ROOFS`, delete `MM_ONLY_ROOFS` and the mm-only branch, leave the
   `wetland` preset in `ROOF_PRESETS` unchanged and unreachable so the preset pin
   does not move, and normalize `roof_type` **once at entry** instead of at one call
   site out of five. A test pins that `roof_type` is not a `Literal`.
+  Done, all four halves. `NON_MODELLABLE_ROOFS` now carries two alias groups with
+  **distinct reasons** — the gravel roof's "no substrate" and the wetland's own,
+  which names both causes the specification gives (the %θ contract cannot
+  describe a store whose sensor saturates below the ponding height, and that
+  sensor has been dead since 2026-03-12). One shared reason string would have
+  told a researcher asking about the wetland that it has no substrate layer,
+  which is false.
+  Wetland aliases mirror the gravel group's shape — database, German and
+  abbreviated names: `wetland`, `wetland_roof`, `sumpf`, `sumpfdach`, `sumpf2`,
+  `qwetland`. Verified: `wetland`, `Sumpf2` and `" QWetland "` all abstain with
+  the wetland's reason.
+  **`MM_ONLY_ROOFS` is gone and `_to_days` lost its `roof_type` parameter with
+  it** — the second output shape existed only for the roof that no longer
+  arrives, so the branch went rather than being kept for something unreachable.
+  `swc_pct` stays optional purely for the null `Ssub` an older model build could
+  return, and the schema descriptions that promised "null for the wetland" now
+  say what is actually true.
+  **Normalization moved to entry, and it was a real defect, not tidying.**
+  `" Semi_Intensive "` used to pass the scope check (which lowercased) and then
+  fail as an unknown roof type (which did not) — the same request answered
+  `not_available` or `error` depending on which line read it. `roof_type =
+  normalize_roof_type(roof_type)` runs once and every lookup below it — the scope
+  table, the presets, the SH, the soil-moisture column, the echoed `roof_type` —
+  uses the result. The echo is therefore the *resolved* type, which is what
+  `gr2l_tool.md` already claimed.
+  **The `wetland` preset is retained, unchanged and unreachable**, and there is a
+  test asserting its exact values: they are pinned as `gr2l_roof_presets_sha256`,
+  so deleting them would move a pin — and with it the comparability the GR2L
+  canary exists for — in exchange for removing a branch no layer-1 call takes.
+  `just pins` confirms it unmoved.
+  The `roof_type` pin is asserted **twice, from both sides**:
+  `typing.get_type_hints` says the annotation is `str`, and the ADK declaration
+  ADK would actually send carries `{"type": "string"}` with no `enum` anywhere in
+  it. The annotation check alone would miss a declaration built from a `Field`
+  constraint or a hand-written schema, and the declaration is what the model
+  reads — which is the whole reason §3.4 pins this.
+  The agent-facing docstring follows the behaviour: three modellable roofs, both
+  abstentions named, and an explicit instruction to *name the roof the user
+  asked about* even when it is one of the two — without which the abstention
+  family cannot be asked at all.
+  `uv run ruff check .` and `uv run pytest` clean — 174 passed, same 15
+  pre-existing findings; `just pins` unmoved at 8 pinned, 8 unpinned, 0 moved.
 - [ ] T052 `ErrorResult.error_type: "invalid_argument" | "upstream"` in
   `schemas.py`, plus a classification pass over every catch site: pre-I/O
   validation and malformed windows are `invalid_argument`; fetch, seed, GR2L,

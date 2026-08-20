@@ -15,7 +15,7 @@ timing — is out of scope here; this tool answers *whether* to irrigate.
 ## This is not GR2L, and the two must not be merged
 
 Both models are single-site green-roof water balances driven by daily or hourly
-weather. They are nonetheless different models, and D29 keeps them separate.
+weather. They are nonetheless different models, and `decisions.md` § The irrigation calculator keeps them separate.
 
 | | GR2L (`gr2l_tool.md`) | irrigation bucket (here) |
 |---|---|---|
@@ -72,8 +72,7 @@ deployed controller has them and this tool exists to reproduce its decisions:
 
 ## Units: millimetres internally, the site's own units at the surface
 
-The extraction adds millimetres of rain and ET to a store held in **%VWC** for
-the substrate roofs and in **kg** for the wetland lysimeter:
+The extraction adds millimetres of rain and ET to a store held in **%VWC**:
 
 ```python
 store[i] = store[i - 1] + precipitation[i] - et_actual[i]   # %VWC + mm - mm
@@ -82,34 +81,27 @@ store[i] = store[i - 1] + precipitation[i] - et_actual[i]   # %VWC + mm - mm
 Correcting this is not cosmetic. Converting the store to millimetres rescales
 each roof's response to a millimetre of rain by `100 / SH_mm` — about 0.7× for
 the 7 cm extensive roofs and 1.5× for the 15 cm semi-intensive — so the fix
-changes what the model predicts, and with it some decisions. D31 keeps the
-deployed thresholds anyway and measures the difference (plan T048); it does not
+changes what the model predicts, and with it some decisions; `decisions.md` § The irrigation calculator keeps the
+deployed thresholds anyway and measures the difference (the decision-diff harness in `plan.md`); it does not
 re-derive them.
 
 Constants are **authored in the unit the site states them** and converted once,
-through `swc.theta_pct_to_mm` for %θ and `kg / area_m²` for the lysimeter
-(collection area 1 m², so kg ↔ mm is numerically identity):
+through `swc.theta_pct_to_mm`:
 
 | Roof | site id | `SH` | wilting | dry | capacity |
 |---|---|---|---|---|---|
 | `irrigated_extensive` | EGR1 | 7 cm | 5.0 %θ → **3.5 mm** | 10.0 %θ → **7.0 mm** | 22.0 %θ → **15.4 mm** |
 | `non_irrigated_extensive` | EGR2 | 7 cm | 4.0 %θ → **2.8 mm** | 10.0 %θ → **7.0 mm** | 22.0 %θ → **15.4 mm** |
 | `semi_intensive` | IGR | 15 cm | 10.0 %θ → **15.0 mm** | 16.0 %θ → **24.0 mm** | 22.0 %θ → **33.0 mm** |
-| `wetland` | WGR | — | 64 kg → **64 mm** (level) | — | 80 kg → **80 mm** |
 
-Residual: 2.5 %θ → 1.75 mm (7 cm) / 3.75 mm (15 cm).
+Residual: 2.5 %θ → 1.75 mm (7 cm) / 3.75 mm (15 cm). The wetland has no row: it
+is out of scope, see *The rule*.
 
 The conversion **removes** a constant rather than adding one. The extraction
 carries `SWC_CAPACITY = 22.0` (%VWC) and `THETA_FIELD_CAPACITY = 0.22`
 (fraction) as separate module constants; they are one quantity written twice in
 two units, serving the overflow threshold and the stress-coefficient
 denominator. In millimetres they collapse into a single `capacity_mm`.
-
-The wetland's 80 mm capacity sits just below GR2L's structural `Ssubmax` of
-90 mm (the outlet standpipe height), which is a useful cross-check on the 1 m²
-area. It assumes the L6 reading is water mass rather than gross weight including
-substrate tare — **open question**, and binding only if the wetland is ever
-simulated (it is not, see below).
 
 ## Which extensive roof is which
 
@@ -147,11 +139,14 @@ For a substrate roof, over the forecast:
 
 Degenerate inputs return `no_forecast` or `missing_values` and do not irrigate.
 
-**The wetland is not simulated.** Its rule reads the current lysimeter level
-against a fixed minimum and ignores temperature and forecast entirely
-(`low_water_level` / `sufficient_water_level`). The extraction computes a
-wetland bucket run and then never uses it — dead code, dropped here. This also
-means the tare question above never reaches a decision.
+**The wetland is out of scope, and the tool returns `not_available` for it.**
+This rule is built for a classical substrate roof — a soil store read in %θ,
+against wilting and dry thresholds — not for a ponded fleece mat. The deployed
+controller decides the wetland from an L6 lysimeter level in kg
+(`low_water_level` / `sufficient_water_level`); that branch, its constants and
+the extraction's unused wetland bucket run are all dropped here. The wetland
+therefore joins the gravel roof in `NON_MODELLABLE_ROOFS` (architecture §3.5),
+which now bounds this tool and GR2L alike.
 
 **Window offsets are load-bearing.** SWC and temperature are read over
 `[0 : decision_horizon]`, *including* the seed step; outflow over
@@ -184,7 +179,7 @@ per hour — but it is a deviation, not an identity.
 
 The deployed script takes `et0_fao_evapotranspiration` from the ICON forecast.
 This system cannot: `DailyWeatherRow` carries no `et0` field and its schema is
-frozen (architecture §3.3), and the station source (D26) has no ET0 to give
+frozen (architecture §3.3), and the station source has no ET0 to give
 either. `et_fao56.py` therefore computes FAO-56 Penman-Monteith ET0 locally.
 
 Two choices worth stating:
@@ -195,9 +190,10 @@ Two choices worth stating:
 - The implementation is a **verbatim port of GR2L's R block**, including its
   fixed `Pressure = 100 kPa` where textbook FAO-56 derives pressure
   barometrically. At this site's 142 m that is under 1 % of ET0. Carrying the
-  simplification keeps the Python and R implementations numerically identical,
-  which is what makes the canary check in D30 meaningful; the deviation from
-  textbook FAO-56 is a stated scope limit.
+  simplification keeps this ET0 numerically identical to the one GR2L computes,
+  so the two water-balance tools cannot disagree about evaporative demand for a
+  reason no case is asking about; the deviation from textbook FAO-56 is a stated
+  scope limit.
 
 ## Deviations from the deployed controller
 
@@ -205,16 +201,17 @@ Every one of these is deliberate, and together they mean this tool's answer can
 differ from what the roof's own controller did on a given day.
 
 1. **Millimetres** (the unit fix), rescaling response to rain by `100 / SH_mm`
-   per roof (D31).
+   per roof (`decisions.md` § The irrigation calculator).
 2. **Daily step** here; the site runs hourly. `max(tx)` over 2 days replaces the
    hourly maximum of `temperature_2m` over 48 h.
 3. **ET0 computed** via FAO-56 rather than taken from ICON/Open-Meteo.
 4. **Seed** = the latest trustworthy reading at or before
-   `min(window_start, as_of)` (D5), not the mean over every sensor and every row
+   `min(window_start, as_of)` (architecture §3.4), not the mean over every sensor and every row
    of the measurement CSV as the extraction does.
-5. **Flat 22 %θ capacity retained** for all three substrate roofs (D31), though
+5. **Flat 22 %θ capacity retained** for all three substrate roofs (`decisions.md` § The irrigation calculator), though
    GR2L measures `semi_intensive`'s `Ssubmax` at 45.6 mm.
-6. **Wetland not simulated** for the decision.
+6. **Wetland out of scope** — the deployed controller decides it from a lysimeter
+   level; this tool returns `not_available` instead.
 
 ## What is dropped as out of scope
 
@@ -235,22 +232,25 @@ parameters, not files.
 
 The same model ships to the weinbau API as `POST /predict_greenroof_swb` on the
 existing `gr2l_model` container, for consumers outside this system. **The agent
-never calls it** (D30): the bucket and the rule run locally in Python, which is
+never calls it** (`decisions.md` § The irrigation calculator): the bucket and the rule run locally in Python, which is
 what makes irrigation cases fully offline.
 
 All thresholds arrive in the request; no site policy is baked into R, so
-`rules_constants.py` stays the single source of truth. The two implementations
-are kept honest by a committed canary request/response hash alongside GR2L's,
-marked non-evaluation because no case's answer depends on it. See
-`docs/greenroof_swb_tool.md` in the API repository for the endpoint contract.
+`rules_constants.py` stays the single source of truth. The endpoint is a
+deliverable of the API repository and is built and kept in step with
+`irrigation.py` there, not here: this repo carries no conformance check against
+it, because no case's answer depends on it (`decisions.md` § The irrigation
+calculator). See `docs/greenroof_swb_tool.md` in the API repository for the
+endpoint contract.
 
 ## Open questions for the site
 
-- The p90-of-historical-ET dose figures (D22). `rules_constants.py` carries the
+- The p90-of-historical-ET dose figures (`decisions.md` § The irrigation calculator). `rules_constants.py` carries the
   deployed valve minutes (30 / 30 / 31) meanwhile.
-- The wetland's irrigation duration: the deployed script prints 60 minutes but
-  sleeps 30 + 1.
-- Whether the L6 lysimeter reading is water mass or gross weight including tare.
+- The two wetland questions — the irrigation duration (the deployed script prints
+  60 minutes but sleeps 30 + 1) and whether the L6 reading is water mass or gross
+  weight including tare — are **parked**, not answered: they bind only if the
+  wetland is ever brought back into scope.
 
 ## Reference implementation
 

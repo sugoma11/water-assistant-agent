@@ -67,18 +67,51 @@ CANARY_REQUEST: dict[str, Any] = Gr2lRequest(
 # GR2L's upstream model service uses a 90 s timeout for the whole hop.
 _TIMEOUT_SECONDS = 90.0
 
-# Roof segments this facility has but GR2L cannot model, mapped to the reason.
-# The gravel roof has no substrate, so the SH / Ssubmin / Ssubmax the two-layer
-# balance is built on do not exist for it — there is nothing to simulate. It
-# stays a first-class roof for the measured sensor data, so this is a scope
-# limit to report, not a failure. Keys cover the names it goes by in the
-# database and in German usage.
-NON_MODELLABLE_ROOFS: dict[str, str] = dict.fromkeys(
-    ("gravel", "gravel_roof", "kies", "kiesdach", "kd", "qgravel"),
+_GRAVEL_REASON = (
     "The gravel roof has no substrate layer, so the green-roof water-balance model "
     "cannot simulate it — its substrate height and storage bounds do not exist. Its "
-    "measured sensor data (soil moisture, outflow, temperature) can still be queried.",
+    "measured sensor data (soil moisture, outflow, temperature) can still be queried."
 )
+
+_WETLAND_REASON = (
+    "The wetland roof is outside the green-roof water-balance model's scope: its store "
+    "is a fleece mat with water ponded above it, whose soil-moisture sensor saturates "
+    "well below the ponding height, so the model's water-content contract cannot "
+    "describe it — and that sensor has been failed since 2026-03-12, leaving nothing "
+    "to start a simulation from. Its measured sensor data (soil moisture, outflow, "
+    "temperature) can still be queried."
+)
+
+# Roof segments this facility has but the agent-facing tool cannot model, mapped
+# to the reason. Both stay first-class roofs for the measured sensor data, so
+# each is a scope limit to report, not a failure. Keys cover the names each goes
+# by in the database and in German usage (principle 4); they are matched against
+# a `normalize_roof_type`d argument, so case and surrounding space are already
+# gone by the time this table is consulted.
+#
+# The wetland is here rather than expressed in `roof_type`'s type, and that is
+# deliberate: a `Literal` would reach the model as a schema enum, and the
+# abstention family asks precisely for a roof the tool declines — unaskable if
+# the agent cannot name it (`agent_architecture.md` §3.4).
+NON_MODELLABLE_ROOFS: dict[str, str] = {
+    **dict.fromkeys(("gravel", "gravel_roof", "kies", "kiesdach", "kd", "qgravel"), _GRAVEL_REASON),
+    **dict.fromkeys(
+        ("wetland", "wetland_roof", "sumpf", "sumpfdach", "sumpf2", "qwetland"), _WETLAND_REASON
+    ),
+}
+
+def normalize_roof_type(roof_type: str) -> str:
+    """Fold *roof_type* to the one spelling every table here is keyed by.
+
+    Called **once, at the tool's entry**, and every lookup downstream — the
+    non-modellable table, the presets, the soil-moisture column, the echoed
+    ``roof_type`` — uses the result. Normalizing at one call site out of five is
+    what this replaces: ``" Semi_Intensive "`` used to pass the scope check and
+    then fail as an unknown roof type, which is a different outcome for the same
+    request depending on where in the wrapper it happened to be read.
+    """
+    return roof_type.strip().lower()
+
 
 # The four roof types this deployment models. None has a retention layer, so
 # Sret/Sretmax/theta_02 are pinned to 0 and kg to 1 (not the model's generic
@@ -96,6 +129,13 @@ NON_MODELLABLE_ROOFS: dict[str, str] = dict.fromkeys(
 # Every value here is a physical property of the installed roof and must not be
 # varied per call -- except `albedo`, which is a per-roof DEFAULT the caller may
 # override (see `resolve_roof_parameters`).
+#
+# The `wetland` entry is retained and **unreachable**: `NON_MODELLABLE_ROOFS`
+# takes every name it goes by, so no layer-1 call gets here with it, while layer
+# 2 still accepts it for a caller reading a run in mm throughout. Its values are
+# pinned (`agent_architecture.md` §5, `gr2l_roof_presets_sha256`), so deleting
+# them would move the pin — and with it the GR2L canary's comparability — for a
+# branch nothing takes.
 ROOF_PRESETS: dict[str, dict[str, float | bool]] = {
     "wetland": {"SH": 1.7, "Ssubmin": 1.3, "Ssubmax": 90, "Sret": 0, "Sretmax": 0, "theta_02": 0, "kg": 1, "albedo": 0.06, "open_water": True},  # noqa: E501
     "non_irrigated_extensive": {"SH": 7, "Ssubmin": 0.9, "Ssubmax": 16.0, "Sret": 0, "Sretmax": 0, "theta_02": 0, "kg": 1, "albedo": 0.2, "open_water": False},  # noqa: E501

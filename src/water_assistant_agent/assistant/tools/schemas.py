@@ -25,9 +25,10 @@ class NotAvailableResult(BaseModel):
     """The request is well-formed but outside what this deployment can model.
 
     Distinct from :class:`ErrorResult` on purpose: nothing has gone wrong, so the
-    agent must report a scope limit rather than a system fault. The gravel roof
-    is the standing case — it has no substrate, so GR2L has nothing to simulate,
-    while its sensors are still queryable like any other roof's.
+    agent must report a scope limit rather than a system fault. The two roofs
+    GR2L declines are the standing case — the gravel roof has no substrate to
+    simulate and the wetland's ponded storage has no water-content contract —
+    while both stay queryable like any other roof's.
     """
 
     status: Literal["not_available"] = "not_available"
@@ -169,12 +170,14 @@ class GreenRoofDay(Gr2lResultRow):
 
     ``swc_pct`` is the primary soil-moisture quantity for the agent (sensors and
     the ops manual both speak %θ); ``Ssub`` stays alongside it for the water
-    balance. It is ``None`` for the wetland, whose ponded storage has no θ
-    equivalent above its 17 mm mat — see ``swc.MM_ONLY_ROOFS``.
+    balance. Every roof this tool serves converts between the two — the one whose
+    ponded storage had no θ equivalent, the wetland, is declined at entry instead
+    (``gr2l_client.NON_MODELLABLE_ROOFS``), so the field is optional only for the
+    null ``Ssub`` an older model build could return.
     """
 
     swc_pct: float | None = Field(
-        default=None, description="Substrate volumetric water content, %θ (null for the wetland)"
+        default=None, description="Substrate volumetric water content, %θ"
     )
 
 
@@ -229,7 +232,7 @@ class GreenRoofSummary(BaseModel):
     )
     min_substrate_storage_mm: float
     min_swc_pct: float | None = Field(
-        default=None, description="Driest day's water content, %θ (null for the wetland)"
+        default=None, description="Driest day's water content, %θ"
     )
     drought_stress: bool = Field(description="Ssub approaches Ssubmin and ET collapses")
     retention_excludes_seed_day_runoff: bool = Field(

@@ -44,11 +44,12 @@ ROOF_SWC_COLUMNS: dict[str, str] = {
     "semi_intensive": "QIn",
 }
 
-# Roofs whose storage cannot be expressed as %θ. The wetland's store is a 17 mm
-# fleece mat plus water ponded above it to the 90 mm standpipe height; its sensor
-# saturates near 86 % θ (~14.7 mm), so above the mat θ is not recoverable from
-# mm. It reports mm only — see gr2l_tool.md "Wetland specifics".
-MM_ONLY_ROOFS: frozenset[str] = frozenset({"wetland"})
+# No roof needs an mm-only route any more. The wetland was the one whose storage
+# could not be expressed as %θ — a 17 mm fleece mat with water ponded above it to
+# the 90 mm standpipe height, its sensor saturating near 86 % θ — and that is now
+# the reason it leaves through `NON_MODELLABLE_ROOFS` instead: a roof the tool
+# declines needs no unit contract of its own, so the second output shape is gone
+# rather than kept for a branch nothing reaches (plan §2.4).
 
 # Readings from this date onward are not trustworthy for the given column. The
 # QWetland sensor fails / drains to near-zero from 2026-02 (April 2026 averages

@@ -1293,8 +1293,24 @@ process and neither sees the other's data or clock.
   each returns the expected tag.
   `uv run ruff check .` and `uv run pytest` clean — 174 passed, same 15
   pre-existing findings.
-- [ ] T053 [P] Update the production `ROOT_INSTRUCTION`: three modellable
+- [x] T053 [P] Update the production `ROOT_INSTRUCTION`: three modellable
   segments, not four; the wetland joins the gravel roof as measured-only. → T051
+  Done, two bullets in `agents/root_agent/agent.py`. The roof bullet names three
+  modellable segments and both abstentions with their own reasons; the units
+  bullet loses "the wetland roof reports millimetres only", which described an
+  output shape T051 deleted.
+  One sentence added beyond the row's text, and it is load-bearing: **"Still pass
+  the roof the user asked about to the tool."** Without it the instruction reads
+  as "do not call the tool for those two", and family I — the abstention asked in
+  the gravel and wetland aliases — would be answered by the *agent's* prior
+  instead of by the tool's typed `not_available`, which is the thing being
+  scored. It is the instruction-level counterpart of T051's `str` annotation:
+  both exist so the model can name a roof the tool declines.
+  This is production text, so it is also a seed candidate for T120's registry;
+  what it says about scope has to be true of the code as of this packet, which
+  is why the row sits inside P2b rather than beside it.
+  `uv run ruff check .` and `uv run pytest` clean — 174 passed, same 15
+  pre-existing findings.
 - [ ] T054 Tests for `gr2l`, `weather` and `swc`: %θ↔mm round-trip per roof;
   gravel and wetland → `not_available`; no trustworthy seed → `not_available`;
   stale-seed flag; seed-day retention flag; forcings application and echo;

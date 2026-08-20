@@ -328,11 +328,17 @@ stated for disclosure, not a computed volume.
 **T12 — retention vs target**
 Q: "Was the retention of the {roof} roof during {event} above the manual's target?" · roof ∈ P1f
 A: bool (balanced) · Traj: {lookup_reference, text_to_sql_agent} · Cards: `retention_target`
-· **Split: train only**
-Oracle: (rain − outflow/area) / rain against the target, itself authored eval policy in
-`rules_constants.py`.
-Note: train only because `{event}` draws from the pinned record's qualifying rain events, too few to
-hold train ∩ test_seen = ∅ while leaving either side m distinct events.
+· Split: train+seen
+Oracle: (rain − outflow) / rain against the target, itself authored eval policy in
+`rules_constants.py`. **No area factor** — the lysimeter collects 1 m², so outflow in litres is
+already millimetres (`findings.md`).
+Note: `{event}` draws from the **11 qualifying rain events** the pinned record carries: a maximal run
+of wet Europe/Berlin days plus one drainage day, ≥ 10 mm deep, with `outflow` coverage per §1.6 and a
+retention inside [0, 1] — the full table is [`t12_rain_events.md`](./t12_rain_events.md), regenerated
+by `scripts/count_t12_rain_events.py`. Eleven covers 4 + 5 with two events to spare, so train and
+test_seen hold **disjoint** event sets and T12 is no longer train-only; 8 of the 11 carry both classes
+across their roofs at any target from 50 % to 70 %, which is the headroom the balance rule needs on
+either side.
 
 **T20 — forecast heatwave per manual**
 Q: "Does the coming week's forecast qualify as a heatwave under the manual's definition?"
@@ -504,11 +510,6 @@ so a candidate that skips them loses nothing and one that calls them pays nothin
   settled; derived shares miss them by up to 8.6 pp (Pure SQL 19.6 % vs 28 %, hybrid 17.4 % vs 20 %,
   pure weather 15.9 % vs 10 %). Either the derived table becomes the suite's stated composition, or m
   varies per template — which contradicts §1.7's derivation rule. Blocks the suite-composition claim.
-- **T12's train-only basis.** It rests on the count of qualifying rain events in the pinned record.
-  The area blocker is gone — the lysimeter collects 1 m², so outflow in litres is already
-  millimetres and retention carries no area factor (`findings.md`) — so the count is computable
-  now, over P1f's four roofs. If it supports disjoint train and test_seen event sets, T12 returns
-  to test_seen and every §1.7 number moves.
 - **Coverage margin.** No tool is short of a train-side distractor, but four columns hold exactly
   one. Deciding whether that margin is acceptable, or whether a second slot is authored per tool,
   blocks the shotgun-mitigation claim.

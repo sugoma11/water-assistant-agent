@@ -362,6 +362,22 @@ only 26 of the 44 dead `QWetland` days.
 *Verified:* per-day constant-value counts per column over the band.
 *Date:* 2026-08-17.
 
+**The band carries 11 rain events usable for a retention question.** Taking an
+event as a maximal run of consecutive Europe/Berlin days with at least 0.2 mm of
+station rain, extended by one drainage day, the `as_of` band holds 57 events, 15
+of them at least 10 mm deep. Four of the 15 fall to `outflow` coverage (the two
+lysimeter outages: 2025-07-15, 2025-10-04, 2025-10-23 and 2025-11-15, the last
+with no outflow row at all), leaving **11 events and 41 (event, roof) pairs**
+over P1f's four roofs; per roof it is 10 / 10 / 10 / 11. Retention leaves [0, 1]
+on 3 further pairs — gravel on 2025-09-21 (−72.7 %) and both extensive roofs on
+2026-02-21 (−13.4 %, −6.6 %) — where outflow exceeds the gauge's rain, which the
+undercatch measurements above predict for frozen days. Across the 11 events, 8
+carry both a high and a low retention over their four roofs at any target from
+50 % to 70 % (9 at 40 %), and the pairs split 25 above / 16 below at 50 %.
+*Verified:* `scripts/count_t12_rain_events.py` against `data/water.duckdb`,
+output committed at `specs/agent_architecture/t12_rain_events.md`.
+*Date:* 2026-08-20.
+
 **Zero-outflow days dominate the band.** Daily outflow sums are exactly zero on
 217 of 289 days for the gravel roof (75.1 %), 241 (83.4 %) for `Extensiv1`, 245
 (84.8 %) for `Extensiv2` and 272 (94.1 %) for `Sumpf2`, leaving 17 non-zero

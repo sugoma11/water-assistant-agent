@@ -56,11 +56,21 @@ against a document that still contradicts itself.
   produces, the eight category shares become the derived ones, and `n = templates
   × m` is restated as the rule the numbers are verified against. Close the two
   matching items in §4. (plan §2.1) → T007
-- [ ] T007 Compute T12's qualifying rain-event count over the pinned record and
+- [x] T007 Compute T12's qualifying rain-event count over the pinned record and
   P1f's four roofs (`scripts/`, committed with its output). If the count supports
   disjoint train and test_seen event sets, return T12 to test_seen and re-derive
   every §1.7 number; if not, record the count as the standing justification for
   train-only. Closes §4's T12 item either way.
+  **Count: 11 qualifying events, 41 (event, roof) pairs** —
+  `scripts/count_t12_rain_events.py`, output committed at `t12_rain_events.md`,
+  measurement recorded in `findings.md`. Qualification is §1.6's own filters and
+  nothing else: a maximal run of Europe/Berlin days at ≥ 0.2 mm station rain plus
+  one drainage day, ≥ 10 mm deep, `outflow` coverage ≥ 95 % with no gap over 24 h,
+  and retention inside [0, 1] per roof. 57 events in the band, 15 at depth, 4 lost
+  to the lysimeter outages, 3 further pairs lost where outflow exceeds the gauge's
+  rain on frozen days. Eleven covers train's 4 plus test_seen's 5 disjointly, so
+  **T12 returns to test_seen**; §1.7's re-derivation is T006's. §4's T12 item
+  removed.
 - [ ] T008 [P] Audit the distractor coverage margin: assert every registered tool
   holds at least one must-not slot **inside train**, name the four columns resting
   on a single template, and record the result in `questions.md` §3 as either an

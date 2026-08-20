@@ -21,6 +21,11 @@ import structlog
 
 from water_assistant_agent.assistant.cache import Canary, ResponseCache
 from water_assistant_agent.assistant.settings import get_settings
+from water_assistant_agent.assistant.tools.roofs import (
+    MODELLED_ROOFS,
+    ROOFS,
+    gr2l_preset_values,
+)
 from water_assistant_agent.assistant.tools.schemas import (
     DailyWeatherRow,
     Gr2lRequest,
@@ -113,7 +118,10 @@ def normalize_roof_type(roof_type: str) -> str:
     return roof_type.strip().lower()
 
 
-# The four roof types this deployment models. None has a retention layer, so
+# The four roof types this deployment models, projected out of `roofs.ROOFS`
+# (`agent_architecture.md` §1 principle 4) — the values below are that table's,
+# rendered under GR2L's own argument names by `roofs.gr2l_preset_values`. None
+# has a retention layer, so
 # Sret/Sretmax/theta_02 are pinned to 0 and kg to 1 (not the model's generic
 # defaults). Ssubmin/Ssubmax are measured from this site's soil-moisture record.
 # The wetland's store is a 17 mm water-storage mat (recycled polypropylene
@@ -137,10 +145,7 @@ def normalize_roof_type(roof_type: str) -> str:
 # them would move the pin — and with it the GR2L canary's comparability — for a
 # branch nothing takes.
 ROOF_PRESETS: dict[str, dict[str, float | bool]] = {
-    "wetland": {"SH": 1.7, "Ssubmin": 1.3, "Ssubmax": 90, "Sret": 0, "Sretmax": 0, "theta_02": 0, "kg": 1, "albedo": 0.06, "open_water": True},  # noqa: E501
-    "non_irrigated_extensive": {"SH": 7, "Ssubmin": 0.9, "Ssubmax": 16.0, "Sret": 0, "Sretmax": 0, "theta_02": 0, "kg": 1, "albedo": 0.2, "open_water": False},  # noqa: E501
-    "irrigated_extensive": {"SH": 7, "Ssubmin": 3.3, "Ssubmax": 22.8, "Sret": 0, "Sretmax": 0, "theta_02": 0, "kg": 1, "albedo": 0.2, "open_water": False},  # noqa: E501
-    "semi_intensive": {"SH": 15, "Ssubmin": 6.3, "Ssubmax": 45.6, "Sret": 0, "Sretmax": 0, "theta_02": 0, "kg": 1, "albedo": 0.2, "open_water": False},  # noqa: E501
+    name: gr2l_preset_values(ROOFS[name]) for name in MODELLED_ROOFS
 }
 
 

@@ -17,7 +17,7 @@
     "gr2l_roof_presets_sha256": "77e80a238b4bed2a26baaa8ea033cdda483bf4ba5c0cfb350e35e667d548775b",
     "reflection_model": null,
     "reflection_model_canary_sha256": null,
-    "roofs_version": null,
+    "roofs_version": "1.0",
     "rules_constants_version": null,
     "station_derivation": {
       "derivation_sha256": "da6c872647ed04026a92d0127323cda5ce65002bc4fd077bb300463041109ae3",

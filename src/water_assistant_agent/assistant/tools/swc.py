@@ -31,17 +31,22 @@ from datetime import UTC, date, datetime
 import structlog
 
 from water_assistant_agent.assistant.ports import ReadOnlyWarehouseQuery
+from water_assistant_agent.assistant.tools.roofs import MODELLED_ROOFS, ROOFS
 from water_assistant_agent.assistant.tools.site import site_day_expr
 
 logger = structlog.get_logger(__name__)
 
 # Which `swc` column carries each modelled roof. Also the allow-list that makes
 # the column safe to interpolate into the query below.
+#
+# A projection of `roofs.ROOFS`, not a table of its own (`agent_architecture.md`
+# §1 principle 4): the column names, and which roofs appear at all, are read off
+# the one place each roof's identity lives. The gravel roof is absent because it
+# has no GR2L preset — no substrate, so no substrate-water state to seed a
+# simulation from — which is the same fact `ROOF_PRESETS` is keyed by, now stated
+# once instead of twice.
 ROOF_SWC_COLUMNS: dict[str, str] = {
-    "wetland": "QWetland",
-    "non_irrigated_extensive": "QEx2",
-    "irrigated_extensive": "QEx1",
-    "semi_intensive": "QIn",
+    name: ROOFS[name].columns["swc"] for name in MODELLED_ROOFS
 }
 
 # No roof needs an mm-only route any more. The wetland was the one whose storage

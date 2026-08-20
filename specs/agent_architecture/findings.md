@@ -428,6 +428,23 @@ false-positives on 63 healthy days.
 *Verified:* threshold sweeps of all three predicates over
 `data/water.duckdb`. *Date:* 2026-08-17.
 
+**Per-column healthy ranges, the basis of `roofs.py`'s plausibility bounds.**
+Over the whole record, half-hourly: `QGravel` 0.000–8.923 %θ (band median
+0.034), `QEx1` 3.518–35.803, `QEx2` 1.038–25.846, `QIn` 3.981–33.566, and
+`QWetland` 4–96.450 excluding the dead stretch from 2026-03-12. Soil temperature
+spans −12.024 to 55.253 °C across all five columns, the extremes both on the
+gravel roof. Half-hourly outflow tops out at 11.600 L (`Kies_Efflux`) and daily
+totals at 25.800 L against a wettest station day of 22.933 mm — a lysimeter can
+shed more than the gauge catches, which the undercatch measurements above
+predict. Radiation shortwave reads a few W/m² *negative* at night on every mast
+(minimum −8.204), so a plausibility floor at zero would reject healthy darkness.
+The committed bounds take the floor at half the healthy minimum and the ceiling
+at the store's physical saturation, which places every one of them outside these
+ranges.
+*Verified:* per-column min/percentile/max over `data/water.duckdb`, and site-day
+means of the same columns re-checked against the committed bounds by
+`tests/assistant/test_roofs.py`. *Date:* 2026-08-20.
+
 **Rejecting constant-valued days would delete the balance classes.** Per-day
 `max = min` rejection over the band removes 217 of 289 `Kies_Efflux` days, 241
 `Extensiv1_Efflux`, 245 `Extensiv2_Efflux`, 272 `Sumpf2_Efflux` and 162 of 328

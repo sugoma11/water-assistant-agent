@@ -1496,12 +1496,63 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
 
 ## Phase 3 — Rules, single source of truth
 
-- [ ] T060 `assistant/tools/roofs.py`: one table carrying each roof's canonical
+- [x] T060 `assistant/tools/roofs.py`: one table carrying each roof's canonical
   name, DE/EN labels, site ids, substrate height, lysimeter area, per-column
   plausibility bounds, alias set, and **its column in each of the five tables,
   absent where the roof is not instrumented**. Repoint `swc.ROOF_SWC_COLUMNS` and
   `gr2l_client.ROOF_PRESETS` at it with no value changes, so the pins are
   untouched. The catalog's sampling pools are read off this table. → T051
+  Done. Five `RoofSegment` entries; both projections are now one-line
+  comprehensions over `MODELLED_ROOFS`, and `gr2l_roof_presets_sha256` is
+  byte-identical at `77e80a23…`.
+  **The literal types in the presets are load-bearing, which the repoint nearly
+  lost.** `Ssubmax` is `90` for the wetland and `16.0` for the non-irrigated
+  extensive roof; canonical JSON writes those as `90` and `16.0`, so promoting
+  either to a float moves the pin while leaving every `==` assertion green. The
+  values are written with the types they were captured with, the fields are
+  annotated `float` in the numeric-tower sense, and a test recomputes the sha256
+  the way `check_pins.py` does — dict equality cannot see this, and the GR2L
+  canary's comparability hangs off it.
+  **Gravel is what separates "a roof" from "a modelled roof".** It was absent
+  from `ROOF_SWC_COLUMNS` and from `ROOF_PRESETS` by two independently
+  maintained key lists; it is now absent from both because its `gr2l` preset is
+  `None` — no substrate, so no substrate-water state. Its `substrate_height_cm`
+  is `None` for the same reason rather than `0.0`: a depth of zero is a number
+  where there is no quantity. The wetland shows the other axis — it *has* a
+  preset and is still declined at layer 1 — so modellability and layer-1 scope
+  stay two questions with two answers.
+  **The semi-intensive roof's absence is a missing key, not a null**, in
+  `outflow` and `radiation` both, so a caller reading a column it does not have
+  raises where it reads instead of carrying a `None` onwards. `roofs_with_column`
+  makes P1/P1f fall out of the data: five roofs on `swc`/`tsoil`, four on
+  `outflow`/`radiation`, and the pools §1.6 hand-lists are now derivable.
+  `wetter` carries no roof column at all — it is the station, shared — which the
+  module says explicitly so its absence is not read as a sixth gap.
+  **`LYSIMETER_AREA_M2 = 1.0` is carried once and derived, not transcribed
+  five times**: `lysimeter_area_m2` returns it exactly when the roof has an
+  `outflow` column, so the uninstrumented roof cannot acquire a collection area
+  by copy-paste. That is the whole content of "litres are millimetres, and no
+  area factor exists anywhere".
+  **The plausibility bounds are new values, so they are derived rather than
+  chosen.** Floor = half the column's healthy minimum, which lands in the gap
+  between a dead sensor and the driest real reading; `findings.md`
+  § Validity-predicate specificity already measured that choice as insensitive
+  over a sixfold range on `QWetland`. Ceiling = the store's physical saturation
+  (60 %θ substrate, 100 %θ ponded mat, 20 %θ gravel). `QGravel` gets no floor —
+  a roof with no substrate reads ~0 %θ honestly. Soil temperature takes one
+  envelope for all five columns; outflow's floor is hard at zero and its ceiling
+  is four times the wettest day in the record. Two DB-backed tests hold them to
+  that: every healthy site-day mean is inside its bounds, and the wetland floor
+  flags exactly the 43 dead days `findings.md` counts. New measurement recorded
+  in `findings.md` § Data record.
+  **`NON_MODELLABLE_ROOFS` was left alone**, since T060 names two repoints and
+  that is a third; a test asserts every one of its keys resolves through the
+  table's aliases, so the two lists fail loudly rather than drift. Repointing it
+  belongs with a task that owns that file's behaviour.
+  `roofs_version` pinned at `1.0` — the slot `check_pins.py` was written to fill
+  as this packet landed.
+  `uv run ruff check .` and `uv run pytest` clean — 281 passed, same 15
+  pre-existing findings; `just pins` unmoved at 10 pinned, 6 unpinned, 0 moved.
 - [ ] T061 [P] `assistant/et_fao56.py`: FAO-56 Penman-Monteith ET0 at albedo 0.23,
   a verbatim port of `gr2l_model/R/GR2L_function.R` in the weinbau API checkout
   (`findings.md § External sources on this machine`), with the fixed

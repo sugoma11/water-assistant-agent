@@ -1,82 +1,89 @@
 # System architecture — green-roof water management assistant (thesis testbed)
 
-Companion to [`questions.md`](./questions.md) (question-template catalog) and to
-the two tool specs, [`gr2l_tool.md`](../../src/water_assistant_agent/assistant/tools/gr2l_tool.md)
-and [`weather_tool.md`](../../src/water_assistant_agent/assistant/tools/weather_tool.md).
-Implementation order lives in [`plan.md`](./plan.md).
+What the system is, how it behaves, which guarantees it provides. Companions:
+[`questions.md`](./questions.md) (the evaluation dataset — templates, conventions,
+splits), [`decisions.md`](./decisions.md) (rejected alternatives and validity
+conditions), [`findings.md`](./findings.md) (dated, verified measurements),
+[`plan.md`](./plan.md) (implementation order), and the tool specs
+[`gr2l_tool.md`](../../src/water_assistant_agent/assistant/tools/gr2l_tool.md),
+[`weather_tool.md`](../../src/water_assistant_agent/assistant/tools/weather_tool.md),
+[`irrigation_tool.md`](../../src/water_assistant_agent/assistant/tools/irrigation_tool.md).
 
 The system is a **frozen testbed**: the thesis contribution is the evaluation of
-prompt-optimization techniques, not the assistant. After the prerequisites in §9
-land, only the items marked *optimizable* may change.
+prompt-optimization techniques, not the assistant. Once frozen, only the items
+marked *optimizable* may change.
 
-Every §3 entry carries a status tag against the implementation. §10 is the
-decision log, and an entry earns its place there only by recording a **rejected
-alternative** or an **evaluation-validity condition**: a decision whose mechanism
-is fully stated in the body appears as a one-line pointer instead, and numbers
-are retired rather than reused. The arbitration rule (D1) is: **the code wins on
-mechanism, this document wins on evaluation properties.**
+**Arbitration.** Where this document and the code disagree about a *mechanism*, the
+code wins and this document is corrected; where they disagree about an *evaluation
+property* — determinism, leakage, injectability, typed abstention, the addressable
+optimizable surface — this document wins and the code changes. **Status lives in
+one place**, §0's table; everything after it describes the target system in the
+present tense.
 
 ---
 
-## 0 Status at a glance
+## 0 Implementation status
 
-| Component | Name the agent sees | Status |
-|---|---|---|
-| root agent | `root_agent` | **built** — not candidate-injectable yet (D6) |
-| text2SQL sub-agent | `text_to_sql_agent` | **built** — no as-of views, not ctx-rebindable yet (D3, D19) |
-| weather | `get_weather_forecast_tool` | **built** — live, uncached, no typed abstention, wall-clock backend cutoff, uncapped series, no station source (D4, D9, D11, D17, D26) |
-| GR2L water balance | `predict_green_roof_water_balance_tool` | **built** — no `forcings` / `evaluate_against_measured`, uncapped series (D8, D9) |
-| reference lookup | `lookup_reference` | **to build** — exact card lookup over a packaged YAML store, no ranking (D32) |
-| irrigation rule | `calc_irrigation` | **to build** — self-contained over its *own* bucket model, not GR2L; runs local, no HTTP (D29, D30) |
-| plotting | `plot_timeseries` | **to build** — multi-source: DB · weather · GR2L (D14) |
-| `ScenarioContext`, as-of views | — | **to build** (D3) |
-| response cache (weather + GR2L) | — | **to build** (D4) |
-| harness · scoring · oracles · cases | — | **to build** |
+**built** — matches this document · **partial** — exists, diverges · **to build** —
+does not exist. The middle column is the registry of names the root model sees;
+these strings are what trajectory scoring matches.
 
-Three of six agent-facing tools exist. What exists is sound at the *client*
-layer — pure, ADK-free `weather_client` / `gr2l_client` / `swc` seams behind thin
-ADK wrappers — and that layering is what the rest of this document builds on.
-What is missing is the *injection* seam (§4) that makes any of it replayable.
+| Component | Name the agent sees | Status | Gap |
+|---|---|---|---|
+| root agent | `root_agent` | partial | module-level singleton, so instruction and docstrings are not addressable per candidate; step cap unset; floating model alias, no `temperature=0`, no prompt cache |
+| text2SQL sub-agent | `text_to_sql_agent` | partial | executor not context-bound (both the inner query tool and the pipeline's EXPLAIN validator read the module singleton); no as-of views; no `CURRENT_DATE` rewrite; lysimeter areas and the alias map missing from the semantic layer |
+| weather | `get_weather_forecast_tool` | partial | no station source, no source resolution, no `WeatherClient` seam or cache, so every rollout fetches live; no typed `not_available`; series uncapped; the client's wall-clock endpoint selection and its day-limit constant are deleted; `WeatherResult.elevation` is deleted |
+| GR2L water balance | `predict_green_roof_water_balance_tool` | partial | no `forcings`, no `evaluate_against_measured`, no `error_type`; series uncapped; the seed reads `window_start` alone; `roof_type` is normalized at one call site and read raw at four others |
+| reference lookup | `lookup_reference` | to build | card store, `enum == card keys` test |
+| irrigation rule | `calc_irrigation` | to build | bucket model, ET0 core, `rules_constants.py`, `roofs.py`, decision-diff harness |
+| plotting | `plot_timeseries` | to build | closed `measured` vocabulary, session-state handoff |
+| `ScenarioContext`, as-of views | — | to build | three paths bypass the seam: `swc.py` opens its own connection, both tool wrappers import the fetch function directly, the sub-agent reaches the warehouse singleton from two places |
+| response cache | — | to build | — |
+| harness · scorers · oracles · cases | — | to build | — |
+| pinned evaluation database | — | built | present and readable from this checkout; `radiation` is stamped an hour behind the other four tables and the as-of cut is host-timezone dependent (`plan.md`, Open bug records) |
+
+What exists is sound at the *client* layer — pure, ADK-free `weather_client` /
+`gr2l_client` / `swc` seams behind thin ADK wrappers. What is missing is the
+injection seam (§4) that makes any of it replayable.
 
 ---
 
 ## 1 Design principles
 
-1. **Three layers.** Agent-facing tools (small declarative arguments) →
-   I/O resolution (`ScenarioContext`: DB as-of views, weather client, clock)
-   → shared cores (`run_gr2l`, `swc`, rule functions). The agent sees only layer
-   1; the harness injects at layer 2; oracles import layer 3 directly.
+1. **Three layers.** Agent-facing tools with small declarative arguments → I/O
+   resolution (`ScenarioContext`: DB as-of views, weather client, clock) → shared
+   cores (`run_gr2l`, `swc`, the irrigation bucket, rule functions). The agent sees
+   layer 1, the harness injects at layer 2, oracles import layer 3 directly.
    **Layer 3 is not uniformly local**: GR2L runs as an external HTTP service, so
-   `run_gr2l` is a thin client and an oracle that imports it issues the same
-   request the tool does (§3.4). `rules_constants.py`, the irrigation rule **and
-   the irrigation bucket model with its ET0** remain pure local functions —
-   layer 3 gains a second water-balance core, not a second HTTP client (D30).
-   The R endpoint carrying that model into the weinbau API is a deliverable
-   *outside* this testbed and no case's answer depends on it.
-2. **Replay the world through a request-keyed cache, run everything downstream
-   of optimized prompts live, pin the data live components read.** External
-   world-state (weather, GR2L) is fetched live once and replayed thereafter from
-   a committed cache keyed by the sha256 of the exact request (D4). Components
-   whose inputs depend on the optimized instruction (text2SQL, retrieval, model
-   chains) execute live against pinned data.
-3. **No raw data through the LLM.** Tools return a summary plus a *bounded*
-   series — never a database row dump, never an unbounded daily array. Anything
-   requiring arithmetic over a long series happens inside a tool or core (D9).
-4. **Single source of truth for rules.** `rules_constants.py` feeds the
-   irrigation calculator, the oracles, and the **reference cards** the agent
-   reads (§3.2). Agent-readable text and executable logic cannot drift apart:
-   a card's prose is hand-authored and carries **no numerals**, while its
-   `values:` block is test-bound to the constants, so every figure the agent can
-   quote exists in exactly one place. The same rule
-   applies to roof *identity*: one table in `tools/roofs.py` carries canonical
-   name, DE/EN labels, site ids, `swc` column, substrate height, lysimeter area
-   and aliases, so the four names stop being restated across
-   `swc.ROOF_SWC_COLUMNS`, `gr2l_client.ROOF_PRESETS` and the docstrings — the
-   duplication that makes T036 reachable, and that leaves the modellable roofs
-   with no alias map at all.
+   `run_gr2l` is a thin client and an oracle importing it issues the same request
+   the tool does (§3.4). The irrigation rule and its bucket model with ET0 stay pure
+   and local — layer 3 carries a second water-balance core, not a second HTTP
+   client. The R endpoint carrying that model into the weinbau API is a deliverable
+   *outside* this testbed; no case's answer depends on it.
+2. **Replay the world through a request-keyed cache, run everything downstream of
+   optimized prompts live, pin the data the live components read.** External
+   world-state is fetched once and replayed from a committed cache keyed by the
+   sha256 of the exact request (§5); components whose inputs depend on the optimized
+   instruction — text2SQL, retrieval, model chains — execute live against pinned
+   data. **GR2L is the only component whose determinism the cache carries**, and the
+   only one with a capture deadline.
+3. **No raw data through the LLM.** Tools return a summary plus a *bounded* series,
+   never a row dump or an unbounded daily array; arithmetic over a long series
+   happens inside a tool or a core. The cap is §3.3's.
+4. **Single source of truth for rules and identities.** `rules_constants.py` feeds
+   the irrigation calculator, the oracles and the reference cards; the card
+   rendering discipline is §3.2's. One table in `tools/roofs.py` carries each roof's
+   canonical name, DE/EN labels, site ids, substrate height, lysimeter area, per-column
+   plausibility bounds, aliases (`Kies`/`KD`/`QGravel` ↔ the gravel roof) and **its
+   column in each of the five tables, absent where the roof is not instrumented** — the
+   semi-intensive roof has neither a lysimeter nor a radiation mast (`findings.md`), so
+   the catalog's sampling pools are read off this table rather than hand-listed. It is
+   the only place those names exist — not `swc.ROOF_SWC_COLUMNS`,
+   `gr2l_client.ROOF_PRESETS` or the docstrings. Every lysimeter collects 1 m², so
+   outflow in litres is numerically millimetres and no area factor is ever applied.
 5. **Disclosure fairness.** Every self-contained tool's docstring states what it
-   fetches internally. Required in the handwritten baseline; optimized
-   candidates may rewrite docstrings (they are part of the candidate).
+   fetches internally. Required of the handwritten baseline; candidates own the
+   docstrings and may rewrite them.
 
 ```
 ┌ agent layer ────────────────────────────────────────────────────────┐
@@ -85,10 +92,10 @@ What is missing is the *injection* seam (§4) that makes any of it replayable.
 │  predict_green_roof_water_balance_tool ·                            │
 │  lookup_reference · calc_irrigation · plot_timeseries               │
 └───────────────┬─────────────────────────────────────────────────────┘
-        ScenarioContext(as_of, db_asof, weather_client, http_cache)
+   ScenarioContext(clock → as_of · db as-of views · weather · cache)
 ┌ shared cores ─┴─────────────────────────────────────────────────────┐
 │ run_gr2l (HTTP → external GR2L service, cached) ·                   │
-│ daily weather (station rows from ctx.db · Open-Meteo, cached) ·     │
+│ daily weather (station rows from ctx.db · Open-Meteo Archive) ·     │
 │ swc (θ ↔ mm, measured seed) · irrigation bucket · et0_fao56 ·       │
 │ irrigation_decision · rules_constants · roofs ·                     │
 │ card store (packaged YAML) · pinned data/water.duckdb               │
@@ -99,86 +106,93 @@ What is missing is the *injection* seam (§4) that makes any of it replayable.
 
 ## 2 Root agent (Google ADK)
 
-Built at `agents/root_agent/agent.py`. Today it is a module-level `Agent`
-singleton with a literal `static_instruction` and three tools.
+At `agents/root_agent/agent.py`, built per rollout by
+`build_root_agent(instruction, docstrings, tools, model)`. `LlmAgent`, ReAct-style
+tool loop, hard cap of ~6 tool steps. LLM config: `temperature=0` and one pinned
+decoding seed — sent, but not assumed honoured (`decisions.md` § Model pinning);
+a transparent cache keyed by the **full request**, messages and tool declarations
+and model id and decoding parameters alike, held **on inside the search and off on
+the measurement path**, where three repeats per condition are the replication (§7);
+and the model **pinned by canary rather than by version** — the provider serves no
+dated aliases, so the served model id and endpoint are recorded and a committed
+prompt/response canary detects a provider-side swap, on GR2L's terms (§5).
 
-- `LlmAgent`, ReAct-style tool loop, hard cap ~6 tool steps. **Not yet set.**
-- **Optimizable text components**: the `instruction` and the tool
-  descriptions/docstrings — including the sub-agent's outward `description`,
-  the text `AgentTool` presents to the root model (D19); the sub-agent's
-  *internal* prompt stays frozen (§3.1). Everything else is frozen. Reaching
-  them requires the factory refactor in D6 — module-level function docstrings
-  are not addressable per candidate. Each component is **one registered MLflow
-  prompt**, read per rollout inside `predict_fn`; that registry read is the only
-  channel candidate text has (§6, D27), and one prompt per component — never a
-  concatenated blob — is what keeps the surface separately mutable.
-  **One deliberate exception**: `lookup_reference`'s `topic` enum lives in the
-  function *signature*, not its docstring, so a candidate can reword the guidance
-  but cannot delete the agent's list of valid topics (§3.2, D32).
-- Scenario clock: `as_of` reaches the model through the per-invocation
-  instruction provider (`prompts/temporal.py`), which today renders
-  `site_now()` — the wall clock. It must render `ctx.as_of` (D3), read through
-  the context's clock *callable* (D18): production binds `site_now`, eval binds
-  the case's frozen `as_of`, so there is one code path, not two — provided
-  `as_of` is evaluated at read time, never captured at construction.
-- **Answer contract** (catalog §1.1) — **eval-only**, carried by the candidate
-  instruction:
+- **Optimizable text**: the `instruction` and the tool descriptions/docstrings,
+  including the sub-agent's outward `description` — the text `AgentTool` presents to
+  the root model. The sub-agent's *internal* prompt is frozen (§3.1), as is
+  everything else. Each component is **one registered MLflow prompt**, read per
+  rollout inside `predict_fn`; that registry read is the only channel candidate text
+  has (§6). Docstrings are addressable because §4's factories apply them to freshly
+  produced callables. **One exception**: `lookup_reference`'s `topic` enum lives in
+  the function *signature*, so a candidate can reword the guidance but cannot delete
+  the agent's list of valid topics (§3.2).
+- **Scenario clock.** `as_of` reaches the model through the per-invocation
+  instruction provider (`prompts/temporal.py`), which renders `ctx.as_of` read
+  through the context's clock *callable*: production binds `site_now`, evaluation
+  binds the case's frozen `as_of`, one code path serves both, and `as_of` is
+  evaluated at read time, never captured at construction.
+- **Answer contract** — evaluation-only, carried by the candidate instruction:
 
   ```json
   {"status": "answered" | "not_available",
    "answer": <bool | number | "YYYY-MM-DD" | null>,
-   "unit": "<L | mm | °C | pp | % | count | null>",
+   "unit": "<L | mm | °C | pp | %θ | % | count | null>",
    "explanation": "<free text, unscored in phase 1>"}
   ```
 
-  The agent contract's `status` is **two-valued**, and it is *not* the tool-level
-  enum of §3.4/§3.6 (`success` | `not_available` | `error`). The abstention
+  `status` is **two-valued** and is *not* the tool-level enum of §3. The abstention
   metric scores the **agent's** status; a tool's `not_available` is the upstream
-  cause that makes it correct, not the thing measured — a tool may abstain
-  correctly while the agent narrates around it and emits `answered`, which is
-  exactly the failure the metric exists to catch. A tool `error` has no contract
-  representation: `upstream` errors are handled harness-side, `invalid_argument`
-  errors are the agent's to recover from and score normally (D16); a clarifying question has
-  none either and is forbidden in the candidate (D15). Family H answers `null`
-  (D14). Phase 1 scores status+answer; `explanation` is reserved for the phase-2
-  judge. The production instruction keeps prose and clarification instead (D10).
-- LLM config: pinned **dated** model version (never a floating alias),
-  `temperature=0`, transparent cache keyed by exact prompt. **None of the three
-  is configured today** — `settings.root_agent_model` defaults to the floating
-  `openai/qwen3.6-35b-a3b` and `litellm_extra()` forwards only `api_base` /
-  `api_key`.
+  cause that can make it correct, not the thing measured. A tool `error` has no
+  contract representation, and neither does a clarifying question: the candidate
+  instruction forbids asking one, and a final message parsing to neither status is a
+  `parse_failure` diagnostic (§7). Cases whose deliverable is a plot artifact
+  (catalog family H) answer `null`. Phase 1 scores `status` and `answer`;
+  `explanation` is reserved for the phase-2 judge. The production instruction keeps
+  prose and clarification instead. Every case's `A:` field instantiates this object.
+
+---
 
 ## 3 Tools
 
-### 3.1 `text_to_sql_agent` (sub-agent via `AgentTool`) — **built**, frozen
-- Internal: completion (tuned prompt, **frozen**) → db querier → fixer loop,
-  `settings.max_sql_retries` (default 3); attempt counts logged as diagnostics
-  (`pipeline.py` returns `transpile_attempts` / `validate_attempts`).
-- Reads the pinned DuckDB. **As-of views are not implemented** — the executor
-  opens `data/water.duckdb` read-only with no time bound (D3).
-- Semantic layer lives statically in its prompt: column descriptions, units,
-  lysimeter areas, alias map (Kies/KD/QGravel ↔ gravel roof; DE↔EN bridging),
-  join key and time resolution.
-- Returns compact results (aggregates, small result sets), capped at 100 rows in
-  `warehouse.query_database_tool`.
-- The root agent sees the tool under the sub-agent's own name,
-  **`text_to_sql_agent`** — that string, not `query_database`, is what
-  trajectory scoring matches (D2). `query_database_tool` is the *inner* tool and
-  never appears in a root-agent trajectory.
-- **Frozen means the text, not the objects** (D19). Prompt, docstrings and
-  pipeline structure are byte-stable, but the *object* is rebuilt per
-  `ScenarioContext` by `build_text_to_sql_agent(executor, clock)`: its DB seam —
-  `query_database_tool` *and* the pipeline's EXPLAIN validator, which both
-  reach the module-level warehouse executor today — must bind to the case's
-  as-of executor. Transpiler, fixers, models and every prompt string are
-  shared; the DB binding and the injected clock (read by the querier's
-  `CURRENT_DATE` rewrite, D19) are the only per-case state. The ctx-bound
-  `query_database_tool` closure preserves the exact function name, signature and
-  docstring — ADK derives the tool declaration from them and the frozen
-  instruction names the tool — and the module singleton stays as the production
-  default built from the same factory, mirroring D6.
+**Three outcomes, stated once for every tool below.** A tool returns `success`;
+`not_available`, a genuine scope limit of the system and never a bad argument, with
+each subsection listing its own triggers and no others; or `error` carrying
+`error_type: invalid_argument | upstream`. `invalid_argument` is deterministic
+argument validation performed before any I/O, echoing what would have been valid.
+`upstream` covers HTTP, database and configuration failures — including a cache
+miss the service cannot fill and a request whose canary has diverged, the two
+cases §5's record-on-miss rule does not absorb. A miss that records is not an
+error at all. §7 states what each does to a score.
 
-### 3.2 `lookup_reference` — **to build**, exact card lookup (D32)
+Tool and argument names are the registered ones in §0's table. Arguments are flat
+scalars — `albedo=0.2`, never `params={"albedo": 0.2}`.
+
+### 3.1 `text_to_sql_agent` (sub-agent via `AgentTool`) — frozen
+
+- Internal: completion (tuned prompt, **frozen**) → db querier → fixer loop,
+  `settings.max_sql_retries` (default 3), attempt counts logged as diagnostics.
+  Reads the pinned DuckDB through the case's as-of executor (§5); returns aggregates
+  and small result sets, capped at 100 rows.
+- The semantic layer is static and frozen, and lives in
+  `tenants/green_roof/sensordata.py`, rendered into the **builder's** system prompt
+  rather than into the sub-agent's own instruction, which carries no schema:
+  column descriptions, units, the 1 m² lysimeter collection area, the `radiation`
+  hour offset (`decisions.md`), the alias map (principle 4), join key, time
+  resolution.
+- The root agent sees the tool under the sub-agent's own name, `text_to_sql_agent`;
+  `query_database_tool` is the *inner* tool and never appears in a root-agent
+  trajectory.
+- **Frozen means the text, not the objects.** Prompt, docstrings and pipeline
+  structure are byte-stable; the object is rebuilt per case by
+  `build_text_to_sql_agent(executor, clock)`, binding both DB seams — the inner
+  query tool *and* the pipeline's EXPLAIN validator — to the case's as-of executor.
+  Transpiler, fixers, models and prompt strings are shared; the DB binding and the
+  injected clock (read by the querier's SQL rewrite, §5) are the only per-case
+  state. The context-bound query tool preserves the exact function name, signature
+  and docstring, from which ADK derives the tool declaration. A module-level
+  singleton remains as the production default, from the same factory.
+
+### 3.2 `lookup_reference` — exact card lookup
 
 ```python
 async def lookup_reference(
@@ -191,469 +205,393 @@ async def lookup_reference(
 ) -> dict
 ```
 
-- **There is no ranking and no query.** The agent names a topic; a Python
-  function reads that card out of a packaged YAML store. Retrieval is a routing
-  problem, not a scoring one — which is the part prompt optimization can
-  actually move (D32).
-- **The store is ~9 cards, baked into the image.** One YAML file per card:
-  `id`, `title`, `provenance`, a hand-authored `text:` block, and
-  `values:` / `applies_to:` / `not_applicable:` blocks. Editing a card requires
-  a rollout; that is accepted, and it is what keeps the store part of the pinned
-  surface (§5).
+- **No ranking, no query, no index, no network.** The agent names a topic; a Python
+  function reads that card out of a packaged YAML store.
+- **The store is 11 cards** — the eleven enum members above — baked into the image,
+  one YAML file per card: `id`, `title`, `provenance`, a hand-authored `text:`
+  block, and `values:` / `applies_to:` / `not_applicable:` blocks. Editing a card
+  requires a rollout, which keeps the store inside the pinned surface (§5).
 - **Prose carries no numerals; `values:` is test-bound to the constants.**
-  `provenance: rendered` means the `values:` block must equal what
-  `rules_constants.py` + `roofs.py` produce, asserted by a test — not that the
-  file is machine-written (hand prose and generated values in one file would
-  otherwise need a format-preserving YAML writer for no added guarantee).
-  `provenance: static` cards — `roof_directory`, `sensor_reference`,
-  `et0_method` — have no constants behind them and are exempt.
-- **The enum lives in the signature; only the docstring is candidate-owned.**
-  ADK renders `Literal[...]` into the function declaration as a schema `enum`
-  (verified against the installed `google-adk`), so the vocabulary reaches the
-  model regardless of the docstring. This split is deliberate: docstrings are
-  candidate-owned (D6), and a candidate that rewrote away the topic list would
-  silently disable the whole reference route while still appearing optimizable.
-  A test pins `enum == card keys`.
-- **Card granularity is a hard constraint: no card may be named after a single
-  constant.** Cards name *subjects*, not values. If absence were inferable from
-  the vocabulary alone, every abstention template would degenerate into "the
-  topic isn't listed" — the agent would abstain without reading anything and the
-  hallucination probe would measure nothing. This is what keeps T17a honest: a
-  wind-shutoff threshold would plausibly be a conjunct of the `irrigation_rule`
-  ladder, so the agent must fetch that card and find no wind clause.
+  `provenance: rendered` means the `values:` block equals what `rules_constants.py`
+  and `roofs.py` produce, asserted by a test — not that the file is machine-written.
+  The `provenance: static` cards (`roof_directory`, `sensor_reference`,
+  `et0_method`) have no constants behind them and are exempt.
+- **The enum lives in the signature; only the docstring is candidate-owned.** ADK
+  renders `Literal[...]` into the function declaration as a schema `enum`, so the
+  vocabulary reaches the model regardless of the docstring. A test pins
+  `enum == card keys`.
+- **Cards name subjects; no card is named after a single constant.**
 - **A known topic returns the card whole**, `not_applicable:` included. There is
   **no roof-scoped `not_available`**: asking for the wetland's soil-moisture
-  threshold returns the `irrigation_threshold` card with the extensive-roof rule
-  and the wetland's exclusion side by side, and the agent must read the
-  exclusion. Typing that abstention at the tool level would collapse T17b into
-  T18a's already-tested "relay a typed `not_available`".
-- **Three outcomes, as in §3.4**: `success`; `not_available` (reserved, unused
-  today — the store either has a topic or does not); `error` with
-  `error_type="invalid_argument"` for an unknown topic, echoing the valid list so
-  the agent can recover — free under D21.
-- T16a forbids `calc_irrigation` (D24), so `irrigation_rule` and
-  `irrigation_threshold` must together state the per-roof numbers well enough to
-  answer *without* the calculator, or the docs half of the routing probe is
-  unanswerable by construction.
-- **Fully offline and deterministic.** The store is a pure function of files §5
-  hashes: no network, no cache entry, no capture step, no `upstream` error class
-  — the property D26 buys for retrospective weather and D30 for irrigation,
-  reapplied to a third component.
+  threshold returns the `irrigation_threshold` card with the extensive-roof rule and
+  the wetland's exclusion side by side, and the agent reads the exclusion.
+- `irrigation_rule` and `irrigation_threshold` together state the per-roof numbers
+  well enough to answer an irrigation question *without* the calculator.
+- `not_available` is unused — the store either has a topic or does not; an unknown
+  topic is `invalid_argument` echoing the valid list.
+- **Fully offline and deterministic**, a pure function of files §5 hashes: no
+  network, no cache entry, no capture step, no `upstream` error class.
 
-### 3.3 `get_weather_forecast_tool` — **built**, daily, live + cached (D4)
-- Thin ADK wrapper (`tools/weather.py`) over `weather_client.fetch_daily_weather`,
-  which is pure and ADK-free. The `WeatherClient` protocol and the cache seam are
-  **to build**: today the wrapper imports the module-level function directly, so
-  every rollout hits `api.open-meteo.com` (D3, D4).
-- **Three sources, resolved from the window in code** (D26), in priority order:
-  1. **Station** — derived from the pinned DB's `wetter` table through
-     `ctx.db`, whenever the record covers the **whole** window.
-  2. **Archive** — windows starting more than ~92 days before `as_of`.
-  3. **Forecast** — everything else (`_choose_backend`).
+### 3.3 `get_weather_forecast_tool` — daily weather
 
-  The station is preferred where it can serve the window outright, so every
-  window keeps **one provenance**; a window the record covers only partly falls
-  through to the existing Open-Meteo routing unchanged. This deliberately adds
-  **no new `not_available` class** — D17's unservable-window cases (beyond the
-  16-day horizon, before Archive coverage, spanning the Archive/Forecast cutoff)
-  are still the whole of T18a. Deep history before the record starts is served
-  by Archive exactly as today.
+A thin ADK wrapper over the pure, ADK-free `weather_client`. Layer 1 resolves the
+window, layer 2 resolves the source, and the pure fetch function sees an absolute
+window and one endpoint.
 
-  The two Open-Meteo cutoffs are measured from a **required explicit `today`
-  argument** — `ctx.as_of`, never the wall clock — so the chosen source, and
-  with it the D4 cache key, is a pure function of the case (D17). The station
-  boundary is not clock-relative at all: it is a property of the pinned
-  `water.duckdb`, so it cannot drift between capture and replay.
-  **Not implemented**: there is no station path, and `_choose_backend` reads
-  `site_now()` today, which flips a recent-past window's backend ~92 real days
-  after capture and rots the committed cache (D17). Archive values are stable
-  upstream; forecast values are not, which is what the cache pins (D4).
-- **The station path needs no cache, no network and no capture step.** It is a
-  pure function of the pinned DB, which §5 already hashes, and it reads through
-  the as-of views — so a retrospective weather window is time-bounded
-  structurally, closing a leakage path Archive leaves open (Archive will happily
-  return observations past a case's `as_of`). Cases inside the record are fully
-  offline and immune to D17's recapture problem.
-- **Daily resolution is pinned end to end** — cached responses, tool output,
-  GR2L input rows, and any DB-meteo aggregation are one row per calendar day
-  (Europe/Berlin). GR2L's native step is daily and it rejects sub-daily rows.
-  Sub-daily questions ("in the next 6 hours") are phrased against whole days —
-  the catalog still violates this in T09/T13 (D13).
-- **Windows are resolved to absolute dates at layer 1** against `ctx.as_of`
-  before the client is called (D7): `past_days` / `forecast_days` are convenient
-  for the model but must never resolve against the wall clock, and an absolute
-  window is what makes the cache key stable.
-- **The daily series is bounded (D9)** on the same terms as GR2L's: capped at
-  31 days, beyond which the tool returns summary statistics plus weekly
-  aggregates and flags the truncation (T035). An absolute Archive window was
-  the one remaining unbounded path; multi-month meteo aggregation is the
-  database's job. **Not implemented**: neither wrapper caps the series today
-  (T035).
-- Output rows are **identical to GR2L's input row** (`DailyWeatherRow`: `Date`,
-  `tm`, `tx`, `tn`, `rf`, `precip`, `w`, `gs`), so the two never need a mapping
-  layer. `tx`/`tn` are required, not optional — FAO-56 Penman-Monteith derives
-  the saturation-vapour-pressure term from them; field meanings and the two
-  unit conversions (`w` in km/h, `gs` in J/cm²/day, both traced to GR2L's R
-  core) are `weather_tool.md`'s. **This schema is frozen and implemented**
-  (`schemas.DailyWeatherRow`, `weather_client._transpose`); the catalog's
-  hourly fixture schema is stale (D13).
-- **Station rows are derived, not stored** (D26). `wetter` is half-hourly and
-  carries six of the seven fields; the per-field aggregation, the `tn`
-  estimator, the `−7999` sentinel filter and the UTC→Europe/Berlin day
-  boundary are specified in `weather_tool.md` § Station source. The derivation
-  is fixed in code and part of the pinned surface (§5), because changing it
-  moves every oracle — and a wrong day boundary shifts rain between days,
-  desynchronising the series from the `outflow` and `swc` comparisons T19 is
-  built on.
-- **Three properties of the station data are measured scope limits, stated in
-  the thesis rather than corrected** (D26): `tn` is **estimated** (no `Tmin`
-  column; 0.25 °C mean / 0.48 °C p95 ambiguity against the naive alternative,
-  inside FAO-56's tolerance — the one D12 objection that survives, and it is
-  small), `gs` reads **~26 % below ERA5** (a gain offset, not noise — station
-  forcing suppresses ET and biases modelled retention upward), and `precip`
-  **undercatches** (~15 % on liquid days, ~50 % on frozen ones). The
-  measurements, their decomposition and the pyranometer cross-check live in
-  `weather_tool.md` § Station source; the consistency-over-accuracy argument
-  that keeps them uncorrected is D26's.
-- Requests beyond the 16-day horizon, before Archive coverage, or spanning the
-  Archive/Forecast cutoff — servable by neither backend alone (D17) — must
-  return a typed `not_available`, distinct from `error`: the basis of T18a.
-  Unknown-variable questions (T18b) have no tool surface — the tool takes no
-  variable argument and always returns the seven documented fields — so that
-  abstention is the **agent's** to make, scored at the contract level with the
-  docstring's variable list as its ground (D11). **Not implemented**: `weather.py` returns `ErrorResult` for
-  every failure (D11).
-- The tool returns the site's own `latitude`/`longitude`/`elevation` from
-  `site.py`, never Open-Meteo's grid cell (`weather_tool.md` § The location is
-  not a parameter). `WeatherResult` carries **no `elevation` field at all**
-  (T037) — elevation is a site fact, not a weather output; GR2L's `hoehe_nn`
-  is sourced from `site.py` by its own wrapper. Today the client still returns
-  the grid-cell value under a description saying to use it as `hoehe_nn` — a
-  trap for any oracle sharing the client; the fix is removal.
-oi
-### 3.4 `predict_green_roof_water_balance_tool` — **built**, layered GR2L
+- **Two sources, chosen in code from the window and never named by the agent**,
+  which names a window and a question and never a provenance: the **station**,
+  derived from the pinned DB's `wetter` table through `ctx.db` whenever that record
+  covers the **whole** window; **Archive**, Open-Meteo's ERA5 reanalysis, for
+  everything else, including every window reaching past `as_of`. Coverage is tested
+  **through the as-of view**, so a future window can never resolve to the station,
+  and a window the record covers only partly falls to Archive whole. Every window
+  has exactly one provenance. The response echoes the source, and an answer
+  discloses it whenever it is the station.
+- **Source resolution lives in a composite `WeatherClient` at layer 2**, constructed
+  with the case's as-of executor (§4). It cannot live in the pure fetch function:
+  the station path reads `ctx.db` and the pure layer has no channel to a context.
+  Every consumer — the standalone tool, GR2L, the irrigation calculator, the plot
+  tool — reaches weather through `ctx.weather` and sees the same rows, units and day
+  boundary.
+- **The station path needs no cache, no network and no capture step**: a pure
+  function of the pinned DB, read through the as-of views. It is the one weather
+  path that cannot see past `as_of` at all; Archive returns observations past a
+  case's `as_of` if asked.
+- **Windows resolve to absolute dates at layer 1** against `ctx.as_of` before any
+  client is called. `past_days` / `forecast_days` stay in the tool signature but
+  never resolve against a wall clock; the pure layer takes `start_date` / `end_date`
+  as required arguments with no default, so a caller that forgets to resolve fails
+  loudly.
+- **Window validity has exactly two failure modes.** A malformed window — end before
+  start, a negative relative count, an unparseable date — is `error` /
+  `invalid_argument`. A well-formed window whose end lies more than 16 days past
+  `as_of` is `not_available`. Nothing bounds how far back a window may reach:
+  Archive serves decades, and the 31-day cap below bounds the *response* by
+  truncating and summarizing rather than by refusing.
+- **The horizon check is the sole bound on future weather and is load-bearing** —
+  Archive serves day 400 past `as_of` without complaint. It is enforced in code
+  against `ctx.as_of`, asserted by a harness test, and is the single scope limit this
+  tool signals. Unknown-variable questions have no tool surface: the tool takes no
+  variable argument and always returns the seven documented fields, so that
+  abstention is the **agent's**, grounded in the docstring's variable list and
+  scored at the contract level.
+- **The daily series is bounded**: capped at 31 days, beyond which the tool returns
+  summary statistics plus weekly aggregates and flags the truncation. Multi-month
+  meteorological aggregation is the database's job.
+- **Daily resolution is pinned end to end** — cached responses, tool output, GR2L
+  input rows and every aggregation over the five tables are one row per calendar
+  day, **Europe/Berlin**, converted from the columns' naive UTC through one shared
+  helper (`decisions.md` § The day boundary). GR2L rejects sub-daily rows, so
+  sub-daily questions are phrased against whole days.
+- Output rows are **identical to GR2L's input row** — `DailyWeatherRow`: `Date`,
+  `tm`, `tx`, `tn`, `rf`, `precip`, `w`, `gs` — so the two need no mapping layer.
+  `tx` and `tn` are required, not optional. Field meanings and the two unit
+  conversions (`w` in km/h, `gs` in J/cm²/day) are `weather_tool.md`'s.
+- **Station rows are derived, not stored.** `wetter` is half-hourly and carries six
+  of the seven fields; the per-field aggregation, the `tn` estimator, the `−7999`
+  sentinel filter and the UTC→Europe/Berlin day boundary are `weather_tool.md`
+  § Station source. The derivation is fixed in code and pinned (§5). Rows are served
+  **uncorrected**; the three measured offsets — estimated `tn`, low `gs`,
+  undercaught `precip`, quantified in `findings.md` — are stated scope limits (§8).
+- The tool returns the site's own `latitude` / `longitude` / `elevation` from
+  `site.py`, never a grid cell. `WeatherResult` carries **no `elevation` field**:
+  elevation is a site fact, and GR2L's `hoehe_nn` comes from `site.py` through its
+  own wrapper.
+
+### 3.4 `predict_green_roof_water_balance_tool` — layered GR2L
+
 ```python
 def run_gr2l(rows, parameters) -> list[Gr2lResultRow]   # thin async HTTP client
 
 async def predict_green_roof_water_balance_tool(
-    roof_type,                       # wetland | non_irrigated_extensive |
+    roof_type,                       # non_irrigated_extensive |
                                      # irrigated_extensive | semi_intensive
     start_date=None, end_date=None,  # absolute window
-    past_days=None, forecast_days=None,   # relative; resolved vs ctx.as_of (D7)
+    past_days=None, forecast_days=None,   # relative; resolved against ctx.as_of
     initial_soil_moisture_pct=None,  # %θ; default: measured seed, see below
     albedo=None,                     # the one overridable physical parameter
-    forcings=None,                   # TO BUILD: {"precip": {"2026-07-22": 50.0}}
-    evaluate_against_measured=False, # TO BUILD: retrospective deviation stats
+    forcings=None,                   # {"precip": {"2026-07-22": 50.0}}
+    evaluate_against_measured=False, # retrospective deviation statistics
 ) -> dict
 ```
-- Self-contained by default (docstring discloses internal fetching), overridable
-  for counterfactuals. Internal fetches go through `ctx.weather` / `ctx.db` —
-  same cache and as-of view the standalone tools see.
-- **No `meteo_source` argument, and none is planned** (D12, narrowed by D26).
-  The agent never names a weather source; the source is derived from the window
-  in code, so the station path reaches GR2L through exactly the same
-  `ctx.weather` seam the standalone tool uses — same rows, same units, same day
-  boundary, one vocabulary. A retrospective GR2L run and a forecast run are
-  therefore forced by different sources; the response echoes which, and the
-  answer must disclose it whenever it is the station (§3.3's biases).
-- `forcings` is keyed by the row's **own field names** (`precip`, `tm`, `tx`,
-  `tn`) — one vocabulary with `DailyWeatherRow`, never `precip_mm` — and is
-  sparse: unspecified days keep the fetched value (D8). It is echoed in the
-  response for argument-checking.
-- Returns `parameters`, `seed`, a bounded daily `data` series and a `summary`
-  (`retention_mm`/`retention_pct`, `total_precip_mm`, `total_outflow_mm`,
-  `min_substrate_storage_mm`, `min_swc_pct`, `drought_stress`,
-  `retention_excludes_seed_day_runoff`). With `evaluate_against_measured`, adds
-  mean/max |predicted − measured| in %θ over the window's overlap with the `swc`
-  record (keeps the LLM out of bulk arithmetic in T19).
-- Three outcomes: `success`, `not_available` (gravel roof; no seed available),
-  `error` — the latter carrying `error_type: invalid_argument | upstream`
-  (D16). This typed-abstention discipline is already implemented here (minus
-  `error_type`) and is the model for §3.3.
 
-**Day-1 seed: `seed_at = min(window_start, as_of)`** (D5). Never later than the
-window opens — a March window seeded from a July reading is physically wrong —
-and never later than `as_of`, which is the leakage bound. Today `swc.py` uses
-`window_start` alone, which leaks whenever a case's window opens after its
-`as_of`. Staleness flagging (`is_stale` beyond 7 days, with disclosure) and the
-never-substitute-a-default rule (`not_available`, no generic `theta_01`) are
-`gr2l_tool.md`'s (§ Where day 1's soil moisture comes from).
+- Self-contained by default, overridable for counterfactuals; internal fetches go
+  through `ctx.weather` and `ctx.db`, and the response echoes which source served.
+  **There is no `meteo_source` argument** — the agent never names a weather source.
+- `forcings` is keyed by the row's **own field names** (`precip`, `tm`, `tx`, `tn`),
+  one vocabulary with `DailyWeatherRow` and never `precip_mm`, and is sparse:
+  unspecified days keep the fetched value. It is echoed for argument checking.
+- Returns `parameters`, `seed`, a bounded daily `data` series (§3.3's cap) and a
+  `summary`: `retention_mm` / `retention_pct`, `total_precip_mm`,
+  `total_outflow_mm`, `min_substrate_storage_mm`, `min_swc_pct`, `drought_stress`,
+  `retention_excludes_seed_day_runoff`. With `evaluate_against_measured` it adds
+  mean and max |predicted − measured| in %θ over the window's overlap with the `swc`
+  record.
+- `not_available` triggers: the gravel roof and the wetland; a window with no
+  trustworthy seed.
 
-**GR2L is a remote service; oracles call it over HTTP too.** The model core is R,
-deployed behind `POST {gr2l_api_base_url}/predict_gr2l` outside this repo — there
-is no local implementation and we are not writing one. Oracles `import run_gr2l`
-from the same client the tool uses. Rationale and the terms we accept:
-- A local reimplementation would be a *second* model to keep in sync, and the
-  oracle would then validate our port rather than the system under test.
-- Determinism rests on three things instead of purity: the service is pinned by
-  base URL plus a committed canary request/response hash (§5); GR2L is
-  deterministic given `(rows, parameters)`; and responses are cached by exact
-  request body, so a repeated rollout replays rather than re-requests.
-- Cost, stated plainly: the first capture of any case needs network access. A
-  cache miss while the service is down **fails the case** — it never substitutes
-  a fallback. Service unavailability is a harness error, not an agent error, and
-  is reported separately from scores.
+**Day-1 seed: `seed_at = min(window_start, as_of)`** — never later than the window
+opens, and never later than `as_of`, which is the leakage bound. Staleness flagging
+(`is_stale` beyond 7 days, with disclosure) and the never-substitute-a-default rule
+(`not_available`, never a generic `theta_01`) are `gr2l_tool.md`'s. Every seeded
+component uses this rule.
 
-**The tool speaks %θ; millimetres stay internal.** Implemented in `swc.py`; the
-conversion and the per-layer unit contract are `gr2l_tool.md`'s (§ Units: %θ
-in, %θ out). Retention/runoff stay in mm — fluxes, not states. **Wetland
-exception**: its sensor saturates near 86 % θ, so the wetland reports
-`swc_pct = null` in series and summary, and %-valued templates
-(T09/T10/T21–T23) must not sample it. Its *seed* is still read and reported in
-%θ (a lower bound whenever water is ponded) — the one place a wetland
-percentage legitimately appears.
+**GR2L is a remote service, and oracles call it over HTTP too.** The model core is
+R, deployed behind `POST {gr2l_api_base_url}/predict_gr2l` outside this repo;
+oracles `import run_gr2l` from the same client the tool uses. Determinism rests on
+three things instead of purity: the service is pinned by base URL plus a committed
+canary request/response hash (§5), GR2L is deterministic given `(rows, parameters)`,
+and responses are cached by exact request body. The first capture of any case needs
+network access, and a cache miss while the service is down **fails the case** rather
+than substituting a fallback — a harness error, not an agent error (§7).
 
-**Roof coverage — the gravel roof (`Kies`/`KD`/`QGravel`) is out of scope for
-the model** (`gr2l_tool.md` § The gravel roof cannot be modelled). It remains
-first-class for SQL, retrieval and plotting (families A, B, H); model-bearing
-templates (D, G, part of E) must **not** sample it, and a modelling request
-naming it is a legitimate `not_available`. Implemented as
-`NON_MODELLABLE_ROOFS`, which also accepts the German/column aliases.
+**The tool speaks %θ; millimetres stay internal** (`swc.py`; the conversion and the
+per-layer unit contract are `gr2l_tool.md`'s). Retention and runoff stay in mm —
+fluxes, not states. **Neither the gravel roof nor the wetland can be modelled**
+(`gr2l_tool.md`): the gravel roof has no substrate store, and the wetland is a fleece
+mat whose θ sensor saturates near 86 %θ, so GR2L's scope is the three substrate
+roofs. Both stay first-class for SQL, retrieval and plotting, and a modelling request
+naming either is a legitimate `not_available`, implemented as `NON_MODELLABLE_ROOFS`,
+which also accepts principle 4's German and column aliases. **`calc_irrigation`
+excludes the same two roofs** (§3.5), so one set carries both water-balance tools'
+scope and lives in `roofs.py` beside the rest of each roof's identity (principle 4).
+This is what the catalog's per-family roof sampling pools are derived from.
 
-### 3.5 `calc_irrigation` — **to build**, self-contained over its own bucket model
+### 3.5 `calc_irrigation` — self-contained over its own bucket model
 
 ```python
 async def calc_irrigation(
-    roof_type,                   # wetland | non_irrigated_extensive |
+    roof_type,                   # non_irrigated_extensive |
                                  # irrigated_extensive | semi_intensive
-    soil_moisture_pct=None,      # stated-value path (T16a/T16b): %θ
+    soil_moisture_pct=None,      # stated-value path: %θ
     max_temperature_c=None,      #   supplying these skips every fetch and
     forecast_precip_mm=None,     #   every simulation — the rule alone runs
-    water_level_kg=None,         # wetland only
 ) -> dict
 ```
 
-- **Returns a decision, not a volume** (D22): `irrigate: bool`, with the fixed
-  dose stated alongside for disclosure. The dose is policy, not computation —
-  the roof's 90th-percentile historical ET, a per-roof constant in
-  `rules_constants.py` rendered into the ops manual like every other rule
-  constant. No template asks for a per-case volume (T11 and T16b are bool).
-  `rules_constants.py` carries the deployed valve minutes beside it, because
-  those are what the site actually applies.
-- **It runs its own bucket model, and that model is not GR2L** (D29). The
-  deployed controller's balance differs from GR2L's in seven respects — one
-  store rather than two, a stress coefficient with a residual offset evaluated
-  on the *previous* step, ET applied before the cap, no lower floor, ET0 taken
-  as input, and a flat 22 %θ field capacity where GR2L measures 22.9 / 32.6 /
-  30.4 — so the two are separate cores, maintained separately. The physics, the
-  per-roof parameter derivation and the deviations from the deployed controller
-  are `irrigation_tool.md`'s, on the same terms §3.4 defers to `gr2l_tool.md`.
-- **Self-contained by default** on §3.4's terms, with the same disclosure
-  discipline: the seed comes from `swc.latest_measured_swc` under D5's
-  `min(window_start, as_of)` and the forcing from `ctx.weather`. Supplying the
-  stated values instead makes the call pure — no DB, no weather, no simulation
-  (T16b).
+- **Returns a decision, not a volume**: `irrigate: bool`, with the fixed dose stated
+  alongside for disclosure. The dose is site policy, not computation — the roof's
+  90th-percentile historical ET, a per-roof constant in `rules_constants.py`,
+  carried into the ops manual with the deployed valve minutes beside it.
+- **It runs its own bucket model, and that model is not GR2L.** The deployed
+  controller's balance differs from GR2L's in seven respects, among them one store
+  rather than two, a stress coefficient evaluated on the *previous* step, ET applied
+  before the cap, and a flat 22 %θ field capacity where GR2L measures
+  22.9 / 32.6 / 30.4. The two are separate cores. The physics, the per-roof
+  parameter derivation, the reason-code ladder, the hour-based horizons and every
+  deviation from the deployed controller are `irrigation_tool.md`'s.
+- **The input set is soil moisture, precipitation, ET0 and air temperature.**
+  Radiation, wind and humidity enter only through ET0. **ET0 is computed, not
+  fetched**: `DailyWeatherRow` carries no `et0` and its schema is frozen, so a local
+  FAO-56 Penman-Monteith core (`et_fao56.py`) computes it at **albedo 0.23**, the
+  reference-crop value; roof-specific throttling is the stress coefficient's job.
+- **Self-contained by default** on §3.4's terms and with the same disclosure
+  discipline: the seed comes from `swc.latest_measured_swc` under the
+  `min(window_start, as_of)` rule and the forcing from `ctx.weather`. Supplying the
+  stated values instead makes the call pure — no DB, no weather, no simulation.
 - **Millimetres internally; the site's own units at the surface.** Constants are
-  authored as the site states them (%θ, kg) and converted once through
-  `swc.theta_pct_to_mm` and `kg / area_m²` (lysimeter area 1 m², so kg ↔ mm is
-  identity). The conversion *removes* a constant rather than adding one: the
-  deployed script's `SWC_CAPACITY = 22.0` and `THETA_FIELD_CAPACITY = 0.22` are
-  one quantity written twice in two units, serving the overflow threshold and
-  the stress-coefficient denominator; in mm they collapse into one.
-- **Horizons are authored in hours** (48 for SWC and temperature, 168 for
-  refill) and converted to row counts by the series' step, so one implementation
-  serves the site's hourly step and this system's daily one. At daily
-  resolution the heat test reads `max(tx)` over two days rather than the hourly
-  maximum of `temperature_2m` — the more faithful quantity, and a stated
-  deviation.
-- **ET0 is computed, not fetched.** `DailyWeatherRow` carries no `et0` and its
-  schema is frozen (§3.3); the station source could not supply one either. A
-  local FAO-56 Penman-Monteith core (`et_fao56.py`) computes it at **albedo
-  0.23**, the reference-crop value — roof-specific throttling is the stress
-  coefficient's job, not the ET0 term's.
-- **Reason codes, not prose.** The decision returns one of
-  `below_wilting_point · no_heat_no_stress · sufficient_moisture ·
-  refill_forecast · cooling_requested · low_water_level ·
-  sufficient_water_level · no_forecast · missing_values`; DE/EN text is a
-  rendering table shared with the ops manual. The "will it refill?" conjunct
-  reaches the ladder as a single `will_reach_capacity` bool computed by two
-  adapters — one from modelled outflow, one from a stated rain total — so the
-  priority ladder itself exists exactly once.
-- **The wetland is not simulated.** Its rule reads current lysimeter level
-  against a fixed minimum and ignores temperature and forecast entirely, which
-  is what the deployed controller does; the model run it computes for the
-  wetland is dead code there.
-- **Three outcomes, as in §3.4**: `success`; `not_available` for the gravel roof
-  (`NON_MODELLABLE_ROOFS`) and for a window with no trustworthy seed
-  (`SwcUnavailableError`); `error` carrying D16's `error_type`.
-- **Everything runs local** (D30), which is what makes irrigation cases fully
-  offline: no D4 cache entry, no canary in the agent path, no `upstream` error
-  class, and an oracle that imports the very function the tool calls.
-- **Input set confirmed; plan R7 is retired.** The rule consumes soil moisture,
-  precipitation, ET0 and air temperature. The preliminary list's radiation, wind
-  and humidity are real but indirect — they enter only through ET0.
+  authored as the site states them (%θ) and converted once through
+  `swc.theta_pct_to_mm`.
+- **The unit correction is measured, not absorbed.** The deployed controller adds
+  millimetres of rain and ET to a store held in %VWC; carrying that balance into
+  millimetres rescales each roof's response to rain by `100/SH_mm` — about 0.7× for
+  the 7 cm extensive roofs, about 1.5× for the 15 cm semi-intensive. The deployed
+  trigger levels are carried verbatim into `rules_constants.py` as site policy
+  regardless. A **decision-diff harness** replays a historical window through both
+  unit regimes with the same ET0, so unit handling is the only variable, and reports
+  every date and roof where the irrigate decision flips. That list bounds what the
+  testbed's irrigation answers say about the deployed system (§8); re-tuning against
+  it is the site's call.
+- **The wetland is out of scope.** The rule is built for a classical substrate roof —
+  a soil store read in %θ — not for a ponded fleece mat, so it does not apply.
+- `not_available` triggers: the gravel roof and the wetland — the whole of
+  `NON_MODELLABLE_ROOFS`, which §3.4 shares and which now bounds both water-balance
+  tools alike; a window with no trustworthy seed.
+- **Everything runs local**, which makes irrigation cases fully offline: no cache
+  entry, no canary in the agent path, no `upstream` error class, and an oracle that
+  imports the very function the tool calls.
 
-### 3.6 `plot_timeseries` — **to build**, self-contained, multi-source, spec-scored
+### 3.6 `plot_timeseries` — self-contained, multi-source, spec-scored
 
 ```python
 def plot_timeseries(
     series,          # list of SeriesSpec — each names a SOURCE, never data
-    start, end,      # absolute window (relative forms resolved per D7)
+    start, end,      # absolute window (relative forms resolved as in §3.3)
     kind,            # line | bar | model_overlay | diff
-                     # no agg argument: aggregation is DERIVED per variable (D20)
+                     # no agg argument: aggregation is DERIVED per variable
 ) -> dict            # resolved spec + summary stats + artifact_ref — NO series
 ```
 
-- **The agent declares a source, never the data itself** (D14). Each `SeriesSpec`
-  names where a series comes from and which variable to draw; the tool fetches it
-  internally through the seams the other tools already use:
+- **The agent declares a source, never the data itself.** Each `SeriesSpec` names
+  where a series comes from and which variable to draw; the tool fetches it through
+  the seams the other tools use.
 
   | `source` | Fetch path | Selector fields | Bounded by |
   |---|---|---|---|
-  | `measured` | `ctx.db` as-of view, fixed parameterized query | `table`, `column`, `roof` | as-of view (§5) |
-  | `weather` | `ctx.weather` | `variable` (`DailyWeatherRow` field) | D7 window resolution |
-  | `model` | `run_gr2l` through the shared client + cache | `roof_type`, `variable` (`GreenRoofDay` field), plus `initial_soil_moisture_pct` / `albedo` / `forcings` | D5 seed rule |
+  | `measured` | `ctx.db` as-of view, fixed parameterized query | `table`, `column`, `roof` | the as-of view (§5) |
+  | `weather` | `ctx.weather` | `variable` (a `DailyWeatherRow` field) | §3.3's window resolution |
+  | `model` | `run_gr2l` through the shared client and cache | `roof_type`, `variable` (a `GreenRoofDay` field), plus `initial_soil_moisture_pct` / `albedo` / `forcings` | §3.4's seed rule |
 
-  Passing data *through* the model is forbidden — it is the row dump principle 3
-  and D9 exist to prevent, and it degrades trajectory scoring into a
-  float-transcription test (D14). Re-fetching is cheap because both live sources
-  replay from the response cache (§5); in `replay` mode a plot never issues a
+  Passing data *through* the model is forbidden. Re-fetching is cheap because both
+  live sources replay from the response cache; in `replay` mode a plot issues no
   live call.
-- Self-contained on the same terms as §3.4: the plot tool inherits every leakage
-  and determinism rule rather than restating them, **provided it resolves all
-  three sources through `ctx`** and never opens its own DuckDB connection or
-  `httpx` client (the mistake `swc.py` and both wrappers make today, §4).
-- **Fixed parameterized query, no LLM SQL** — `measured` reaches the five as-of
+- Self-contained on §3.4's terms, inheriting every leakage and determinism rule
+  rather than restating them, **provided it resolves all three sources through
+  `ctx`** and never opens its own DuckDB connection or HTTP client.
+- **Fixed parameterized query, no LLM SQL.** `measured` reaches the five as-of
   tables (`outflow`, `radiation`, `swc`, `tsoil`, `wetter`) through a closed
-  vocabulary of columns and aggregations. Derived quantities (e.g.
-  lysimeter-area-normalized outflow) must be *in* that vocabulary as a flag; they
-  are not reachable by free SQL. State this scope limit in the thesis.
-- **Returns no series at all** — only the resolved spec, summary statistics, and
+  vocabulary of columns and aggregations; derived quantities exist in that vocabulary
+  as flags and are not reachable by free SQL (§8). Area-normalized outflow is **not**
+  one of them — the lysimeters collect 1 m², so litres are already millimetres and the
+  vocabulary relabels the unit rather than scaling the values.
+- **Returns no series at all** — the resolved spec, summary statistics and
   `artifact_ref`. The series' consumer is the renderer, not the LLM, so plotting
-  is the one tool that satisfies D9 outright instead of being capped by it.
-- **The resolved spec is the scored surface**: source and variable per series,
-  resolved absolute range, the *derived* aggregation and resolution, unit and axis assignment
-  per series, gap/truncation flags, and the modelling arguments echoed for any
-  `model` series (argument-checkable exactly like §3.4's).
-- **Daily resolution is forced for mixed plots.** `swc`/`wetter` are half-hourly;
-  weather and GR2L are daily end to end (§3.3). Any plot combining a `model` or
-  `weather` series with a `measured` one aggregates the measured series to
-  calendar days (Europe/Berlin) with its variable's derived operator (D20) and
-  reports the resolution in the spec.
-- **Units, axes and aggregation are derived in code, never chosen by the
-  model** (D20). Overlaying `precip` (mm/day) with `swc_pct` (%θ) needs two
-  axes; fluxes aggregate by `sum`, states by `mean`; both assignments follow
-  from the variable through the closed vocabulary, so the scored spec stays
-  deterministic. There is no `agg` argument to fumble — the resolved spec
-  echoes the derived operator per series instead.
-- **Three outcomes, as in §3.4**: `success`, `not_available`, `error`. A `model`
-  series for the gravel roof is `not_available` (`NON_MODELLABLE_ROOFS`), as is a
-  `swc_pct` model series for the wetland (mm-only, §3.4); a `measured` series for
-  either stays perfectly valid.
-- Docstring: "fetches its own data; do not query the database separately for
-  plotting" (basis of T24a's must-not).
-- **Headless mode** — eval runs must not require the UI stack. Nothing renders
-  server-side and no plotting library enters the Python dependency set. The
-  series reaches the CopilotKit frontend **without passing through the model**
-  (D20): the tool stashes it under a session-state key and the tool wrapper
-  merges it into the tool-result event the chat replays — the proven
-  `QUERY_RESULT_STATE_KEY` / FR15 pattern from `warehouse.py` — while the
-  model-visible result stays spec + stats + `artifact_ref` (which names the
-  stashed payload). Eval never reads the state key; rendering is an
-  **unscored side effect**.
+  satisfies principle 3 outright instead of being capped by it.
+- **The resolved spec is echoed in full**: source and variable per series, the
+  resolved absolute range, the derived aggregation and resolution, unit and axis per
+  series, gap and truncation flags, and the modelling arguments of any `model`
+  series. **Scored is the agent-supplied half** (§7) — series source, variable and
+  roof, the resolved range, and any modelling arguments.
+- **Units, axes and aggregation are derived in code, never chosen by the model**:
+  fluxes aggregate by `sum`, states by `mean`, and unit and axis follow from the
+  variable through the closed vocabulary. There is no `agg` argument; the resolved
+  spec echoes the derived operator per series. **Daily resolution is forced for
+  mixed plots** — `swc` and `wetter` are half-hourly while weather and GR2L are
+  daily, so any plot combining a `model` or `weather` series with a `measured` one
+  aggregates the measured series to calendar days (Europe/Berlin) with that
+  variable's derived operator and reports the resolution in the spec.
+- `not_available` triggers: a `model` series for the gravel roof or the wetland.
+  A `measured` series for either stays valid.
+  Docstring: "fetches its own data; do not query the database separately for
+  plotting."
+- **Headless.** Nothing renders server-side and no plotting library enters the
+  Python dependency set. The series reaches the CopilotKit frontend **without
+  passing through the model**: the tool stashes it under a session-state key and the
+  wrapper merges it into the tool-result event the chat replays — the existing
+  `QUERY_RESULT_STATE_KEY` pattern from `warehouse.py` — while the model-visible
+  result stays spec, statistics and `artifact_ref`, which names the stashed payload.
+  Evaluation never reads the state key; rendering is an **unscored side effect**.
 
-## 4 ScenarioContext — the single injection seam — **to build**
+---
+
+## 4 ScenarioContext — the single injection seam
 
 ```python
 class ScenarioContext:
-    def __init__(self, clock, db_path, weather_client, http_cache):
-        self.clock = clock                       # () -> datetime (D18)
-        # Views: timestamp <= clock(). A view-recreating *factory*, not a bare
-        # connection, because every reconnect must rebuild the views (D18).
+    def __init__(self, clock, db_path, weather_client_factory, http_cache):
+        self.clock = clock                       # () -> datetime
+        # A view-recreating *factory*, not a bare connection: every reconnect
+        # must rebuild the views.
         self.db = DuckDbQueryExecutor(
-            connection_factory=lambda: connect_asof(db_path, clock)
-        )
-        self.weather = weather_client            # called with today=ctx.as_of (D17)
+            connection_factory=lambda: connect_asof(db_path, clock))
         self.cache = http_cache
+        # Both halves, in this order: the station reads the as-of views, Archive
+        # reads the cache. A factory taking only `db` cannot build the composite.
+        self.weather = weather_client_factory(self.db, self.cache)
 
     @property
     def as_of(self): return self.clock()
 
 def build_toolset(ctx, docstrings=None) -> list[Tool]: ...   # make_* factories
 ```
-- Per eval case the harness builds one context —
-  `ScenarioContext(lambda: case.as_of, PINNED_DB, CachedOpenMeteo(...),
-  ResponseCache(CACHE_DIR))` — and runs §6's rollout against it. Production
-  builds the same object once at import with `clock = site_now` and the same
-  cache (D18).
-- **Explicit dependency injection, not contextvars and not monkeypatching**
-  (D3). Contextvars are specifically ruled out: `mlflow.genai.evaluate` worker
-  threads drop them, which already broke `CostMeter` role attribution in the
-  text2sql experiments. `mock.patch` remains acceptable in oracle unit tests only.
-- Three code paths bypass this seam today and must be routed through it:
-  `swc.py` opens its own DuckDB connection from global settings, both tool
-  wrappers import `fetch_daily_weather` directly, and the text2SQL sub-agent
-  reaches the warehouse executor singleton from two places —
-  `query_database_tool` and the pipeline's `DuckDbExplainValidator` (D19).
 
-## 5 Determinism & pinning
+- **Nothing the harness needs is a module-level singleton.** The harness builds one
+  context per case — `ScenarioContext(lambda: case.as_of, PINNED_DB,
+  make_weather_client, ResponseCache(CACHE_DIR))` — and runs §6's rollout against
+  it; production builds the same object once at import with `clock = site_now`.
+  `build_root_agent`, `build_toolset` and `build_text_to_sql_agent` are the real
+  constructors, and the production singletons are thin defaults produced by them.
+- **Explicit dependency injection — not contextvars, not monkeypatching.**
+  `mock.patch` remains acceptable in oracle unit tests only.
+- **Anything that would capture `as_of` at construction re-derives it per use.** The
+  as-of executor re-checks `clock().date()` per query and rebuilds its connection
+  when the date moves.
+
+---
+
+## 5 Determinism, pinning and leakage
 
 | Component | Prompt layer | Computation | Data |
 |---|---|---|---|
 | root instruction + tool docstrings | **optimized** | live | — |
 | `text_to_sql_agent` | frozen (tuned) | live | DB via as-of views |
 | `lookup_reference` | n/a | pure, exact, **fully offline** | card store, hashed |
-| `get_weather_forecast_tool` | n/a | station: pure, offline · Open-Meteo: live once, then **cached** | ctx.db as-of views (station) · Open-Meteo, cache keyed by request |
+| `get_weather_forecast_tool` | n/a | station: pure, offline · Archive: live once, then **cached** | ctx.db as-of views (station) · Open-Meteo Archive, cache keyed by request |
 | `predict_green_roof_water_balance_tool` | n/a | live, **remote HTTP**, cached | ctx.weather / ctx.db; pinned presets |
-| `calc_irrigation` | n/a | live, pure, **fully offline** | `rules_constants.py` · `roofs.py` · ctx.db as-of views · ctx.weather (station path: no network, D26) |
+| `calc_irrigation` | n/a | pure, **fully offline** | `rules_constants.py` · `roofs.py` · ctx.db as-of views · ctx.weather |
 | `plot_timeseries` | n/a | live, deterministic | ctx.db as-of views · ctx.weather · run_gr2l, all cached |
-| LLM | — | T=0, pinned dated version, cached | — |
+| LLM | — | T=0, seed pinned, pinned by served id + canary; cached in the search, **uncached on the measurement path** | — |
 
-- Pins committed to the repo: `water.duckdb` sha256, **one sha256 over the card
-  store** (`assistant/knowledge/cards/`; there is no index to hash),
-  `rules_constants.py` and `roofs.py` versions, GR2L roof presets, **GR2L base
-  URL + a canary request/response hash** (the service exposes no version string,
-  so a canary that changes means the service changed), the **irrigation R
-  endpoint's canary — marked non-evaluation**, since under D30 it guards the
-  cross-language deliverable and no case's answer depends on it,
-  LLM model version string, **the
-  reflection LM's dated version** (a second model, distinct from the task model —
-  it shapes every proposal GEPA makes, so an unpinned reflector makes a run
-  unrepeatable even with the task model fixed), **the candidate prompt names and
-  seed versions** in the MLflow registry (D27), dependency lockfile (adk,
-  litellm, mlflow, gepa, pyyaml, duckdb — the optimizer entry point is
-  `@experimental`, R8), and the **station derivation**
-  (`weather_tool.md` § Station source: the per-field aggregation, the
-  Europe/Berlin day boundary, the sentinel filter, and the station record's
-  first/last complete day as read from the pinned DB) — the DB hash alone does
-  not pin how rows are reduced to days.
-- **Response cache** (D4): one mechanism, two callers. Keyed by the sha256 of the
-  exact request (URL + sorted query params for Open-Meteo; `data[]` + parameters
-  for GR2L), stored as committed JSON alongside the cases. It is a cost and
-  availability measure *and* the replay mechanism for the two live dependencies
-  the eval cannot inject away — keyed by request, not by case, so it never masks
-  a changed request. Every input to the request — window resolution (D7) and
-  backend choice (D17) — derives from `ctx.as_of`, so a key never depends on
-  when the rollout runs. A miss in `replay` mode is a hard failure, never a live
-  fetch.
-- **Time-travel leakage**: `connect_asof` opens an in-memory DuckDB, attaches the
-  pinned file read-only as `src`, and creates one `main.<table> AS SELECT * FROM
-  src.<table> WHERE timestamp <= :as_of` view per table (`outflow`, `radiation`,
-  `swc`, `tsoil`, `wetter`). Querier and plot tool resolve unqualified names in
-  `main`, so they see only the as-of view and the pinned file is never modified —
-  no `*_raw` rename, and the text2SQL semantic layer keeps the table names it
-  already knows. The GR2L seed uses `min(window_start, as_of)` (D5); relative
-  windows resolve against `as_of` (D7). T19 windows end ≤ `as_of` (harness
-  assertion). The view bounds *rows*, not SQL time functions — the second
-  escape, `CURRENT_DATE` / `now()` in generated SQL, is closed by the querier's
-  sqlglot rewrite (D19c). Station weather reads the `wetter` view through the
-  same executor, so it inherits the bound rather than restating it (D26) — the
-  one weather path that cannot see past `as_of` at all.
-- Residual LLM nondeterminism handled statistically: 3 seeds per condition,
-  paired evaluation on identical cases, paired bootstrap.
+**Pins committed to the repo**: `water.duckdb` sha256; one sha256 over the card
+store (`assistant/knowledge/cards/`; there is no index to hash);
+`rules_constants.py` and `roofs.py` versions; the GR2L roof presets; the GR2L base
+URL plus a canary request/response hash, the service exposing no version string; the
+task LLM's served
+model id, endpoint and decoding parameters (`temperature=0`, seed) **plus its own
+request/response canary**, the provider offering no dated versions; the same three
+for **the reflection LM**, a second model distinct from the task model, without which
+a run is unrepeatable even with the task model fixed; the
+candidate prompt names and seed versions in the MLflow registry; the dependency
+lockfile (adk, litellm, mlflow, gepa, pyyaml, duckdb); and the **station derivation**
+(`weather_tool.md` § Station source — the per-field aggregation, the day boundary,
+the sentinel filter, and the station record's first and last complete day), which
+the DB hash does not cover.
 
-## 6 Optimization harness (outer loop) — **to build**
+**Response cache — one mechanism, two callers.** Keyed by the sha256 of the exact
+request: URL plus sorted query parameters for Open-Meteo, `data[]` plus parameters
+for GR2L. Entries are committed JSON stored beside the cases, keyed by request
+rather than by case. Every input to a key derives from `ctx.as_of` — window
+resolution and source choice both — so a key never depends on when the rollout runs.
+**A miss is filled live and recorded, gated on the service's canary matching**; a
+diverging canary or an unreachable service is a hard failure (`decisions.md` § The
+response cache). The strict-replay alternative was rejected because a cache
+captured over the oracle's windows cannot cover the windows a *candidate* chooses,
+and would teach the search to reproduce the baseline's arguments. What the cache is
+load-bearing *for* is GR2L; for weather it is cost and speed, the station needing no
+entry at all and Archive being re-fetchable indefinitely.
 
-GEPA is reached **through MLflow**, not driven directly (D27). MLflow owns the
-`GEPAAdapter` — `MlflowGEPAAdapter` implements both `evaluate` and
-`make_reflective_dataset` — so nothing here writes an adapter and there is no
+**Time-travel leakage** is closed on four fronts, all reading the same `as_of`:
+
+- **As-of views.** `connect_asof` opens an in-memory DuckDB, attaches the pinned
+  file read-only as `src`, and creates one
+  `main.<table> AS SELECT * FROM src.<table> WHERE timestamp <= :as_of` view per
+  table (`outflow`, `radiation`, `swc`, `tsoil`, `wetter`). The querier and the plot
+  tool resolve unqualified names in `main`, so they see only the view, the pinned
+  file is never modified, and the semantic layer keeps the table names it knows.
+  Station weather reads the `wetter` view through the same executor. **`as_of` is an
+  instant and `connect_asof` converts it to UTC** before it meets the columns' naive
+  UTC timestamps; a timezone-aware bound passed through would be compared in the
+  host's session timezone and cut the record differently per host (`decisions.md`
+  § The as-of cut).
+- **Generated SQL.** The view bounds *rows*, not SQL time functions, so the
+  querier's sqlglot pass **rewrites** `CURRENT_DATE` and `now()` in generated SQL to
+  the literal `as_of` before execution.
+- **Seeds and windows.** The GR2L seed uses `min(window_start, as_of)` (§3.4);
+  relative windows resolve against `ctx.as_of` at layer 1 (§3.3); windows for
+  retrospective model-versus-measured comparison end at or before `as_of`, asserted
+  by the harness.
+- **Case time.** `as_of` is drawn from a band inside the measurement record and the
+  wall clock never enters a case; the band and its sampling rules are the catalog's
+  (`questions.md` §1.7). Its ceiling is **2026-04-24**, the last day of the sensor
+  tables; the station record itself runs to 2026-04-27 (`findings.md`).
+
+Residual LLM nondeterminism is handled statistically, on §7's terms.
+
+---
+
+## 6 Optimization harness (outer loop)
+
+GEPA is reached **through MLflow**, not driven directly. MLflow owns the
+`GEPAAdapter`, so nothing here writes an adapter and there is no
 `run_rollout(candidate, case)` signature: **GEPA owns the loop, MLflow owns the
-adapter, and one rollout is one call of `predict_fn`.** What this repo writes is
-`predict_fn`, the scorers, and the candidate surface in the prompt registry.
+adapter, one rollout is one call of `predict_fn`.** This repo writes `predict_fn`,
+the scorers, and the candidate surface in the prompt registry. The library internals
+this rests on are recorded in `findings.md`.
 
 ```python
 def predict_fn(inputs: dict) -> dict:          # one case; MLflow calls it per record
-    ctx  = ScenarioContext(lambda: inputs["as_of"], PINNED_DB, weather_client, cache)
+    ctx  = ScenarioContext(lambda: inputs["as_of"], PINNED_DB,
+                           make_weather_client, cache)
     text = {name: mlflow.genai.load_prompt(uri).template   # patched to candidate text
             for name, uri in PROMPT_URIS.items()}          # inside optimize_prompts
     agent = build_root_agent(instruction=text.pop("root_instruction"),
@@ -665,52 +603,41 @@ mlflow.genai.optimize_prompts(
     train_data=cases,                          # {"inputs": …, "expectations": …}, §6.1
     prompt_uris=list(PROMPT_URIS.values()),    # one URI per optimizable component
     optimizer=GepaPromptOptimizer(reflection_model=…, max_metric_calls=…),
-    scorers=[answer, trajectory, retrieval, abstention],   # §7
+    scorers=[answer, trajectory, card_recall, abstention],   # §7
     aggregation=weighted_mean,                 # mandatory here, see §7
 )
 ```
 
-- **The candidate surface is the MLflow prompt registry.** `optimize_prompts`
-  patches `PromptVersion.template` process-wide for the duration of a batch, so
-  candidate text reaches the system **only** through a registry read whose prompt
-  *name* matches a candidate key. A component that is never read is silently left
-  un-optimized, and MLflow's "prompts were not used" warning is the only signal —
-  hence the assertion in T096. Corollary: the patch is process-global, so exactly
-  one candidate is evaluable per process at a time.
-- **`predict_fn` builds everything per record.** It receives one `inputs` dict and
-  constructs the context, the toolset and the agent from it. D6's `docstrings`
-  argument is unchanged — only its *source* is new. MLflow evaluates records in a
-  `ThreadPoolExecutor`, so §4's no-ambient-state property is not a nicety here but
-  the precondition for the search to be correct at all: it is the same thread
-  boundary that already dropped `CostMeter`'s ContextVars (D3).
-- **Reflection reads MLflow traces and scorer rationales.**
-  `MlflowGEPAAdapter.make_reflective_dataset` builds each component's reflective
-  record from `{current_text, trace spans, score, inputs, outputs, expectations,
-  rationales}`. The textual feedback GEPA reflects on is therefore whatever the
-  scorers put in `Feedback.rationale` — trajectory diff vs gold, SQL errors,
-  abstention outcome — not a separately assembled event-log digest. ADK spans
-  reach those traces through MLflow's ADK OTel translation, so the event data is
-  present; the *route* is the trace, not the log.
-- **Run ledger**: `optimize_prompts` already logs per-iteration candidate text,
-  per-scorer metrics and an eval-results table as artifacts. What T094 adds is the
-  pins and case identity per rollout.
-- **No ADK evalset** (D27). ADK's `AgentEvaluator` cannot be handed a constructed
-  agent, and its metrics are args-exact trajectory plus ROUGE over the final
-  message — neither §7's metrics nor D21's rule. Where ADK's own evaluators are
-  wanted, MLflow wraps two of them as scorers fed from `expectations`, still
-  without the file.
+- **The candidate surface is the MLflow prompt registry.** Candidate text reaches
+  the system **only** through a registry read whose prompt *name* matches a
+  candidate key, so a component that is never read is silently left un-optimized and
+  the harness asserts that every registered candidate prompt was read during an
+  evaluation pass. The patch carrying that text is process-global: exactly one
+  candidate is evaluable per process at a time.
+- **`predict_fn` builds everything per record** — context, toolset and agent from
+  one `inputs` dict. Records are evaluated in worker threads, so §4's
+  no-ambient-state property is the precondition for the search to be correct at all.
+- **Reflection reads MLflow traces and scorer rationales**, so the textual feedback
+  GEPA reflects on is whatever the scorers put in `Feedback.rationale` — trajectory
+  diff against gold, SQL errors, abstention outcome. ADK spans reach those traces
+  through MLflow's ADK OTel translation: the route is the trace, not the event log.
+- **Run ledger.** `optimize_prompts` logs per-iteration candidate text, per-scorer
+  metrics and an eval-results table; the harness adds the pins and case identity per
+  rollout.
+- **No ADK evalset.** Where ADK's own evaluators are wanted, MLflow wraps them as
+  scorers fed from `expectations`, without an evalset file.
 
 ### 6.1 Case envelope
 
-Cases are a **pretty-printed JSON array per split** (`eval/cases/{train,val,
+Cases are a **pretty-printed JSON array per split** (`eval/cases/{train,
 test_seen,test_unseen}.json`), each element projecting **directly** onto MLflow's
-`train_data` shape — the same rows feed the search and the §7 measurement run:
+`train_data` shape — the same rows feed the search and §7's measurement run:
 
 ```jsonc
 {"inputs":       {"question": "…", "as_of": "2026-03-14T08:00:00+01:00",
                   "case_id": "T09-0142", "template_id": "T09", "params": {…}},
  "expectations": {"status": "answered", "answer": false, "unit": null,
-                  "answer_metric": "scored",        // "skipped" for family H (D14)
+                  "answer_metric": "scored",        // "skipped" where answer is null
                   "tolerance": {"kind": "abs", "value": 0.1},
                   "expected_tool_calls": [{"name": "…", "args": {…}}],
                   "must_not_tools": ["…"], "gold_cards": [],
@@ -719,783 +646,218 @@ test_seen,test_unseen}.json`), each element projecting **directly** onto MLflow'
                   "pins": {…}}}
 ```
 
-The envelope is **fixed by the API, not chosen**: MLflow requires only `inputs`
-per record and passes `expectations` verbatim to every scorer, and those are the
-only two channels it delivers. Consequences:
+The envelope is **fixed by the API, not chosen**: `inputs` and `expectations` are
+the only two channels MLflow delivers (`findings.md`). Consequences:
 
-- `inputs` carries everything `predict_fn` needs; `expectations` everything a
-  scorer needs. There is no third place to put anything.
-- **Materialized answers carry their pins.** D26's "provenance moves for free
-  because no oracle is materialized yet" has a corollary: once one is, the case
-  must record the surface it was materialized against — `water.duckdb` sha256,
-  GR2L canary, station-derivation version, the resolved weather source — or a
-  later change to any of them invalidates answers with nothing to detect it.
-- `argument_checks` are **declarative**, so D21's argument conjuncts stay in data
-  and the scorer never branches per template.
-- **`gold_cards` non-empty implies `lookup_reference` in `expected_tool_calls`**
-  — a schema validator, not a convention. Card recall is scored, so a gold card
-  on a template that never looks one up would score 0 on a fully correct run
-  (D32). Where `gold_cards` is empty the metric is *skipped*, not 0.
-- `expected_tool_calls` keeps ADK's own key name: it costs nothing and keeps
-  `mlflow.genai.scorers.google_adk.ToolTrajectory` available as a cross-check
-  against our own trajectory scorer.
-- Per-template constants (tolerance, must-not set, gold docs) live in the template
-  YAML and are **copied into each case** at generation, so a scorer reads one
-  record and never needs a second file.
-- **Array, not JSONL, and generated rather than authored.** The format is free —
-  MLflow accepts a list of dicts, so nothing upstream privileges either — and an
-  indented array is chosen for review: a JSONL diff reports one changed line per
-  case without saying which field moved, while an indented one diffs per field,
-  which is what a committed ground truth needs. Two conditions make that hold:
-  the file is **emitted, never hand-edited** (same discipline as the rendered ops
-  manual — a hand-fixed case silently breaks its derivation from the template and
-  its `pins` stamp), and the generator emits **deterministically** — fixed key
-  order, cases sorted by `case_id`, `indent=2`, trailing newline — or every
-  regeneration produces a diff that is pure noise.
+- `inputs` carries everything `predict_fn` needs, `expectations` everything a scorer
+  needs; there is no third place to put anything.
+- **`as_of` is an instant**, written in the site's own offset-bearing form and
+  normalized to UTC by the seam that consumes it, never by the caller
+  (`decisions.md` § The as-of cut).
+- **Materialized answers carry their pins** — `water.duckdb` sha256, the GR2L
+  canary, the station-derivation version, the resolved weather source.
+- `argument_checks` are **declarative**, so per-template argument conjuncts stay in
+  data and the scorer never branches per template. They address **tool arguments
+  only**, never the tool result, which fixes the plotting family's scored surface to
+  the agent-supplied half of the spec. The `op` vocabulary carries `eq`, `set_eq` (a
+  series selection is a set match) and `present` (a candidate-chosen value that must
+  merely exist and be plausible).
+- Two schema validators, not conventions: **`gold_cards` non-empty implies
+  `lookup_reference` in `expected_tool_calls`**, and **`answer_metric: "skipped"`
+  implies `answer: null`**.
+- `expected_tool_calls` keeps ADK's own key name, which keeps MLflow's ADK
+  `ToolTrajectory` scorer available as a cross-check against ours.
+- Per-template constants — tolerance, must-not set, gold cards — live in the
+  template YAML and are **copied into each case** at generation, so a scorer reads
+  one record and never a second file.
+- **Array, not JSONL, and generated rather than authored.** An indented array diffs
+  per field where JSONL diffs per line. The file is **emitted, never hand-edited**,
+  and the generator emits **deterministically** — fixed key order, cases sorted by
+  `case_id`, `indent=2`, trailing newline.
 
-## 7 Scoring (summary — details in catalog §1.2)
+---
 
-- Answer: exact / tolerance vs materialized oracle answer. **Skipped, not
-  scored 0, where the contract answer is `null`** — family H's deliverable is an
-  artifact, so the scorer reports answer-metric *coverage* alongside the score
-  (D14, catalog §1.1). Comparing `null` against an oracle would cost H's ~6 %
-  share of the suite for cases that were fully correct.
-- Trajectory: **binary per case** (D21) — 1 iff every gold tool was called, no
-  must-not tool was called, and the **argument checks** for families D/G pass
-  (`forcings` / `albedo` / `initial_soil_moisture_pct` present and plausible);
-  else 0. No partial credit and no extra-call penalty: calls beyond the gold
-  set are free, and their per-arm mean is a diagnostic, not a score. Tool names
-  in gold trajectories are the **registered** names (D2).
-- Retrieval → **card recall**, one number:
-  `|gold_cards ∩ retrieved_cards| / |gold_cards|` over the union of every
-  `lookup_reference` call in the run. Graded, so it gives partial credit the
-  binary trajectory cannot (two of three cards fetched). **Skipped, not scored
-  0, where `gold_cards` is empty** — 0/0 is undefined — reusing D14's
-  skipped-with-coverage mechanism rather than adding a second one. The
-  gold-query / agent-query split is **deleted**: an exact lookup has no query to
-  substitute, so retriever quality is 1.0 by construction and only the agent's
-  card selection is measurable (D32).
-- Abstention: accuracy on unanswerables **and** false-abstention rate, never
-  aggregated. The scored quantity is the **agent's** contract `status`, on §2's
-  terms.
-- Excluded from every aggregate above: cases with an `upstream` tool error or a
-  `replay` cache miss, marked `harness_error` — counted separately per arm,
-  with cache-miss reasons broken out. `invalid_argument` errors never exclude:
-  the case stays in and scores through the normal metrics (D16). **This exclusion
-  is a property of the measurement path, which is ours; the search path inside
-  `optimize_prompts` has no exclusion channel and is protected structurally
-  instead (D28).**
-- Diagnostics: fixer iterations, steps, tokens, latency, **mean extra calls
-  per arm** (tools called beyond the gold set — unscored under D21, but the
-  efficiency signal must stay visible), **`parse_failure`** —
-  a final message that parses to neither status value. Reported apart from
-  answer accuracy, so an optimizer degrading the output format is
-  distinguishable from one degrading reasoning (D15).
+## 7 Scoring and reporting
 
-**Mechanism** (D27). Each metric above is one MLflow `Scorer` returning a
-`Feedback`. Two things ride on that shape:
+Four metrics, each one MLflow `Scorer` returning a `Feedback`. The catalog supplies
+the per-template inputs they read (`A:`, `Traj:`, `Must-not:`, `Cards:`,
+`tolerance`); the behaviour below is the measuring apparatus and lives here.
 
-- **`Feedback.rationale` is the search signal, not decoration.** MLflow forwards
-  it into GEPA's reflective dataset (§6), so what a scorer *says* about a failure
-  is what the reflector reads. A scorer that returns a bare float optimizes
-  blind.
-- **Per-scorer values stay separate all the way into GEPA**, which receives them
-  as `objective_scores` and can hold a Pareto front over them — the four metrics
-  drive selection without being pre-blended into one number.
-- **An explicit `aggregation` callable is mandatory, not optional.** It receives
-  the raw scorer outputs and is where "skipped, not 0" is implemented for family
-  H's answer metric (D14): MLflow otherwise raises on a non-numeric scorer value,
-  which is exactly what a legitimately abstaining answer scorer returns. Coverage
-  is reported beside the score.
+- **Answer** — exact match or tolerance against the materialized oracle answer,
+  compared **after unit normalization**; `unit` is a first-class `expectations`
+  field for that reason. The normalization table is small and fixed: `L` and `mm`
+  are the same quantity on the lysimeter columns, whose collection area is 1 m²
+  (`findings.md`), and `%` and `%θ` are one unit. Nothing else converts — a
+  millimetre answer to a percentage-point oracle is wrong, not rescalable.
+- **Trajectory** — **binary per case**: 1 iff every gold tool was called, no listed
+  must-not tool was called, and the argument checks pass; else 0. No partial credit
+  and no extra-call penalty — calls beyond the gold set are free, so a template
+  discriminates routing **only** through its must-not set. Gold tool names are the
+  registered names in §0. The argument checks carry the model-bearing families
+  (`forcings` / `albedo` / `initial_soil_moisture_pct` present and plausible) and
+  the plotting family, whose entire scored surface they are: series source, variable
+  and roof plus the resolved `start` / `end`. Aggregation, unit and axis are **not**
+  scored — derived in code from the variable, they are constant across candidates.
+  The resolved spec is still echoed in-band and diffed as a diagnostic.
+- **Card recall** — one number, `|gold_cards ∩ retrieved_cards| / |gold_cards|` over
+  the union of every `lookup_reference` call in the run. Graded, so it gives the
+  partial credit the binary trajectory cannot. There is no gold-query / agent-query
+  split: an exact lookup has no query to substitute, so only the agent's card
+  selection is measurable.
+- **Abstention** — accuracy on unanswerable cases **and** the false-abstention rate,
+  never aggregated into one number. The scored quantity is the **agent's** contract
+  `status`, on §2's terms.
 
-## 8 Catalog amendments
+**Skipped, not scored 0.** Two metrics have a legitimately undefined case: the
+answer metric where the contract answer is `null` (a plot deliverable), and card
+recall where `gold_cards` is empty. Both return a non-numeric value that the
+explicit `aggregation` callable turns into a skip, and both report **coverage**
+beside the score — one mechanism with two users, implemented once in `aggregation`.
 
-The self-contained GR2L tool supersedes the catalog's pure-function trajectories
-(`questions.md` §1.5 still describes `predict_soil_moisture(meteo_series,
-initial_swc, roof, params)` and therefore adds `query_database` + `get_weather`
-to every model chain — under the built tool those tools leave the *gold set*: a
-candidate that skips them must not fail recall, and under D21 a candidate that
-still calls them pays nothing unless a must-not says otherwise):
+**Harness exclusion.** A case whose run hit an `upstream` tool error is marked
+`harness_error`: excluded from every aggregate above and counted per candidate arm,
+with reasons broken out. `invalid_argument` errors never exclude — the case stays in
+and scores through the normal metrics, so an unrecovered fumble surfaces as a wrong
+answer or a false abstention and a self-repair costs nothing. **This exclusion is a
+property of the measurement path.** The search path inside `optimize_prompts` has no
+exclusion channel and is protected by construction instead: `train_data` is
+pre-filtered to fully captured cases, a cache miss on a window the candidate chose
+records rather than fails (§5), and only an unreachable service or a diverging
+canary still scores 0 — with the per-arm counts of both residual failures and newly
+recorded entries published beside the results. Diverging failure counts between arms
+mean the run is repeated; diverging record counts mean the arms explored different
+argument space, which is reported, not repaired.
 
-| Template | Gold trajectory now |
-|---|---|
-| T07 | `{calc_irrigation}` — the catalog's `{lookup_reference, query_database, get_weather}` predates the self-contained calculator (D29, D30). Its `Docs:`/`Cards:` line is **deleted**, not renamed: a gold card on a template that never looks one up scores card recall 0 on a correct run (D32). **Phrasing re-derived in T002**: "according to the operations manual" cues the docs route and collides with T16a's probe |
-| T09, T10 | `{predict_green_roof_water_balance_tool}` |
-| T11 | **reframed bool** (D22): `{calc_irrigation}` — self-contained over its own bucket model, so the GR2L tool leaves this chain entirely (D29) |
-| T19 | `{predict_green_roof_water_balance_tool(evaluate_against_measured=True)}`; must-not `get_weather_forecast_tool` (a `text_to_sql_agent` cross-check is a free extra call, D21) |
-| T21 | `{predict_green_roof_water_balance_tool(forcings=…)}` (a prior `get_weather_forecast_tool` fetch is a free extra call — fetch-then-override valid, D21) |
-| T22 | `{predict_green_roof_water_balance_tool(albedo=…)}` |
-| T23 | `{predict_green_roof_water_balance_tool(initial_soil_moisture_pct=…)}`; must-not `get_weather_forecast_tool` |
-| T26 | union of composed calls, argument-checked |
+**Diagnostics**, reported and never scored: fixer iterations, steps, tokens,
+latency, **mean extra calls per arm**, and **`parse_failure`** — a final message
+parsing to neither status value, reported apart from answer accuracy so an optimizer
+degrading the output format stays distinguishable from one degrading reasoning.
 
-`get_weather_forecast_tool`'s standalone identifiability rests on
-T13/T14/T15b/T18a (T18b's gold set is empty, D23); its distractor role
-strengthens in T19/T23.
+**Two properties ride on the `Scorer` shape.** `Feedback.rationale` is the search
+signal, not decoration: MLflow forwards it into GEPA's reflective dataset. And
+per-scorer values stay separate all the way into GEPA, which receives them as
+`objective_scores` and can hold a Pareto front over them, so the four metrics drive
+selection without being pre-blended.
 
-**Roof sampling per family (§3.4).** `{roof}` is drawn from two pools, because
-the model covers fewer segments than the database:
+**Reporting rules.**
 
-| Family | Pool |
-|---|---|
-| A (pure SQL), B, H with `measured` series only | gravel · irrigated ext. · non-irrigated ext. · semi-intensive · wetland |
-| D, G, model-bearing E (T07, T11, T26), **H with a `model` series** | irrigated ext. · non-irrigated ext. · semi-intensive |
-| %θ-valued answers (T09, T10, T21–T23), **`swc_pct` model series in H** | as above, **minus wetland** |
+- 3 repeats per condition at one pinned seed with the LLM cache **off**, paired
+  evaluation on identical cases. They are near-replicates at temperature 0: they
+  shrink per-case noise, they do not multiply *n*, and the unit of analysis stays the
+  template. The cache is off because a prompt-keyed hit would return the first
+  repeat's bytes to the other two, and the seed is not assumed to control what
+  varies — the repeats measure residual nondeterminism rather than suppress it
+  (`decisions.md` § Replication and the LLM cache).
+- The paired bootstrap resamples **`template_id`, not `case_id`**; errors cluster by
+  template, and case-level resampling reports intervals several times too narrow.
+- The train number is the **selection score**, never "training accuracy": the final
+  candidate is selected on those same instances.
+- The two generalization gaps are reported **separately** — train → test_seen
+  catches memorized constants and phrasing overfit; test_seen → test_unseen catches
+  template overfit, to which test_seen is blind by construction.
+- test_unseen's trajectory result is a **per-template win/loss table**, never an
+  accuracy with an interval.
+- Budget and hyperparameters are pre-registered before any test run, all method
+  debugging happens on train, and every arm is reported on test — never "best of".
 
-H therefore splits across all three pools rather than sitting in the first (D14):
-a plot is only as modellable as its most demanding series. A `model_overlay`
-naming the gravel roof is a legitimate `not_available` — a free abstention case
-in a family that otherwise has none, sampled deliberately from *outside* the
-pool table (the pools govern answerable cases; T081).
+---
 
-- `initial_soil_moisture_pct` and every soil-moisture answer are in **%θ**; no
-  template asks the agent for millimetres of substrate storage. Retention/runoff
-  templates stay in mm/L.
-- A modelling question about the **gravel roof** is an abstention case, not an
-  error: gold `status = not_available`. Worth one deliberate template family
-  alongside T17b — the gravel roof is the most-sampled roof in family A, so the
-  model must learn that its availability is family-dependent.
-- Question phrasing uses the **agent's** roof vocabulary
-  (`non_irrigated_extensive`, …) or natural language mapped to it by the alias
-  map — not raw column names (`Extensiv1`, `Sumpf2`), which the catalog still
-  uses in T01 (D13).
+## 8 Scope limits
 
-## 9 Repository layout & prerequisites
+What the testbed cannot measure, disclosed in the thesis rather than engineered away.
 
-Actual layout (the same three-layer separation is achieved inside the package,
-so there is no top-level `src/core/`, `src/clients/`, `src/harness/` tree):
+- **Forecast-facing questions are answered from reanalysis.** Every window past a
+  case's `as_of` is served by Archive, so the agent reasons under perfect foresight.
+  The testbed measures routing, arithmetic and abstention on future-facing
+  questions; it says nothing about how the assistant handles forecast uncertainty.
+- **Station data is served uncorrected.** `tn` is estimated (the station has no
+  `Tmin` column), `gs` reads low against the site's own pyranometers, and `precip`
+  undercatches, more severely on frozen days; the measurements are in `findings.md`.
+  The radiation offset is a gain error, not noise: station forcing suppresses ET and
+  biases modelled retention upward. Answers disclose the source when the station
+  serves.
+- **A window spanning `as_of` mixes provenances** — station on the past side,
+  Archive on the future side, with a measured temperature offset between them
+  (`findings.md`), so such a window carries a source discontinuity.
+- **The plotting vocabulary is closed.** `measured` series reach the five tables
+  through a fixed set of columns and aggregations, and a derived quantity is
+  available only if it exists there as a flag; plotting covers less of the database
+  than free SQL does.
+- **The `radiation` table carries a known one-hour timestamp offset, uncorrected.** It
+  is stamped an hour behind the other four (`findings.md`), and the pinned file is
+  **not** rebuilt to fix it: an ingest correction moves the `water.duckdb` hash and
+  invalidates every captured response and materialized answer downstream of it. So one
+  `as_of` literal cuts that table an hour looser than the rest, and a `radiation`
+  series drawn beside another table's is misaligned by two half-hourly rows. The
+  offset is stated in the semantic layer and disclosed here rather than removed. Its
+  reach is small in any case — `radiation` covers only 2025-03-01 → 2025-10-01, so
+  most of the `as_of` band has no row at all.
+- **The task and reflection models are pinned by canary, not by version.** The
+  provider serves no dated aliases, so a run records the served model id, endpoint and
+  decoding parameters, and detects a provider-side swap only through a committed
+  request/response canary — after the fact, on the next run that exercises it. A swap
+  landing between two arms of one comparison is what this cannot prevent; diverging
+  canaries mean the comparison is repeated. The decoding **seed is sent but not
+  verifiably honoured** on these endpoints, so greedy decoding is the only
+  determinism actually claimed, and §7's three repeats measure what survives it
+  rather than removing it.
+- **The semi-intensive roof has no lysimeter and no radiation mast**, so no runoff,
+  retention or radiation question is asked about it (`findings.md`, `questions.md`
+  §1.8). That narrows coverage rather than any claim: the roof still carries the
+  soil-moisture and temperature families and every water-balance family.
+- **Scope limits are measurable per roof, not per tool.** The gravel roof and the
+  wetland are outside GR2L and `calc_irrigation` alike, so no case rewards
+  distinguishing *which* tool a roof is out of scope for. The suite measures that
+  modellability is family-dependent — measured questions answer, water-balance
+  questions abstain — and nothing finer.
+- **Effect sizes.** The suite detects large differences — on the order of 20
+  percentage points on test_seen answer accuracy — and not small ones. Errors cluster
+  by template, so instances of the same template asymptote and only more templates
+  move the ceiling; test_unseen's seven templates support description, not
+  inference. This is a limit of a suite this size, not a defect more instances would
+  repair.
+- **Ambiguity residual.** The candidate may not ask a clarifying question, which is
+  safe only because the generation filter discards cases whose oracle is ambiguous.
+  A *linguistically* ambiguous paraphrase can survive that filter; the model is then
+  forced to guess and scores as wrong on a case that was never cleanly answerable.
+- **Irrigation thresholds were tuned against uncorrected dynamics.** The deployed
+  trigger levels are kept verbatim as site policy, so the corrected model's behaviour
+  around them does not necessarily reproduce the decisions the deployed controller
+  actually made. §3.5's decision-diff list is the disclosure, and it bounds what the
+  testbed's irrigation answers say about the real deployed system.
+- **The R deliverable can drift.** The bucket model and its decision ladder exist
+  twice, in Python and in R, with no shared CI. The committed canary detects drift
+  after the fact on the next run that exercises it; it cannot prevent it, and a stale
+  canary is indistinguishable from an unchanged implementation. No case's answer
+  depends on the R side, so drift there is a defect in that artifact, not in the
+  evaluation.
+
+---
+
+## 9 Repository layout
+
+The three-layer separation is achieved inside the package, so there is no top-level
+`src/core/`, `src/clients/`, `src/harness/` tree:
 
 ```
 src/water_assistant_agent/assistant/
-  agents/root_agent/   agent.py (candidate injection, D6) · text_to_sql_tool.py
+  agents/root_agent/   agent.py (candidate injection) · text_to_sql_tool.py
   agents/text_to_sql/  frozen sub-agent: agent · pipeline · executor · fixers
   tools/               gr2l.py · weather.py · warehouse.py        (ADK layer 1)
                        gr2l_client.py · weather_client.py         (pure layer 2)
                        swc.py · site.py · schemas.py              (pure layer 3)
-                       gr2l_tool.md · weather_tool.md             (tool specs)
+                       gr2l_tool.md · weather_tool.md ·
+                       irrigation_tool.md                         (tool specs)
   prompts/             temporal.py (scenario clock) · agent_instructions.py
   settings.py          WATER_ASSISTANT_* pydantic-settings
   [to build]  context.py · cache.py · rules_constants.py · irrigation.py
               et_fao56.py
-              knowledge/store.py · knowledge/cards/*.yaml   (card store, D32)
-              tools/{lookup,plot,irrigation}.py
-              tools/roofs.py · tools/irrigation_tool.md   (tool spec)
+              knowledge/store.py · knowledge/cards/*.yaml   (card store)
+              tools/{lookup,plot,irrigation}.py · tools/roofs.py
 data/water.duckdb      (sha256 to pin)
-eval/          [to build] cache/ templates/ oracles/ cases/   (no corpus, D32)
-specs/agent_architecture/   agent_architecture.md · questions.md · plan.md
+eval/          [to build] cache/ templates/ oracles/ cases/
+specs/agent_architecture/   agent_architecture.md · questions.md · decisions.md ·
+                            findings.md · plan.md
 ```
 
-Blocking order before data generation (see `plan.md` for the task-level plan):
-1. **Injection seam** — `ScenarioContext`, as-of views, `make_*` factories
-   (root tools **and** the text2SQL sub-agent, D19), scenario clock, response
-   cache, model pinning, and the prompt-registry entries that carry the candidate
-   surface (D27 — a component that is not a registered prompt cannot be
-   optimized). Blocks *everything*: no case is reproducible without it.
-2. **GR2L / weather completeness** — `forcings`, `evaluate_against_measured`,
-   typed `not_available` on weather, window-range validation, bounded series,
-   **the station source and its daily derivation** (D26). Blocks D, G, and T18a
-   (T18b is agent-level, no tool prerequisite — D11).
-3. `roofs.py` + `rules_constants.py` + `et_fao56.py` + the irrigation bucket +
-   `calc_irrigation` + the card store's rendered values + ranges pages — blocks
-   B, E, F. Now
-   **partially downstream of prerequisite 2**: the calculator fetches through
-   `ctx.weather`, so its retrospective cases are offline only once D26's station
-   source lands. The R endpoint (§3.5) is not on this path at all.
-4. `lookup_reference` + the card store + the `enum == card keys` test — blocks
-   B, E, F card-recall metrics. No corpus, no chunker, no index (D32).
-5. `plot_timeseries` — blocks H. Now downstream of prerequisite 2 as well: its
-   `model` and `weather` series ride the same window resolution, seed rule and
-   cache as the standalone tools (D14).
-6. Lysimeter areas in the semantic layer — unblocks T12.
-7. Alias map + typo fixes — blocks paraphrase generation.
-8. Harness on 3 pilot templates (T01, T07, T09) with the handwritten
-   instruction — then **freeze**.
-
-*Reinstated prerequisite (was cancelled under D12):* deriving daily rows from
-the half-hourly `wetter` table. It was dropped with `meteo_source="db"`; D26
-brings it back as the retrospective source — not as an agent-facing selector,
-and now covering all seven fields rather than `tx`/`tn` alone.
-
----
-
-## 10 Decision log
-
-**D1 — Arbitration rule.** Where this document and the code disagree about
-*mechanism* (names, signatures, module paths, data sources), the code wins and
-this document is rewritten. Where they disagree about an *evaluation property*
-(determinism, leakage, injectability, typed abstention, addressable optimizable
-surface), this document wins and the code changes. Those properties are the
-validity conditions of the thesis claim.
-
-**D2 — Tool names and arguments follow the code** (names in §0 and §3). One shape
-choice is not merely nominal: `albedo` is a scalar argument, not
-`params={"albedo": …}`, because flat scalars are the right shape for ADK function
-declarations and nested dicts measurably degrade tool-calling accuracy.
-
-**D3 — The injection seam is explicit DI, not contextvars.** Argued in §4.
-Rejected: a contextvar-scoped `ScenarioContext` — far less invasive, but
-`mlflow.genai.evaluate` worker threads drop ContextVars, already observed in this
-repo when `CostMeter` lost its role attribution.
-
-**D4 — Weather stays live Open-Meteo; determinism comes from a committed,
-request-keyed response cache shared with GR2L** (§5). Rejected: a separate
-fixture path — `FixtureWeatherClient`, a file schema, a fixture generator. One
-mechanism serves both live dependencies and is the *only* replay path. Archive
-responses are already stable upstream, so what the cache really pins is forecast
-windows: a forecast for a future date changes daily and is otherwise
-unreproducible.
-
-**D5 — Seed rule: `seed_at = min(window_start, as_of)`.** Argued in §3.4. Each
-one-sided rule fails a case the other handles: `≤ as_of` alone seeds a
-retrospective March window from a July reading, and `≤ window_start` alone (what
-the code does today) leaks post-`as_of` sensor data into forecast cases.
-
-**D6 — Candidate injection via factories; the production singleton is
-preserved.** `build_root_agent(instruction, docstrings, tools, model)` becomes
-the real constructor; the module-level `root_agent` stays as a thin production default so
-`bootstrap.py` and the CopilotKit frontend keep importing it unchanged. Tool
-docstrings become candidate-owned by being applied to the factory-produced
-callables.
-
-**D7 — Relative windows are resolved to absolute dates at layer 1** (§3.3), and
-their **validation splits by cause** (D16) — the part that carries evaluation
-weight. `past_days`/`forecast_days` stay in the signatures because they help the
-model and match both tool specs, but they never reach a client. Ranges (0–92
-back, 0–16 ahead) are validated in code, not merely documented. A well-formed
-request no backend can serve — beyond the 16-day horizon, before Archive
-coverage, spanning the D17 cutoff — returns `not_available`, the genuine scope
-limit T18a scores; a malformed argument — a negative day count,
-`start_date > end_date`, an unparseable date — returns `error` with
-`error_type="invalid_argument"`, never `not_available`, so agent fumbles cannot
-pollute the false-abstention metric.
-
-**D8 — `forcings` is keyed by `DailyWeatherRow`'s own field names.** Spec in
-§3.4: one vocabulary, so a counterfactual argument and the row it overrides never
-need a translation table between them.
-
-**D9 — Principle 3 restated honestly, and enforced.** "Never row dumps" was
-already violated by both built tools, which return an unbounded daily array. The
-resolution is not to drop the series — a bounded series *is* the tool's
-product — but to require that the summary alone is always sufficient to answer,
-and to cap the series (§3.3) in **both** wrappers, GR2L and weather alike
-(T035): an absolute Archive window was the one path still able to return an
-unbounded array.
-
-**D10 — The JSON answer contract is eval-only.** The production root instruction
-serves a chat UI and answers in prose. The contract is part of the *candidate*
-instruction, which is exactly the layer the optimizers own; the handwritten
-baseline carries it verbatim. Note that "it would break the frontend" is *not*
-the load-bearing reason — the frontend could render a contract card as
-`TextToSqlResult.tsx` already does for SQL. The real reason is D15: production
-needs a turn type the contract cannot express and the eval cannot exercise.
-
-**D11 — Typed `not_available` is extended to the weather tool** (§3.3). GR2L
-already distinguishes scope limits from faults; without the same on weather the
-abstention metric has no tool-level mechanism there at all. Rejected: a
-`variables` selector validated against the seven fields, which would change the
-tool contract *and* the Open-Meteo request shape for the sake of one template
-family — and would hand T18b a tool surface it is deliberately meant to lack,
-since that abstention is the agent's alone (D23).
-
-**D12 — `meteo_source` is dropped** (narrowed by D26; the surviving half is the
-load-bearing one). No agent-facing weather-source selector: the agent names a
-window and a question, never a provenance. What has *not* survived is "one
-source, one unit path, one cache key" — D26 adds the station as a second source,
-resolved in code. D12's supporting data argument (no `Tmin`, a per-interval
-`Tmax`) was re-measured and holds only weakly: the `tn` estimator's ambiguity is
-0.25 °C (§3.3).
-
-**D13 — `questions.md` must be re-derived, not patched.** It carries its own
-contradictions with the built system; §8 supersedes the model-chain rows and
-plan T002 enumerates the rest. The method is the decision: re-derive the
-conventions section first, then sweep the catalog — case-by-case patching is how
-the contradictions accumulated.
-
-**D14 — `plot_timeseries` is multi-source, and the agent declares a source, not
-data.** The earlier spec bound the tool to the DB alone while already offering
-`model_overlay` and `diff` as `kind` values — internally inconsistent, since
-neither is expressible without a model series; the resolved spec is §3.6.
-Rejected: letting the agent pass the series in as an argument. It drives the data
-through the LLM (principle 3 and D9 forbid it), and it turns family D/G-style
-argument checking into a test of whether the model retyped forty floats
-correctly — non-deterministic, and measuring transcription rather than tool
-selection. Also rejected: a session-state handle to a prior tool result (the
-`QUERY_RESULT_STATE_KEY` pattern in `warehouse.py`), which would avoid the
-re-fetch but makes a plot scorable only in the context of the turn before it and
-ends family H's single-call property; it stays available as a chat-path
-optimization and is not the eval mechanism. (D20 reuses the state *mechanism* as
-the render transport, which is a different thing: it moves the series to the
-frontend, never back into the model's context or another tool's arguments.)
-Consequences: H splits across the §8 roof pools, the tool returns no series to
-the model at all, and P5 now depends on P1 *and* P2.
-The same argument applies at the *output* end: family H answers `null` rather
-than echoing a `plot_spec` into the final message (catalog §1.1) — otherwise a
-transcription slip in a perfectly-executed call scores as a wrong answer. §7's
-answer metric is skipped for those cases, not scored 0.
-
-**D15 — Clarifying questions are out of contract in eval, retained in
-production.** The contract's `status` is two-valued and both values end the
-turn, so a clarifying question ("which January did you mean?") has no
-representation: it would parse as a completed answer with `answer: null`. This
-is safe in eval only because the catalog's §1.6 validity filter *discards*
-sampled parameters whose oracle is ambiguous — no case should warrant one. It is
-therefore mandatory that the candidate instruction **explicitly forbid** asking
-one ("answer under your best interpretation; never ask a question back"): the
-production instruction's own clarification rule would otherwise leak into
-candidates and fire on a DE paraphrase or an alias-heavy phrasing, producing an
-unparseable turn scored as a wrong answer. Production keeps clarification, which
-is why D10's split stands — a unified contract would need a
-`needs_clarification` status that no case exercises, so no optimizer would ever
-receive signal on it, and the shipped behaviour would be the one branch the
-thesis never measured. Residual scope limit: a genuinely ambiguous paraphrase
-that survives the filter forces the model to guess (plan R6).
-
-**D16 — Tool `error` splits by cause; only unavoidable errors are harness
-exclusions.** Criterion: *exclude what the candidate could not have avoided and
-the harness cannot reproduce; score what the candidate deterministically
-causes.* `ErrorResult` gains `error_type: "invalid_argument" | "upstream"`.
-
-- **`invalid_argument`** — deterministic argument validation, all of it pre-I/O
-  (unknown `roof_type`, out-of-range `albedo` /
-  `initial_soil_moisture_pct`, malformed dates, negative or inverted windows —
-  D7 draws the line against the *unservable* windows that stay
-  `not_available`). **Never excludes.** The case is
-  scored normally: an unrecovered failure surfaces as a wrong answer, false
-  abstention, or `parse_failure`; a self-repair costs nothing at all under
-  D21 — the retried tool is in the gold set and extra calls are free — which
-  preserves the recovery behaviour an optimizer should be allowed to keep.
-  Excluding these was exploitable: errors
-  on hard cases would leave the denominator and *raise* a candidate's average.
-- **`upstream`** — HTTP/DB/config failures and `CacheMissError`. Any occurrence
-  marks the case `harness_error`: excluded from every aggregate, counted
-  separately **per candidate arm** (a systematic rate difference between arms is
-  itself a finding, not noise to hide). Deliberately presence-based, unlike
-  `invalid_argument`: after an upstream error the world no longer matches the
-  pinned case, so even a "recovered" answer is not a measurement of that case.
-- The frozen sub-agent's inner `query_database_tool` errors stay inside its
-  fixer loop and are not scanned; only a **terminal** `text_to_sql_agent`
-  failure counts, classified `upstream` (frozen-component fault). Its per-arm
-  count is still a delegation-quality signal — the candidate owns the phrasing —
-  which the separate report makes visible. Detection is harness-side, keyed on
-  the **tool name**, because the sub-agent's payloads carry no `error_type`
-  (T039 touches only the `schemas.py` `ErrorResult` the gr2l/weather wrappers
-  return) and its terminal result is often LLM prose: a root-level
-  `text_to_sql_agent` result that parses as a dict with `status == "error"`
-  *is* the terminal failure; a prose or success result is never one and scores
-  normally. Nothing is added to the production payload.
-- A `replay` cache miss is `upstream` but dual-cause: incomplete capture
-  (harness fault) or a legitimate candidate call diverging from the captured
-  pattern (an extra baseline run, a differently chosen albedo).
-  `CacheMissError` therefore carries the unmatched request plus a diff against
-  the nearest captured request for the same endpoint, and the harness reports
-  miss *reasons* per arm: candidate-caused misses bias scores toward the capture
-  candidate's call pattern and must be visible (interacts with R1/T084).
-- `not_available` keeps its meaning — a genuine scope limit. Bad arguments are
-  never folded into it: the false-abstention metric would otherwise mix agent
-  fumbles with wrong declines, two behaviours with different fixes. The agent is
-  still never asked to tell "the world is broken" apart from "I cannot answer
-  that".
-
-**D17 — Weather backend choice is a pure function of the case clock;
-`fetch_daily_weather` takes a required `today` argument.** T018 cannot be
-implemented as "the client reads `ctx.as_of`": `_choose_backend` lives in the
-pure layer, and D3 gives that layer no channel to a context. Instead the client
-gains a required `today: date` keyword — **no wall-clock default**, so a caller
-that forgets it fails immediately rather than silently leaking the wall clock —
-and the `site_now` import is deleted from `weather_client`. The cutoff *policy*
-stays in the client, next to the URLs it selects between; only the clock is
-injected. The load-bearing consequence is cache stability, not leakage: the D4
-key hashes URL + params, and a wall-clock cutoff flips a recent-past window from
-Forecast to Archive ~92 real days after capture. From then on `replay` misses a
-committed entry that is sitting in the cache and perfectly valid, and — worse — a
-`record` re-run *succeeds* against Archive, substituting observed values for the
-forecast values the case's oracle was materialized from: a silently moved ground
-truth. With `today = as_of` the request is time-invariant (replay hits forever)
-and a post-deadline recapture fails loudly at the API instead (R1). Nothing makes
-a forecast-backend window recapturable after its deadline; `today` converts that
-impossibility from silent drift into a hard error.
-
-**D18 — The context clock is a callable; only eval freezes it.** The earlier §4
-sketch stored `as_of` as a construction-time datetime. Production builds its
-context once, at import, next to the `root_agent` singleton (D6) — a frozen
-`as_of` there reintroduces the midnight-staleness bug `temporal.py` exists to
-avoid, on every reader T018 adds. `ScenarioContext` therefore holds
-`clock: () -> datetime` and exposes `as_of` as a property that evaluates it.
-Eval binds `lambda: case.as_of` — frozen per case, which is correct there;
-production binds `site_now`. This is what makes §2's "one code path" claim
-actually true: identical readers, differing only in the callable they were
-constructed with. Corollary: any component that captures `as_of` at construction
-instead of reading the clock (as-of connection factories included) must
-re-evaluate it per use, or it is wrong in production. Concretely, the as-of
-executor checks `clock().date()` on every query and rebuilds its connection —
-the reconnect path it already has for IO errors — when the date has moved
-since connect; a frozen eval clock never triggers it, so eval and production
-run identical code (T010, T022).
-
-**D19 — The frozen text2SQL sub-agent is rebuilt per context; frozen means the
-text, not the objects.** Mechanism in §3.1: the DB seam is welded in at import
-time, so binding it per case means rebuilding the chain executor → validator →
-pipeline → tools → `Agent` → `AgentTool` around byte-identical prompt text. The
-rejected alternative was resolving `as_of` from ADK session state inside the tool
-(`tool_context.state["as_of"]` does cross the `AgentTool` boundary — the
-`QUERY_RESULT_STATE_KEY` mechanism proves it): far less code, but a missing key
-silently falls back to the unbounded view — the exact leakage the testbed
-exists to prevent, failing quietly — and it couples the ADK-free layer 2/3 to
-ambient stringly-keyed state, the shape D3 already rejected. Explicit
-construction makes an unbound case a loud error before any rollout runs.
-Corollaries: (a) the EXPLAIN validator needs no as-of *correctness* — EXPLAIN
-reads schema, and the views are schema-identical to the base tables — but it
-rides the same `ctx.db` executor so the sub-agent has exactly one DB seam;
-(b) the sub-agent's outward `description` — the text `AgentTool` presents to
-the root model, i.e. the surface the candidate's routing is optimized
-against — is candidate-owned like every other tool docstring (§2), while
-everything inside the sub-agent stays frozen; (c) the as-of view bounds *rows*,
-not SQL time functions — `CURRENT_DATE` / `now()` in generated SQL evaluate
-against the process wall clock and silently resolve a wrong window inside a
-correctly bounded view, so the querier's existing sqlglot pass rewrites those
-nodes to the literal `as_of`. Rewrite, not reject: the sub-agent that emits
-them is dateless by design (date resolution is the root agent's job, and a
-candidate that forwards relative phrasing leaves the frozen builder no clock to
-resolve against), so rejection would penalize behaviour nothing can optimize.
-In production the rewrite binds the same clock (D18) and is a semantic no-op.
-The clock reaches the rewrite as an explicit factory parameter —
-`make_query_database_tool(executor, clock)`, `build_text_to_sql_agent(executor,
-clock, …)` — because the executor deliberately does not carry it; and the pass
-must now re-emit the SQL it validated, where today `warehouse.py` parses only
-for the read-only guard and executes the original string.
-
-**D20 — The plot series reaches the frontend through session state, never the
-model; aggregation is derived, not an argument.** T063 (no series to the model)
-and T067 (the frontend draws) are reconciled by the transport in §3.6 — the
-mechanism `warehouse.py` already proves works. Eval ignores the state key
-entirely: the scored surface is the resolved spec, so the transport adds no
-scoring coupling. This is not the D14-rejected data handle — nothing re-enters
-the model's context or another tool's arguments. Rejected
-alternatives: a server-side artifact store (new HTTP endpoint plus a retention
-story the testbed doesn't otherwise need) and ADK's artifact service (couples
-the render path to plumbing the AG-UI/CopilotKit bridge may not forward).
-Second half: a single plot-level `agg` cannot serve a mixed plot — `precip`
-aggregates by `sum`, `swc_pct` by `mean` — so aggregation joins units and axes
-as a **derived** property of the variable (T065): the closed vocabulary carries
-the operator, the model never chooses it, and the resolved spec echoes the
-derived operator per series, keeping it on the scored surface without a
-model-owned field to fumble.
-
-**D21 — Trajectory scoring is binary; there are no optional calls and no
-extra-call penalty.** The catalog's "unordered set P/R/F1 + mild extra-call
-penalty" was doubly undefined: the penalty had no magnitude, and the two clauses
-double-count — with gold sets of one to three tools, one extra call inside the
-F1 already costs up to a third of the score, which is not "mild", while a
-penalty outside the F1 charges the same call twice. Replaced by a per-case
-binary: **trajectory = 1 iff gold ⊆ called and called ∩ must-not = ∅** (the
-family D/G argument checks fold in as further conjuncts), else 0. Consequences,
-accepted deliberately: (a) `(opt)` is deleted from the vocabulary — with no
-penalty, an optional call and an unlisted call are indistinguishable, so T21's
-fetch-then-override and a T19 DB cross-check are free automatically; (b) empty
-gold sets are well-defined (T18b, D23); (c) a shotgun candidate that calls
-every tool scores perfect trajectory on templates without a must-not —
-mitigated because the coverage matrix makes every tool a must-not distractor
-somewhere (a blanket policy hard-fails those templates — D24 closed the former
-`predict_…`/`calc_irrigation` gaps in that claim), the ~6-step cap bounds
-the excess physically, and mean extra calls per arm joins the §7 diagnostics so
-efficiency stays visible without being scored.
-
-**D22 — `calc_irrigation` returns a decision, not a volume** (§3.5). The deployed
-algorithm answers "irrigate?" as a bool and the dose is fixed policy, so there is
-no per-case volume computation and no numeric volume
-template survives: **T11** becomes the *predictive* twin of T07 ("does the
-{roof} roof need irrigation **tomorrow**, per the standard rule?" — T07 runs on
-measured SWC, T11 on the model's prediction), and **T16b** becomes the same
-bool on stated values through the calculator (`{calc_irrigation}`), pairing
-with T16a's docs-only route (`{lookup_reference}`) on identical inputs — the a/b
-pair now probes docs-vs-calculator routing, and the two questions' phrasing
-must cue the route (settle the wording in T002). *Amended:* the input set is now
-confirmed (§3.5) and plan R7 is retired, so the signature and the T11/T16b
-oracles are unblocked. "Chain outputs (T11)" no longer means a GR2L payload —
-under D29 it means the calculator's own internal chain.
-
-**D23 — The catalog's T18a/T18b assignment was swapped; this document's labels
-are canonical.** `questions.md` had T18a = unknown variable and T18b = beyond
-horizon; this document and T031 use the reverse, and the reverse is what is
-meant. Canonical: **T18a = window-unservable** (beyond the 16-day horizon,
-before Archive coverage, spanning the D17 cutoff — the typed tool-level
-`not_available` of D11), train-eligible, gold `{get_weather_forecast_tool}`.
-**T18b = unknown variable**, agent-level with no tool surface (D11), holdout —
-and its gold set is **empty** under D21: the abstention is grounded in the
-docstring's variable list, so a verification call proves nothing the agent's
-context lacks and is neither required nor penalized; the abstention metric
-alone carries T18b's signal. The holdout therefore tests generalization from
-tool-signaled abstention (T18a: call → typed `not_available` → abstain) to
-abstention with no tool signal at all — the harder direction. The rejected
-alternative, requiring the call as "evidence-based abstention", contradicted
-D11's own ground and penalized the agent that correctly trusts the documented
-contract.
-
-**D24 — Routing probes name the wrong route explicitly; every tool gets a real
-distractor slot.** Under D21 an unlisted call is free, so a template
-discriminates routing only through its must-not set — the gold set alone
-cannot: a candidate that takes both routes satisfies it. As the catalog stood,
-`calc_irrigation` was unlisted on T16a and `lookup_reference` on T16b, so a
-candidate calling both on every irrigation question scored trajectory 1 on both
-halves and the a/b pair probed nothing; `predict_green_roof_water_balance_tool`
-was unlisted on *every* template, falsifying the §3-matrix claim ("every tool
-appears at least once as a distractor") that D21's shotgun mitigation leans on.
-Resolved: (a) the T16 pair carries **symmetric must-nots** — T16a (docs route)
-forbids `calc_irrigation`, T16b (calculator route) forbids `lookup_reference` —
-restoring the probe in both directions. Accepted risk, stated plainly: a
-candidate that looks the rule up before calculating fails T16b even though the
-behaviour is defensible, which makes the T002 phrasing cue load-bearing — the
-wording must make the intended route unambiguous. (b) The model tool gains its
-one distractor slot on **T04** (measured past outflow — a recorded fact for
-which a simulation is the epistemically wrong source), making the matrix claim
-true and closing the model-tool gap in D21's mitigation.
-
-**D25 — T24b answers a single pp-gap.** The catalog left T24b's answer shape
-undefined ("numeric ×2 or pp-gap — define one"), and "numeric ×2" was never
-expressible at all: the §1.1 contract's `answer` is a single scalar. T24b is
-rephrased to the mean soil-moisture **difference** between the two extensive
-roofs over the month (pp, T03's tolerance convention), which fits the contract
-unchanged, has an exact oracle, and keeps both roofs in the question — so the
-T24a/T24b presentation-verb minimal pair still shares its information need.
-Rejected alternatives: extending the contract to numeric arrays (touches §1.1,
-the T071 parser and the T072 scorer for one template) and narrowing to a single
-roof (breaks the twin, since T24a plots both).
-
-**D26 — The retrospective weather source is the site's own station, not ERA5;
-it is served uncorrected, and its biases are scope limits.** Open-Meteo's
-Archive backend is ERA5 — a ~31 km reanalysis, not observation — while the
-facility runs its own instrument on the roofs it is being asked about. Where the
-record covers a window outright it is now the source (§3.3); Archive keeps deep
-history and Forecast keeps the future.
-
-*The evaluation properties that justify it*, which are the reason this is a D-entry
-and not a one-line pointer:
-- **Retrospective cases become fully offline.** The station path is a pure
-  function of a file §5 already hashes, so it needs no D4 cache entry, no
-  `record` pass, and no network. D17's central hazard — a forecast window that
-  cannot be recaptured after its deadline, and an Archive re-capture silently
-  substituting observations for the forecast values an oracle was built on —
-  simply does not arise inside the record.
-- **Leakage closes structurally.** Station weather reads the as-of view, so it
-  cannot see past `as_of`. Archive can and does.
-- **Provenance stays single-valued per window.** The station serves only windows
-  it covers entirely; partial coverage falls through to the existing Open-Meteo
-  routing. No new `not_available` class, no per-day source switching, no mixed
-  series — which also means no new abstention template and no change to T18a.
-- **The timing is the cheapest it will ever be.** No oracle is materialized yet,
-  so provenance moves for free; after generation it would invalidate the suite.
-
-*The accuracy claim, stated honestly.* The station is unambiguously better for
-temperature (tm +0.69 °C, tx +1.05 °C vs ERA5 at r = 0.99 — the rooftop and
-urban signal a 31 km cell cannot carry) and is the conceptually correct wind
-forcing (GR2L computes `u2 = w/3.6` and wants 2 m wind; Open-Meteo serves 10 m,
-a positive ET bias `weather_tool.md` already flags). It is **not** better
-everywhere: `gs` reads ~26 % low against its own on-site pyranometers, and
-`precip` undercatches by ~15 % on liquid days and ~50 % on frozen ones (§3.3).
-The justification adopted is therefore **not** "measurements beat a model" — for
-radiation and precipitation that claim is false at this site. It is
-**consistency with the validation data**: the lysimeters whose `outflow` and
-`swc` records the model is scored against (T19) sat under this gauge and this
-pyranometer, so forcing GR2L from the same instruments makes prediction and
-measurement commensurable, where ERA5-forcing-versus-lysimeter-truth mixes two
-worlds. The thesis states both biases and their direction (station forcing
-suppresses ET and biases modelled retention upward).
-
-*Rejected, deliberately, on the user's decision:* calibrating `gs` against the
-`radiation` table's pyranometers over their 2025-03 → 2025-10 overlap; taking
-`gs` from Open-Meteo while everything else comes from the station; and falling
-back to ERA5 on days the gauge cannot see frozen precipitation. Each would
-improve a number at the cost of a derived, non-reproducible correction sitting
-between the instrument and the oracle — and the per-day variants would break the
-single-provenance property above. Uncorrected station data is reproducible from
-the pinned DB by anyone; a fitted factor is not.
-
-*Residual limits to carry:* the record spans 2025-01-01 → 2026-04-27, so
-2024-H2 retrospectives have `swc`/`tsoil` but no station weather and fall to
-Archive; the record ends before the Forecast backend's recent-past window
-begins, so T030b's 64-vs-92-day routing bug is **not** resolved by this change;
-and `tn` is estimated rather than measured.
-
-**D27 — GEPA is reached through MLflow; the candidate surface is the prompt
-registry; the ADK evalset is dropped.** The entry point is
-`mlflow.genai.optimize_prompts(predict_fn, train_data, prompt_uris, optimizer=
-GepaPromptOptimizer(…), scorers, aggregation)`. Mechanism in §6.
-
-*Rejected alternatives:*
-- **A hand-written `GEPAAdapter` driving `gepa.optimize` directly.** MLflow
-  already ships `MlflowGEPAAdapter` implementing both required methods *and* the
-  per-iteration logging (candidate text, per-scorer metrics, eval tables) that we
-  would otherwise re-write against the sink the text2SQL experiments already use.
-  Writing our own buys nothing and duplicates a moving part. It stays the fallback
-  if the experimental API moves (R8).
-- **ADK's `AgentEvaluator` + `.evalset.json`.** Three independent disqualifiers:
-  candidate text has no channel into an agent looked up by module path, so every
-  iteration would score the production singleton; its trajectory metric is
-  args-exact with no must-not concept, which cannot express D21; and its answer
-  metric is ROUGE over the final message, which cannot express §7's
-  tolerance/skip/abstention split. The format exists for the **inverse loop** —
-  capture-replay regression of a *fixed* agent against a recorded run, where the
-  agent is the constant and the file is the fixture — and it binds the agent by
-  module path precisely because of that assumption. Its resemblance to our ground
-  truth (question, expected response, expected tool calls) is a coincidence of
-  shape.
-- **One concatenated prompt holding all optimizable text.** It would deny GEPA
-  per-component mutation (`components_to_update` is the granularity) and
-  attribute every reflective observation to a single blob, collapsing the
-  addressable optimizable surface that D1 names as a validity condition.
-
-*Evaluation-validity conditions this pins:*
-- Candidate text reaches the system **only** through a registry read inside
-  `predict_fn` whose prompt name matches a candidate key. A component that is
-  never read is silently frozen while appearing optimizable — the failure is
-  invisible in the results and visible only in MLflow's "prompts were not used"
-  warning, which is why T096 asserts on it.
-- The reflective signal is `Feedback.rationale` (§7). Scorer prose is part of the
-  search machinery; a float-only scorer optimizes blind.
-- The case envelope is `inputs` / `expectations` (§6.1) because those are the only
-  two channels MLflow delivers — the ground-truth format is therefore dictated,
-  not designed.
-- The injection patch is process-global for the duration of a batch: one
-  candidate per process, and any other in-process reader of those registered
-  prompts sees candidate text.
-
-**D28 — `harness_error` exclusion is a measurement-path property; the search path
-is protected by construction, not by masking.** D16 excludes `upstream` errors and
-`replay` cache misses from every aggregate. Inside `optimize_prompts` that is not
-expressible: a `predict_fn` exception is swallowed into a string output and scored
-normally, and GEPA consumes one float per record with no exclusion channel
-(`score` may be `None` only when there are no scorers at all, and GEPA sums it).
-
-*Rejected:* scoring such cases **0** — it penalizes a candidate for an outage and
-biases selection toward whichever candidate happened to run while the service was
-up. Also rejected: **neutral fill at the batch mean** — it preserves the
-denominator while shrinking the effective *n*, hiding the loss rather than
-reporting it.
-
-*Adopted:* the exclusion stays in **our** scoring (§7), which produces the
-numbers the thesis claims rest on. The search is protected structurally instead:
-it runs in `replay` mode over a cache T084 asserts complete, and station-served
-windows need no network at all (D26), so an upstream error during search is rare
-*by construction* rather than handled after the fact. The residual is made
-visible — a `harness_error` scorer contributes 0 **and** its per-arm count is
-reported, so a search polluted by outages is a stated fact instead of silent
-noise in the fitness signal. Corollary: `train_data` is pre-filtered to cases
-with complete capture, so a case that cannot replay never enters the search.
-
-**D29 — The irrigation rule runs on its own bucket model; GR2L is not a
-substitute.** §3.5 assumed `calc_irrigation` would consume GR2L's output. The
-deployed controller's water balance differs from GR2L's in seven respects (§3.5,
-derived in `irrigation_tool.md`), so the two are separate layer-3 cores.
-
-*Rejected:* reusing `run_gr2l` for T11's chain. It would score the agent against
-a model the site does not run — and the disagreement is not academic: the
-controller applies a flat 22 %θ field capacity to all three substrate roofs,
-which for `semi_intensive` sits 12.6 mm below GR2L's measured `Ssubmax`, so the
-two models disagree about when that roof overflows at all. The evaluation
-property at stake is that T07/T11 measure the *deployed* rule; a chain through
-GR2L would measure a rule nobody uses.
-
-*Consequences:* T11's gold set drops to `{calc_irrigation}` (§8); the model tool
-keeps its T04 distractor slot, so D21's coverage claim is unaffected; and
-`gr2l_tool.md` and `irrigation_tool.md` must each state that the other model
-exists and why its numbers differ, or a reader will treat one as a bug in the
-other.
-
-**D30 — The irrigation model and rule run local in Python; the R endpoint is a
-separate, non-evaluation deliverable.** The same model ships to the weinbau API
-as an R endpoint for consumers outside this system. The agent does not call it.
-
-*Rejected:* routing the agent's irrigation path through HTTP as §3.4 does for
-GR2L. The GR2L precedent is not binding, because GR2L's remoteness is a
-constraint (the R core exists only as a service, §3.4) while here we own the
-implementation and are choosing where to put it.
-
-*Evaluation-validity conditions this buys:* irrigation cases become **fully
-offline** — pure functions over the pinned DuckDB and, for retrospective
-windows, the station source. No D4 cache entry, no canary on the answer path, no
-`upstream` error class, and no capture deadline (R1); the T07/T11/T16b oracles
-import the very function the tool calls, so oracle and tool cannot diverge.
-Structurally this is D26's argument for the station source, reapplied to a
-second component.
-
-*Cross-language agreement is asserted through the existing canary mechanism, not
-a new fixture path.* The R endpoint gets a committed request/response hash
-exactly as GR2L has (§5), replayed through the D4 cache, and the Python
-implementation is checked against it. Building a bespoke conformance-fixture
-file with its own schema and generator is the alternative D4 already rejected
-for weather and GR2L, and it is no more justified here.
-
-*Cost, stated plainly:* the bucket and the ladder exist in two languages, and
-nothing links the two repositories' CI. The canary fails loudly on drift; it does
-not prevent it (plan R10).
-
-**D31 — The unit fix changes what the deployed algorithm predicts; the
-thresholds are kept and the change is measured.** The extracted controller adds
-millimetres of rain and ET to a store held in %VWC or kg. Correcting it to
-millimetres rescales each roof's response to rain by `100/SH_mm` — ≈0.7× for the
-7 cm extensive roofs, ≈1.5× for the 15 cm semi-intensive — and the deployed
-trigger levels were tuned against the uncorrected dynamics.
-
-*Rejected:* re-deriving the thresholds so the corrected model reproduces the
-controller's historical decisions. That is a fitted correction sitting between
-the instrument and the oracle — precisely the objection D26 sustained against
-calibrating `gs` against the on-site pyranometers. Uncorrected constants are
-reproducible from the site's own documentation by anyone; a rescaled set is not.
-
-*Adopted:* the deployed values are carried verbatim into `rules_constants.py` as
-site policy, and a decision-diff harness (plan T048) replays a historical window
-through both unit regimes — same ET0, so unit handling is the only variable —
-and reports every date and roof where the decision flips. Whether to re-tune is
-then the site's call, made against evidence, and the thesis can state what the
-correction did rather than assuming it did nothing.
-
-**D32 — Retrieval is an exact card lookup, not BM25; the retrievable knowledge
-is a closed set of ~9 cards.** §3.2 specified `rank_bm25` over a chunked markdown
-corpus scored by recall@k. The retrievable knowledge is actually a dozen facts —
-per-roof trigger levels, capacities, doses, horizons, freshness limits, nearly
-all of them constants in the deployed controller. Ranking a closed dozen items by
-lexical overlap is machinery without a problem, and it was not free: it imported
-a DE-query-vs-EN-corpus gap that had to be settled before case generation, a
-chunker whose heading-derived section IDs were a scored contract, and an index
-hash in the pin set. The replacement is a `topic` enum over a packaged YAML store
-(§3.2).
-
-*Rejected alternatives:*
-- **BM25 v1 as specified.** Kept the three costs above and bought nothing a
-  closed vocabulary does not give exactly: with ~9 items there is no ranking
-  problem to solve, and a lexical miss is a failure mode the thesis would have to
-  explain rather than measure.
-- **The BGE-M3 dense ablation arm.** It existed to mitigate BM25's lexical
-  brittleness, and an exact lookup has none. Dropped with its motivation, not
-  deferred.
-- **A free-text `query` matched against card keys.** Reintroduces lexical
-  matching at the boundary while pretending not to, and makes an unknown query
-  indistinguishable from an absent fact.
-- **Typing the abstention at the tool level** (roof-scoped `not_available`).
-  Cleanest contract, but it collapses T17b into T18a's already-tested "relay a
-  typed `not_available`" and costs the catalog its strongest hallucination probe.
-
-*Evaluation-validity conditions this pins:*
-- **The topic enum is frozen in the signature, not the docstring.** Docstrings
-  are candidate-owned (D6). ADK renders `Literal[...]` into the function
-  declaration, so the vocabulary reaches the model either way — and a candidate
-  that rewrote the topic list away would otherwise disable the reference route
-  while still appearing optimizable, a silent failure of exactly the kind D27's
-  "prompts were not used" assertion exists to catch.
-- **Card granularity must keep absence non-inferable from the vocabulary.** No
-  card is named after a single constant. Otherwise the agent abstains from the
-  enum without reading anything, T17a's gold set is forced empty by D23's own
-  reasoning, and it becomes a duplicate of T18b — voiding the holdout claim that
-  T18b is the only abstention with no tool signal.
-- **`gold_cards` non-empty implies a `lookup_reference` call in the gold
-  trajectory.** Card recall is scored, so a gold card on a template that never
-  looks one up scores 0 on a correct run. T07 carried exactly that contradiction
-  (`Docs: ops_manual#irrigation_rule` against a `{calc_irrigation}` gold set);
-  its docs line is deleted and T004 validates the invariant.
-- **The DE/EN gap moves from the retriever into the model**, which is the surface
-  under optimization. A German question maps to an enum value through the LLM
-  rather than through lexical overlap with an English corpus. This is a genuine
-  relocation, not an elimination: it is now measured as routing accuracy on DE
-  paraphrases instead of as a retriever scope limit.
-- **Reference cases become fully offline** — no cache entry, no capture deadline,
-  no `upstream` error class — on the same terms as D26's station source and
-  D30's local irrigation core.
+Implementation order, prerequisites and blocking edges are `plan.md`'s.

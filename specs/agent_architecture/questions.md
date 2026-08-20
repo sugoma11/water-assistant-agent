@@ -1,436 +1,514 @@
 # Question template catalog — green-roof water management assistant
 
-Human-readable spec for the evaluation dataset. Machine-readable twins live in
-`eval/templates/*.yaml`; instantiated cases in one pretty-printed JSON array per
-split, `eval/cases/{train,val,test_seen,test_unseen}.json` — array over JSONL so
-a diff reports the changed *field*, not just a changed line (architecture §6).
-Oracles in `eval/oracles/`. 26 template families (31 entries incl. a/b variants),
-target ~250–300 instances.
+Human-readable spec for the evaluation dataset. Machine-readable twins live in `eval/templates/*.yaml`;
+instantiated cases in `eval/cases/{train,test_seen,test_unseen}.json`, emitted per architecture §6.1.
+Oracles in `eval/oracles/`. **27 template families, 32 entries** counting a/b variants, 7 of them
+holdout; **276 instances** (100 / 120 / 56), derived in §1.7.
 
 ---
 
 ## 1 Conventions
 
 ### 1.1 Answer contract
-Every agent run must end with:
-
-```json
-{"status": "answered" | "not_available",
- "answer": <bool | number | "YYYY-MM-DD" | null>,
- "unit": "<L | mm | °C | pp | % | count | null>",
- "explanation": "<free text, unscored in phase 1>"}
-```
-
-Phase 1 scores `status` + `answer` (after unit normalization). Phase 2 adds an
-LLM judge over `explanation`, anchored to oracle facts — additive, no refactor.
-
-**Artifact deliverables (family H) answer `null`.** The plot is scored from the
-resolved spec echoed by `plot_timeseries` in the tool result, never from the
-final message: requiring the model to retype source, variable, range and
-aggregation into `answer` measures transcription rather than tool selection —
-the same objection D14 raises against passing series data *into* the tool.
-The answer component is therefore **skipped** for these templates and the
-scorer reports answer-metric *coverage* alongside the score; `null` must never
-be compared against an oracle answer and scored 0.
-
-**Clarifying questions are out of contract.** Both `status` values end the turn,
-and the §1.6 validity filter discards cases whose oracle is ambiguous, so no
-instance should warrant one. The candidate instruction forbids them explicitly
-(architecture D15). A final message parsing to neither status value is a
-`parse_failure` diagnostic, not a wrong answer.
-
-**Tool `error` has no contract status.** Tools emit `success` | `not_available`
-| `error`; the agent contract carries only the first two outcomes. Harness-side,
-errors split by cause (architecture D16): an **`upstream`** error marks the case
-`harness_error` — excluded from every aggregate, counted separately per arm. An
-**`invalid_argument`** error never excludes: the case stays in and scores
-through the normal metrics (an unrecovered fumble surfaces as a wrong answer,
-false abstention, or `parse_failure`).
+Every case's `A:` field instantiates the four-field JSON contract in architecture §2. Family H
+answers `null`, and its scored surface is the agent-supplied half of the plot spec (architecture §7).
 
 ### 1.2 Scoring
-- **Answer**: exact for bool/date/count/not_available; numeric within
-  per-template tolerance. Oracles share code with the tool chain, so tolerances
-  absorb rounding only — keep them tight.
-- **Trajectory**: **binary per case** (architecture D21) — 1 iff every tool in
-  `Traj` was called, no `Must-not` tool was called, and the argument checks
-  pass where specified; else 0. No partial credit, no extra-call penalty:
-  calls beyond the gold set are free and reported only as a diagnostic (mean
-  extra calls per arm). `Must-not` = trajectory 0 if called (only where it is
-  the point of the template). There is no `(opt)` marker — under a zero
-  penalty, optional and unlisted are the same thing.
-- **Card recall**: `|Cards ∩ retrieved| / |Cards|` over the union of every
-  `lookup_reference` call in the run (architecture D32). One number — an exact
-  lookup has no query to substitute, so the old retriever-quality /
-  system-quality split is deleted. **Skipped, not 0, where `Cards` is empty**
-  (0/0 undefined), with coverage reported alongside, exactly as §1.1 does for
-  family H's answer metric. A non-empty `Cards` therefore requires
-  `lookup_reference` in `Traj`.
-- **Abstention**: two separate numbers — abstention accuracy on unanswerable
-  cases; false-abstention rate on answerable cases. Never aggregate.
+Scored per architecture §7. Its per-template inputs are the `A:`, `Traj:`, `Must-not:`, `Cards:` and
+tolerance fields below, copied into each case at generation.
 
 ### 1.3 Time semantics
-Each case carries `as_of` (Europe/Berlin). DB is served through as-of views
-(`timestamp <= as_of`). Relative expressions ("yesterday", "übermorgen")
-resolve against `as_of`. Calendar day = Europe/Berlin. Forecast horizon 16 d.
+Time semantics per architecture §5; every case carries `as_of`, and every relative expression in a
+question resolves against it.
 
-### 1.4 Weather fixtures
-One file per `as_of`: `eval/fixtures/weather/{as_of}.json`. Frozen hourly
-schema — must cover **all** soil-model inputs: `time, precip_mm, temp_c,
-rh_pct, wind_ms, swrad_wm2`. Fixtures are forecasts *as issued at* `as_of`
-(archived model runs), not measured outcomes.
+### 1.4 Tool vocabulary
+`Traj:` and `Must-not:` name the **registered** tools — the six strings a root-agent trajectory can
+contain:
 
-### 1.5 Tools & the pure-function refactor
-`lookup_reference`, `query_database` (text2SQL sub-agent), `get_weather` (replayed),
-`predict_soil_moisture(meteo_series, initial_swc, roof, params=None)`,
-`calc_irrigation`, `plot_timeseries` (declarative spec, internal fixed query,
-echoes resolved spec).
-**Note**: since `predict_soil_moisture` is a pure function, all predictive
-chains include a DB read for the initial SWC state — trajectories below
-reflect this (supersedes earlier `[weather, model]` sketches).
+| Name | What it is |
+|---|---|
+| `text_to_sql_agent` | frozen text2SQL sub-agent, reached as an `AgentTool` (architecture §3.1) |
+| `get_weather_forecast_tool` | daily weather, station or Archive, resolved in code (§3.3) |
+| `predict_green_roof_water_balance_tool` | GR2L water balance, self-contained — fetches its own weather and seed (§3.4) |
+| `lookup_reference` | exact card lookup, `topic` enum in the signature (§3.2) |
+| `calc_irrigation` | irrigation decision over its own bucket model (§3.5) |
+| `plot_timeseries` | declarative multi-source plot spec; returns spec + stats, no series (§3.6) |
+
+`query_database_tool` is the sub-agent's *inner* tool, never appears in a root-agent trajectory, and
+no template may name it.
+
+### 1.5 Answer units
+Soil-moisture states and every `initial_soil_moisture_pct` are in **%θ**; no template asks for
+millimetres of substrate storage. Retention and runoff stay in **mm** (fluxes) or **L** (lysimeter
+volumes); a difference between two %θ states answers in **pp**. **`L` and `mm` coincide
+numerically** on the lysimeter columns — the collection area is 1 m², so 1 L = 1 mm
+(`findings.md`) — so the answer metric normalizes one to the other rather than scoring a litre
+answer against a millimetre oracle as wrong (architecture §7).
 
 ### 1.6 Generation filters
-- **Validity**: discard sampled params where sensor gaps make the oracle
-  ambiguous (e.g. no non-null SWC within 24 h of `as_of`).
-- **Balance**: rejection-sample dates until each bool template is ~50/50.
-- **Abstention share**: 7–10% of all instances.
-- **Paraphrases**: EN + DE; style pools disjoint between train and test;
-  include alias-heavy phrasings ("das Kiesdach", "the roof without
-  irrigation") and colloquial German.
+- **Validity — input data**: three predicates over the `(table, column, window)` set each template
+  declares, evaluated **through the as-of view** so a check never passes on data the tool cannot see,
+  and anchored at `seed_at = min(window_start, as_of)` for seed-bearing families rather than at
+  `as_of` — a retrospective window seeds at its own start, not at the case's present. Failing any
+  predicate resamples the params; it never drops the template, so §1.7's `templates × m` holds.
+  - **Coverage** — the resolved window's rows are present: a point query needs its day at ≥44 of 48
+    rows, a period aggregate ≥95 % of expected rows with no single gap over 24 h. Two whole-system
+    lysimeter outages remove 39 band days from `outflow`, `swc` and `tsoil` together, and only 52.5 %
+    of band days carry a fully covered 30-day look-back (`findings.md`). Without this an aggregate
+    silently returns a November total drawn from two days of data, which the oracle then encodes as
+    truth.
+  - **Plausibility** — every column read stays inside its per-column physical bounds, which live in
+    `roofs.py` beside the rest of each roof's identity (architecture §1 principle 4). This is what
+    excludes the dead `QWetland` record from 2026-03-12. Bounds are **per column, never global**: the
+    gravel roof has no substrate and legitimately sits at a band median of 0.06 %θ.
+  - **Frozenness** — no run of ≥24 identical consecutive samples (12 h) in a **state** column. Zero
+    false positives on every healthy state sensor in the record, and it catches the one `QWetland`
+    episode frozen at a plausible 77.160 %θ that the bounds miss. Applied to **state columns only**,
+    and not to `QGravel`: a flux resting at zero is reporting the truth, and `Sumpf2_Efflux`
+    legitimately holds 0.000 for 3474 consecutive hours.
+- **Validity — oracle**: discard where the oracle admits more than one defensible reading, or where
+  the answer sits within tolerance of its own threshold.
+- **Balance**: rejection-sample dates until each bool template is ~50/50 within each split. T04 is
+  the binding case — daily outflow is exactly zero on 75–94 % of band days depending on roof, and the
+  wetland has 17 non-zero days in the whole band — so wet days need roughly 6:1 oversampling and the
+  wet-day pool is what §1.7's train ∩ test_seen = ∅ has to split. Reachable at m = 4/5 with roof drawn
+  across P1, but it is the tightest date pool in the catalog. **Constant-value rejection is not a
+  validity test**: it would delete every dry day, which is precisely the "no" class this rule needs
+  (`findings.md`).
+- **Abstention share**: target 7–10 % of instances. The swept set misses it — §1.7 and §4.
+- **Paraphrases**: EN + DE, 50/50 within each split, style pools disjoint between train and test,
+  colloquial German included.
+- **Roof vocabulary**: questions name roofs in the agent's own vocabulary (`non_irrigated_extensive`,
+  …) or in natural language the semantic layer's alias map covers ("das Kiesdach", "KD", "the roof
+  without irrigation") — **never raw column names** (`Extensiv1`, `Sumpf2`, `QGravel`).
 
-### 1.7 Splits & mix
-train ~80 / val ~50 / test_seen ~70 (same templates, unseen params + unseen
-paraphrase styles) / test_unseen ~50 (holdout templates only:
-**T17b, T18b, T22, T23, T26**). Note the pairing: T17a/T18a train on one
-abstention variant, T17b/T18b test generalization to the other.
+### 1.7 Splits, sizing and generation constraints
 
-| Category | share |
-|---|---|
-| Pure SQL | 28% |
-| Pure lookup (incl. abstention) | 12% |
-| Pure weather (incl. abstention) | 10% |
-| Model chains | 12% |
-| Hybrid / full chain | 20% |
-| Given-values controls | 4% |
-| Counterfactual | 8% |
-| Presentation (plot) | 6% |
+Three splits: **train**, **test_seen**, **test_unseen**. Train's number is a selection score, not a
+training accuracy; the reporting rules over these splits are architecture §7's.
+
+**Template ledger.** 32 entries = 7 holdout (T16b, T17b, T18b, T20, T22, T23, T26) + 1 train-only
+(T12) + 24 carried by both train and test_seen. So train holds **25** templates, test_seen **24**,
+test_unseen **7**.
+
+**Sizing.** Counts are derived from `templates × m`, never chosen: errors cluster by template, so
+m ≈ 5 captures most of the achievable trajectory power and further instances asymptote.
+
+| Split | Templates | m | n |
+|---|---|---|---|
+| train | 25 | 4 | **100** |
+| test_seen | 24 | 5 | **120** |
+| test_unseen | 7 | 8 | **56** |
+
+`25×4 = 100`, `24×5 = 120`, `7×8 = 56`, total **276**. Train's m is a flat 4 rather than a 3–4 band
+because the balance rule needs an even m ≥ 4 on every bool template and 8 of train's 25 are bool; a
+per-template m makes n unverifiable against the product.
+
+**Category shares are outputs of that product, not targets.** Each train+test_seen template
+contributes 9 instances, T12 contributes 4, each holdout template 8.
+
+| Category | Families | Instances | Share |
+|---|---|---|---|
+| Pure SQL | A | 54 | 19.6 % |
+| Pure lookup (incl. abstention) | B | 26 | 9.4 % |
+| Pure weather (incl. abstention) | C | 44 | 15.9 % |
+| Model chains (incl. availability abstention) | D + I | 36 | 13.0 % |
+| Hybrid / full chain | E | 48 | 17.4 % |
+| Given-values controls | F | 17 | 6.2 % |
+| Counterfactual | G | 33 | 12.0 % |
+| Presentation (plot) | H | 18 | 6.5 % |
+
+Sum 276, 100.0 %. These miss the shares previously named as targets (28 / 12 / 10 / 12 / 20 / 4 / 8
+/ 6) by up to 8.6 pp — §4. **Abstention lands at 43/276 = 15.6 %** (T17a 9, T17b 8, T18a 9, T18b 8,
+T27 9) against §1.6's 7–10 %: train 12/100 = 12.0 %, test_seen 15/120 = 12.5 %, test_unseen
+16/56 = 28.6 % (fixed by the holdout list). §4.
+
+**Generation constraints**, enforced in generation and not achieved by independent resampling:
+- **Per-param disjointness, per discrete value.** train ∩ test_seen = ∅ on every sampled param —
+  T02/T09/T13's `thr`, T01/T05's `month`, T21/T22's override values, T27's window and alias. Without
+  it the memorized-constant detector fails open.
+- **`as_of` is a striped partition, never a cut point.** Bands are disjoint but interleaved over
+  ~2025-06-01 → 2026-04-24; a contiguous split strands summer on one side and makes T02/T08/T20
+  unbalanceable.
+- **Roof is a shared axis, deliberately.** The §1.8 pools are 3–5 wide and confounded with
+  modellability; disjoint pools would confound roof generalization with tool availability.
+- **Language balanced 50/50 within each split** and reported as a stratum: DE routing accuracy is a
+  measured quantity, not sampling noise.
+- **Paraphrase style pools disjoint** between train and test.
+
+Each holdout template is the b-side of a train-side pair moving one named axis: T16b←T16a,
+T17b←T17a, T18b←T18a, T20←T08, T22←T21, T23←T21, T26←T21+T06+T09/T10.
+
+### 1.8 Roof sampling pools
+
+`{roof}` is drawn per family, because the water-balance tools cover fewer roofs than the database.
+Both exclusions are architecture §3.4's: the gravel roof and the wetland sit in
+`NON_MODELLABLE_ROOFS`, outside GR2L's scope **and** outside `calc_irrigation`'s — the gravel roof
+has no substrate store and the wetland is a ponded fleece mat whose θ sensor saturates near 86 %, so
+neither is the classical substrate roof both water balances are built for.
+
+Instrumentation narrows the roster a second time, independently of modellability: the
+**semi-intensive roof has no lysimeter and no radiation mast** (`findings.md`), so `outflow` and
+`radiation` carry four roofs where `swc` and `tsoil` carry five. A template reading an outflow
+column cannot sample it at all.
+
+| Pool | Members | Sampled by |
+|---|---|---|
+| **P1** — full roster | gravel · irrigated ext. · non-irrigated ext. · semi-intensive · wetland | H `measured` on `swc` / `tsoil`; any A or B template naming a roof on those two tables |
+| **P1f** — flux-instrumented subset of P1 | gravel · irrigated ext. · non-irrigated ext. · wetland | A (T01, T04, T05), E (T12); H `measured` on `outflow` / `radiation` |
+| **P2** — substrate roofs: modellable and irrigation-decidable | irrigated ext. · non-irrigated ext. · semi-intensive | D (T09, T10, T19), E (T07, T11), F (T16b), G (T21–T23, T26), H with a `model` series |
+
+**P1f is a data fact, not a scope limit, and no template probes it.** The semi-intensive roof is
+absent from the pool because the column does not exist, not because the system declines to answer;
+nothing in the suite rewards noticing the difference, and the abstention families stay the ones
+§1.6 lists. A case asking for that roof's outflow would have no oracle, which is why the pool
+excludes it at generation rather than the filter rejecting it afterwards.
+
+**One pool serves both tools because their scopes coincide** — `NON_MODELLABLE_ROOFS` bounds the
+GR2L chain and the irrigation decision alike, so no roof abstains under one tool and answers under
+the other. Family H splits across P1, P1f and P2 — a plot is only as modellable as its most
+demanding series, and only as widely instrumented as its narrowest one.
+**Family I samples the two excluded roofs, from outside this table**: the pools govern
+answerable cases, and I's point is the roofs they exclude.
 
 ---
 
 ## 2 Catalog
 
-Field legend — **Q**: question sketch · **DE**: example German paraphrase ·
-**A**: answer type (unit, tolerance) · **Traj**: gold trajectory ·
-**Cards**: gold reference cards (architecture §3.2) · **Oracle**: logic ·
-**Note**: purpose · **Split**.
+Legend — **Q** question sketch · **DE** example German paraphrase · **A** answer type (unit,
+tolerance) · **Traj** gold trajectory · **Must-not** listed distractors · **Cards** gold reference
+cards (architecture §3.2) · **Oracle** logic · **Note** purpose · **Split** `train+seen` |
+`train only` | `unseen`.
 
-### A. Pure SQL — negative controls for `lookup_reference` / `get_weather`
+### A. Pure SQL — negative controls for `lookup_reference` / `get_weather_forecast_tool`
 
 **T01 — total outflow**
-Q: "What was the total outflow of the {roof} roof in {month}?"
-DE: "Wie viel Wasser ist im Juli vom Kiesdach abgeflossen?"
-Params: roof ∈ {Kies, Extensiv1, Extensiv2, Sumpf2}; month.
-A: numeric (L, ±2% rel) · Traj: {query_database}
-Oracle: trusted SUM over the efflux column.
+Q: "What was the total outflow of the {roof} roof in {month}?" · DE: "Wie viel Wasser ist im Juli vom
+Kiesdach abgeflossen?" · roof ∈ P1f
+A: numeric (L, ±2 % rel) · Traj: {text_to_sql_agent} · Must-not: `lookup_reference` · Split: train+seen
+Oracle: trusted SUM over the roof's efflux column.
+Note: train's only distractor slot for `lookup_reference` — the `topic` enum carries nothing that
+could answer a monthly outflow total.
 
 **T02 — hot-day count**
 Q: "On how many days in {period} did the max air temperature exceed {thr} °C?"
-A: numeric (count, exact) · Traj: {query_database}
-Oracle: COUNT on daily `wetter.Tmax`.
+A: numeric (count, exact) · Traj: {text_to_sql_agent} · Split: train+seen
+Oracle: COUNT on the station's daily max air temperature.
 
 **T03 — irrigation SWC gap**
-Q: "What was the mean soil-moisture difference between the irrigated and
-non-irrigated extensive roof over {period}?"
-A: numeric (pp, ±0.2 abs) · Traj: {query_database}
-Oracle: AVG(QEx1 − QEx2).
+Q: "What was the mean soil-moisture difference between the irrigated and non-irrigated extensive roof
+over {period}?"
+A: numeric (pp, ±0.2 abs) · Traj: {text_to_sql_agent} · Split: train+seen
+Oracle: mean difference of the two roofs' θ columns.
 
 **T04 — outflow occurred?**
-Q: "Did the {roof} roof produce any outflow on {date}?"
-A: bool · Traj: {query_database}
-· Must-not: predict_green_roof_water_balance_tool
-Oracle: daily SUM > 0. Balanced sampling.
-Note: the model tool's one distractor slot (D24) — a recorded past fact for
-which a simulation is the epistemically wrong source.
+Q: "Did the {roof} roof produce any outflow on {date}?" · roof ∈ P1f
+A: bool (balanced) · Traj: {text_to_sql_agent} · Must-not:
+`predict_green_roof_water_balance_tool` · Split: train+seen
+Oracle: daily SUM > 0.
+Note: the model tool's only train-side distractor slot — a recorded past fact for which a simulation
+is the epistemically wrong source.
 
 **T05 — peak-outflow day**
-Q: "On which day in {month} did the {roof} roof have its highest outflow?"
-A: date (exact) · Traj: {query_database} · Oracle: argmax of daily sums.
+Q: "On which day in {month} did the {roof} roof have its highest outflow?" · roof ∈ P1f
+A: date (exact) · Traj: {text_to_sql_agent} · Split: train+seen · Oracle: argmax of daily sums.
 
-**T15a — past rain (minimal-pair partner of T15b)**
-Q: "How much rain fell in {past_period}?"
-DE: "Wie viel hat es letzte Woche geregnet?"
-A: numeric (mm, ±2% rel) · Traj: {query_database} · Must-not: get_weather
-Oracle: SUM over `wetter.Rain`.
-Note: only tense differs from T15b — temporal routing probe.
+**T15a — past rain**
+Q: "How much rain fell in {past_period}?" · DE: "Wie viel hat es letzte Woche geregnet?"
+A: numeric (mm, ±2 % rel) · Traj: {text_to_sql_agent} · Split: train+seen
+Oracle: SUM over the station rain column.
+Note: tense minimal pair with T15b, scored as a pure-SQL positive — the station weather path derives
+its `precip` from this same column, so a weather-tool route returns the identical number.
 
 ### B. Pure reference lookup
 
 **T06 — stated constant**
 Q: "What is the soil-moisture threshold for irrigating the extensive roofs?"
-A: numeric (%, exact) · Traj: {lookup_reference} · Cards: irrigation_threshold
-Oracle: constant from `rules_constants.py`, which the card's `values:` block is
-test-bound to (architecture §3.2).
+A: numeric (%θ, exact) · Traj: {lookup_reference} · Cards: `irrigation_threshold` · Split: train+seen
+Oracle: the constant in `rules_constants.py`, to which the card's `values:` block is test-bound
+(architecture §3.2).
 
 **T17a — absent constant (abstention)**
 Q: "What is the maximum wind speed at which irrigation must be shut off?"
-A: not_available · Traj: {lookup_reference} · Cards: irrigation_rule
-Note: plausible but deliberately absent. **The absence is grounded inside a
-card, not in the topic vocabulary** (D32): a wind-shutoff condition would sit in
-the `irrigation_rule` ladder alongside the moisture, heat and refill conjuncts,
-so the agent must fetch that card and find no wind clause. Grounding it in the
-enum instead — a missing `wind_shutoff` topic — would let the agent abstain
-without reading anything, force the gold set empty by D23's reasoning, and make
-this a duplicate of T18b. `Cards` is therefore the card that *should* have
-contained it, and card recall stays scored. Split: train-eligible.
+A: not_available · Traj: {lookup_reference} · Cards: `irrigation_rule` · Split: train+seen
+Note: the absence is grounded inside a card, not in the topic vocabulary — a wind-shutoff condition
+would sit in the `irrigation_rule` ladder beside the moisture, heat and refill conjuncts, so the
+agent must fetch that card and find no wind clause. `Cards` is the card that should have carried it,
+so card recall stays scored.
 
-**T17b — scope near-miss (abstention, holdout)**
+**T17b — scope near-miss (abstention)**
 Q: "What is the soil-moisture irrigation threshold for the **wetland** roof?"
-A: not_available · Traj: {lookup_reference} · Cards: irrigation_threshold
-Note: the card comes back **whole** — the three substrate roofs' thresholds
-under `values:` and the wetland under `not_applicable:` ("no soil-moisture
-threshold exists; controlled by lysimeter level in kg"). The tool does **not**
-type this abstention (D32): a roof-scoped `not_available` would collapse the
-template into T18a's already-tested relay. The agent must read the exclusion
-with a confidently worded, wrong-scope rule sitting directly beside it.
-Strongest hallucination probe. Split: **test_unseen**.
+A: not_available · Traj: {lookup_reference} · Cards: `irrigation_threshold` · Split: unseen
+Note: the card returns whole — three substrate roofs under `values:`, the wetland under
+`not_applicable:` — so the agent must read the exclusion with a confidently worded, wrong-scope rule
+beside it. Strongest hallucination probe.
 
 ### C. Pure weather
 
 **T13 — rain expected?**
 Q: "Is more than {thr} mm of rain expected within the next {h} hours?"
-A: bool · Traj: {get_weather} · Oracle: sum fixture precip over window.
+A: bool (balanced) · Traj: {get_weather_forecast_tool} · Split: train+seen
+Oracle: sum of `precip` over the resolved forward window, fetched through `ctx.weather` so the window
+resolves to the source the tool sees — never `fetch_daily_weather` directly, which is Archive-only and
+bypasses source resolution (architecture §3.3).
 
 **T14 — forecast max temperature**
 Q: "What is the highest temperature forecast for the next {d} days?"
-A: numeric (°C, ±0.1 abs) · Traj: {get_weather} · Oracle: max over fixture.
+A: numeric (°C, ±0.1 abs) · Traj: {get_weather_forecast_tool} · Split: train+seen
+Oracle: max of `tx` over the resolved window, same fetch path.
 
-**T15b — future rain (pair of T15a)**
-Q: "How much rain will fall in {future_period}?"
-DE: "Wie viel soll es nächste Woche regnen?"
-A: numeric (mm, ±2% rel) · Traj: {get_weather} · Must-not: query_database
-Oracle: sum fixture precip.
+**T15b — future rain**
+Q: "How much rain will fall in {future_period}?" · DE: "Wie viel soll es nächste Woche regnen?"
+A: numeric (mm, ±2 % rel) · Traj: {get_weather_forecast_tool} · Must-not: `text_to_sql_agent`
+· Split: train+seen
+Oracle: sum of `precip` over the resolved future window.
+Note: the surviving half of the tense probe — the database holds no future, so the must-not binds in
+this direction only.
 
-**T18a — unservable window (abstention)** *(relabeled per architecture D23)*
+**T18a — unservable window (abstention)**
 Q: "What will the temperature be in four weeks?"
-A: not_available · Traj: {get_weather}
-Note: window no backend can serve — beyond the 16-day horizon, before Archive
-coverage, or spanning the Archive/Forecast cutoff (D17). The tool returns its
-typed `not_available` (D11); the agent must relay it as the contract status.
-Distinct from T15 misrouting. Split: train-eligible.
+A: not_available · Traj: {get_weather_forecast_tool} · Split: train+seen
+Note: a well-formed window beyond the 16-day horizon, the tool's single scope limit; the tool types
+the `not_available` and the agent relays it as the contract status. Distinct from T15 misrouting.
 
-**T18b — missing variable (abstention, holdout)** *(relabeled per D23)*
+**T18b — missing variable (abstention)**
 Q: "What is the forecast **soil temperature** for the next 3 days?"
-A: not_available · Traj: {} (empty — the tool has no variable argument and
-always returns the seven documented fields, so the abstention is the agent's
-alone, grounded in the docstring's variable list, D11; a verification call is a
-free extra call under D21, neither required nor penalized).
-Note: only the abstention metric carries this template's signal. Holdout tests
-generalization from T18a's tool-signaled abstention to abstention with no tool
-signal. Split: **test_unseen**.
+A: not_available · Traj: {} (empty) · Split: unseen
+Note: the tool takes no variable argument and always returns the seven documented fields, so the
+abstention is the agent's alone, grounded in the docstring's variable list; it tests transfer from
+T18a's tool-signalled abstention to one with no tool signal.
 
 ### D. Model chains
 
 **T09 — threshold crossing ahead**
-Q: "Will the soil moisture of the {roof} roof fall below {thr}% within the
-next {h} hours?"
-A: bool · Traj: {query_database, get_weather, predict_soil_moisture}
-Oracle: latest measured SWC → fixture meteo → predict → min < thr.
+Q: "Will the soil moisture of the {roof} roof fall below {thr} %θ within the next {h} hours?"
+· roof ∈ P2
+A: bool (balanced) · Traj: {predict_green_roof_water_balance_tool} · Split: train+seen
+Oracle: `run_gr2l` over the resolved window, seeded per architecture §3.4's `min(window_start,
+as_of)` rule; min `swc_pct` < thr.
 
 **T10 — predicted minimum**
-Q: "What is the minimum soil moisture predicted for the {roof} roof over the
-next 72 h?"
-A: numeric (%, ±0.1 abs) · Traj: as T09 · Oracle: same chain, return min.
+Q: "What is the minimum soil moisture predicted for the {roof} roof over the next 72 h?" · roof ∈ P2
+A: numeric (%θ, ±0.1 abs) · Traj: {predict_green_roof_water_balance_tool} · Split: train+seen
+Oracle: the same chain, returning the summary's `min_swc_pct`.
 
 **T19 — retrospective model check**
-Q: "How far off was the soil-moisture model for the {roof} roof last week,
-on average?"
-A: numeric (pp, ±0.1 abs) · Traj: {query_database, predict_soil_moisture}
-· Must-not: get_weather
-Oracle: DB meteo + measured initial SWC → predict → mean |pred − measured|.
-Note: past-facing model use; weather tool is the critical distractor.
-Window must end ≤ `as_of` (as-of view check).
+Q: "How far off was the soil-moisture model for the {roof} roof last week, on average?" · roof ∈ P2;
+window ends ≤ `as_of`
+A: numeric (pp, ±0.1 abs) · Traj:
+{predict_green_roof_water_balance_tool(evaluate_against_measured=True)} · Must-not:
+`get_weather_forecast_tool` · Split: train+seen
+Oracle: the same call, reading mean |predicted − measured| from the summary.
+Note: past-facing model use; the must-not binds on the disclosure the tool contract mandates — the
+green-roof tool fetches its own weather.
 
 ### E. Hybrid / full chain
 
 **T07 — irrigation check per manual**
-Q: "Does the {roof} roof need irrigation right now, according to the
-operations manual?"
-DE: "Muss das unbewässerte Extensivdach heute bewässert werden?"
-A: bool · Traj: {calc_irrigation} · Cards: [] (deleted, not renamed — the gold
-route is the calculator, and a gold card on a template that never looks one up
-scores card recall 0 on a correct run; architecture D32)
-Oracle: `irrigation_decision` on the measured seed + 48 h lookahead.
-Note: the old `{lookup_reference, query_database, get_weather}` chain predates the
-self-contained calculator (architecture §8, D29/D30). **Phrasing is unsettled**
-— "according to the operations manual" cues the docs route and collides with
-T16a's probe, so re-derive the wording with the gold set in T002.
+Q: "Does the {roof} roof need irrigation right now, according to the operations manual?" · DE: "Muss
+das unbewässerte Extensivdach heute bewässert werden?" · roof ∈ P2
+A: bool (balanced) · Traj: {calc_irrigation} · Cards: [] · Split: train+seen
+Oracle: `irrigation_decision` on the measured seed plus a 48 h lookahead.
+Note: measured-now twin of T11's predictive decision. **Phrasing open — §4.**
 
 **T08 — heatwave days (manual definition)**
-Q: "How many heatwave days, as defined in the operations manual, occurred in
-{month}?"
-A: numeric (count, exact) · Traj: {lookup_reference, query_database}
-Cards: heatwave_definition
-Oracle: definition constants → SQL count on `wetter`. Note: the definition's
-consecutive-day rule has **no source in the deployed controller** (which carries
-only `HEAT_THRESHOLD_C`) and is authored as eval policy in `rules_constants.py`.
+Q: "How many heatwave days, as defined in the operations manual, occurred in {month}?"
+A: numeric (count, exact) · Traj: {lookup_reference, text_to_sql_agent} · Cards:
+`heatwave_definition` · Split: train+seen
+Oracle: definition constants → count on the station daily record. The consecutive-day rule is
+authored eval policy in `rules_constants.py`; the deployed controller carries only a heat threshold.
 
-**T11 — irrigation decision tomorrow** *(reframed per architecture D22)*
-Q: "Does the {roof} roof need irrigation tomorrow, per the standard rule?"
-A: bool (balanced sampling)
-Traj: {calc_irrigation}
+**T11 — irrigation decision tomorrow**
+Q: "Does the {roof} roof need irrigation tomorrow, per the standard rule?" · roof ∈ P2
+A: bool (balanced) · Traj: {calc_irrigation} · Split: train+seen
 Oracle: `irrigation_decision` over the calculator's own modelled features.
-Note: predictive twin of T07 — T07 runs on measured SWC "right now", T11 on the
-model's prediction for tomorrow. The dose, when yes, is the fixed per-roof
-p90-of-historical-ET constant from the manual, not a computed volume. The GR2L
-tool leaves this chain entirely: `calc_irrigation` is self-contained over its
-*own* bucket model, which is not GR2L (D29).
+Note: predictive twin of T07; the dose, where the answer is yes, is the fixed per-roof constant
+stated for disclosure, not a computed volume.
 
-**T12 — retention vs target** *(blocked: needs lysimeter areas)*
-Q: "Was the retention of the {roof} roof during {event} above the manual's
-target?"
-A: bool · Traj: {lookup_reference, query_database} · Cards: retention_target
-Oracle: (rain − outflow/area) / rain vs target. The target itself has no
-deployed source and is authored as eval policy in `rules_constants.py`.
+**T12 — retention vs target**
+Q: "Was the retention of the {roof} roof during {event} above the manual's target?" · roof ∈ P1f
+A: bool (balanced) · Traj: {lookup_reference, text_to_sql_agent} · Cards: `retention_target`
+· **Split: train only**
+Oracle: (rain − outflow/area) / rain against the target, itself authored eval policy in
+`rules_constants.py`.
+Note: train only because `{event}` draws from the pinned record's qualifying rain events, too few to
+hold train ∩ test_seen = ∅ while leaving either side m distinct events.
 
 **T20 — forecast heatwave per manual**
-Q: "Does the coming week's forecast qualify as a heatwave under the manual's
-definition?"
-A: bool · Traj: {lookup_reference, get_weather} · Must-not: query_database
-Cards: heatwave_definition
-Oracle: definition applied to fixture.
-Note: the only hybrid excluding the DB — `query_database` negative control.
+Q: "Does the coming week's forecast qualify as a heatwave under the manual's definition?"
+A: bool (balanced) · Traj: {lookup_reference, get_weather_forecast_tool} · Must-not:
+`text_to_sql_agent` · Cards: `heatwave_definition` · Split: unseen
+Oracle: the card's definition applied to the resolved forward window's daily rows, as in T13.
+Note: the only hybrid excluding the database and the holdout's only hybrid chain; parent T08 teaches
+the same card-grounded definition against the database.
 
 **T25 — past/future bridge**
 Q: "Will tomorrow be warmer than yesterday?"
-A: bool · Traj: {query_database, get_weather}
-Oracle: `wetter.Tmax` yesterday vs fixture max tomorrow.
+A: bool (balanced) · Split: train+seen · Traj: **either** {text_to_sql_agent,
+get_weather_forecast_tool} **or** {get_weather_forecast_tool} alone
+Oracle: yesterday's max air temperature against tomorrow's `tx`, each from the source its window
+resolves to.
+Note: the docstring recommends the single combined call for exactly this shape, so both routes are
+gold. Yesterday arrives from the station and tomorrow from Archive with a measured station warm bias
+between them, so balanced sampling must correct for it or route both sides to one source.
 
 ### F. Given-values controls
 
 **T16a — rule applied to stated values**
-Q: "Soil moisture is at 12% and only 2 mm of rain is forecast — should we
-irrigate, per the manual?"
-A: bool · Traj: {lookup_reference} · Must-not: query_database, get_weather,
-calc_irrigation (D24)
-Cards: irrigation_rule, irrigation_threshold · Oracle: rule on stated values.
-Note: catches reflexive DB/weather calls for values already given; the
-calc_irrigation must-not makes the a-side of the routing probe binding. The two
-cards must between them state the ladder *and* the per-roof numbers, or the
-docs half of the probe is unanswerable by construction (architecture §3.2).
+Q: "Soil moisture is at 12 %θ and only 2 mm of rain is forecast — should we irrigate, per the manual?"
+A: bool (balanced) · Traj: {lookup_reference} · Must-not: `text_to_sql_agent`,
+`get_weather_forecast_tool`, `calc_irrigation` · Cards: `irrigation_rule`, `irrigation_threshold`
+· Split: train+seen · Oracle: the rule on the stated values.
+Note: catches reflexive fetches for values already given, and carries three of train's six distractor
+slots. The two cards must between them state the ladder *and* the per-roof numbers, or the docs half
+of the probe is unanswerable by construction (architecture §3.2). **Cue phrasing open — §4.**
 
-**T16b — calculator isolation** *(reframed per architecture D22)*
-Q: "Given SWC {x}% and {y} mm of rain in the next 48 h for the {roof} roof,
-does the standard rule say to irrigate?"
-A: bool (balanced sampling) · Traj: {calc_irrigation} · Must-not: lookup_reference
-(D24)
-Oracle: `calc_irrigation` on stated values.
-Note: identical inputs to T16a; symmetric must-nots (D24) make the
-docs-vs-calculator probe binding in both directions, so the phrasing must cue
-the route unambiguously (settle wording in T002 — a docs lookup before
-calculating is defensible behaviour and fails only because the cue says
-calculator). The input set is now confirmed, so the stated values are fixed:
-soil moisture in %θ, maximum air temperature, and forecast rain over 48 h
-(lysimeter level in kg for the wetland) — architecture §3.5.
+**T16b — calculator isolation**
+Q: "Given SWC {x} %θ and {y} mm of rain in the next 48 h for the {roof} roof, does the standard rule
+say to irrigate?" · roof ∈ P2; stated values are soil moisture in %θ, max air temperature and 48 h
+forecast rain, per architecture §3.5
+A: bool (balanced) · Traj: {calc_irrigation} · Must-not: `lookup_reference` · Split: unseen
+Oracle: `calc_irrigation` on the stated values.
+Note: identical inputs to T16a with symmetric must-nots, so the probe binds in both directions —
+T16a trains the docs direction, T16b tests transfer to the calculator direction, which T07 and T11
+still teach in train. **Cue phrasing open — §4.**
 
 ### G. Counterfactuals
 
-**T21 — forcing override (train-eligible)**
-Q: "If 50 mm of rain falls tomorrow, what is the minimum soil moisture of the
-{roof} roof over the next 48 h?"
-A: numeric (%, ±0.1 abs)
-Traj: {query_database, predict_soil_moisture}
-Oracle: fixture with precip replaced → predict.
-Note: partial override; a prior get_weather fetch is a free extra call under
-D21 — fetch-then-substitute stays valid without an `(opt)` marker.
+**T21 — forcing override**
+Q: "If 50 mm of rain falls tomorrow, what is the minimum soil moisture of the {roof} roof over the
+next 48 h?" · roof ∈ P2
+A: numeric (%θ, ±0.1 abs) · Traj: {predict_green_roof_water_balance_tool(forcings=…)}
+· Split: train+seen
+Oracle: `run_gr2l` with `precip` overridden on the named day, sparse per architecture §3.4.
+Note: a prior weather fetch is a free extra call — fetch-then-substitute is a valid route.
 
-**T22 — parameter override (holdout)**
-Q: "Under the current forecast but with albedo {a}, what soil moisture is
-predicted for the {roof} roof tomorrow?"
-A: numeric (%, ±0.1 abs)
-Traj: {query_database, get_weather, predict_soil_moisture(params)}
-Split: **test_unseen**.
+**T22 — parameter override**
+Q: "Under the current forecast but with albedo {a}, what soil moisture is predicted for the {roof}
+roof tomorrow?" · roof ∈ P2
+A: numeric (%θ, ±0.1 abs) · Traj: {predict_green_roof_water_balance_tool(albedo=…)} · Split: unseen
+Oracle: the same call with the flat `albedo` scalar set.
 
-**T23 — state override (holdout)**
-Q: "If soil moisture had been 20% last Monday, where would it be now?"
-A: numeric (%, ±0.1 abs)
-Traj: {query_database, predict_soil_moisture} · Must-not: get_weather
-Oracle: `initial_swc=0.20` + DB meteo since Monday. Split: **test_unseen**.
+**T23 — state override**
+Q: "If soil moisture had been 20 %θ last Monday, where would it be now?" · roof ∈ P2
+A: numeric (%θ, ±0.1 abs) · Traj:
+{predict_green_roof_water_balance_tool(initial_soil_moisture_pct=…)} · Must-not:
+`get_weather_forecast_tool` · Split: unseen
+Oracle: the same call over the window since Monday.
 
-**T26 — compositional (holdout)**
-Q variants: (i) "If albedo were {a} **and** 30 mm fell tomorrow, would the
-{roof} roof stay above the irrigation threshold?" (adds `lookup_reference` to
-Traj and Cards: irrigation_threshold); (ii) override + cross-roof comparison.
-A: bool / numeric · Traj: union of the composed chains.
-Split: **test_unseen** — the compositional-generalization headline.
+**T26 — compositional**
+Q variants: (i) "If albedo were {a} **and** 30 mm fell tomorrow, would the {roof} roof stay above the
+irrigation threshold?" — adds `lookup_reference` to Traj and `irrigation_threshold` to Cards;
+(ii) override plus cross-roof comparison; (iii) a variant composing only train-taught axes
+(`forcings` plus cross-roof comparison, no `albedo`). roof ∈ P2.
+A: bool / numeric · Traj: union of the composed calls, argument-checked · Split: unseen
+Note: the compositional-generalization headline, with train-side parents T21, T06 and T09/T10.
+Variant (i) composes `albedo`, whose axis is itself holdout, so it is interpretable only where T22
+passes and is reported conditionally; variant (iii) keeps the headline off double transfer.
 
 ### H. Presentation intent
 
 **T24a — plot request**
-Q: "Show me how the soil moisture of both extensive roofs developed in
-{month}."
-A: null (artifact deliverable, §1.1) — scored on the resolved spec echoed by
-`plot_timeseries`: columns {QEx1, QEx2} (set match), time range, aggregation
-· Traj: {plot_timeseries} · Must-not: query_database
-Note: tool runs its internal fixed query; rendering is an unscored side effect
-(nothing renders server-side — the frontend draws from the session-state
-payload named by `artifact_ref`, architecture D20).
+Q: "Show me how the soil moisture of both extensive roofs developed in {month}."
+A: null (artifact deliverable); scored through `argument_checks` on the agent-supplied series specs
+and the resolved range — two `measured` series, variable `swc_pct`, roofs {irrigated extensive,
+non-irrigated extensive} as a set match, plus resolved `start`/`end`. Aggregation, unit and axis are
+**not** scored: architecture §3.6 derives them in code from the variable, so they discriminate no
+candidate.
+Traj: {plot_timeseries} · Must-not: `text_to_sql_agent` · Split: train+seen
+Note: the tool fetches its own data; rendering is an unscored side effect.
 
 **T24b — twin without plot verb**
-Q: "What was the mean soil-moisture difference between the two extensive roofs
-in {month}?"
-A: numeric (pp, ±0.2 abs — T03's convention; D25) · Traj: {query_database}
-· Must-not: plot_timeseries
-Note: near-identical information need to T24a; only the presentation verb
-differs. The difference wording keeps the answer a single scalar within the
-§1.1 contract (D25 — "numeric ×2" was never expressible).
+Q: "What was the mean soil-moisture difference between the two extensive roofs in {month}?"
+A: numeric (pp, ±0.2 abs — T03's convention) · Traj: {text_to_sql_agent} · Must-not:
+`plot_timeseries` · Split: train+seen
+Note: near-identical information need to T24a, differing only in the presentation verb; the
+difference wording keeps the answer a single scalar inside the answer contract.
+
+### I. Modelling availability — non-modellable roofs (abstention)
+
+**T27 — modelling request for a non-modellable roof (abstention)**
+Q variants, all naming a roof outside both water-balance tools' scope:
+(i) "What is the minimum soil moisture predicted for the {alias} over the next {h} hours?" —
+Traj: {predict_green_roof_water_balance_tool} · Must-not: `text_to_sql_agent`
+(ii) "Does the {alias} need irrigation tomorrow?" — Traj: {calc_irrigation}
+(iii) "If 30 mm fell tomorrow, what would the {alias}'s minimum soil moisture be over the next
+48 h?" — Traj: {predict_green_roof_water_balance_tool(forcings=…)} · Must-not: `text_to_sql_agent`
+DE: "Wie feucht wird das Kiesdach morgen sein?"
+Params: alias ∈ the semantic layer's gravel aliases {gravel roof, Kiesdach, das Kiesdach, KD} and its
+wetland aliases (§1.6); window; variant. Roof pool: **gravel and wetland**, deliberately outside
+§1.8's pools. **Every variant samples both roofs** — `calc_irrigation` excludes the wetland on the
+same terms as GR2L (architecture §3.5), so variant (ii) is an abstention case for either roof.
+A: not_available (unit null) · Cards: [] · Split: train+seen
+Oracle: `NON_MODELLABLE_ROOFS` membership — the tool returns its typed `not_available` (architecture
+§3.4 for i/iii, §3.5 for ii) and the agent relays it as the contract status. There is no numeric
+oracle; the oracle asserts the outcome.
+Note: the gravel roof is the most-sampled roof in family A, so modellability has to be learned as
+**family-dependent**, which a sampling variant inside family H cannot test. The `text_to_sql_agent`
+must-not binds on T15b's ground — the database holds no future, so a last measured value is not a
+prediction — and variant (ii) reaches the same limit through a second tool, making the limit a
+property of the roof rather than of one tool. Both roofs behave identically under every
+water-balance route, so family dependence carries the whole probe: A, B and H answer them from
+measured data, and I — the only family putting them in front of a model or the calculator —
+abstains. **No template splits one roof across two tools**, so a per-tool scope limit is outside
+what the suite measures (architecture §8).
 
 ---
 
 ## 3 Tool coverage matrix
 
-| Tool | Sole necessary | In chain | Critical distractor (Must-not) |
-|---|---|---|---|
-| lookup_reference | T06, T16a, T17a, T17b | T08, T12, T20, T26(i) | T16b (D24) + all of A, C, D, G-non-doc, H |
-| query_database | T01–T05, T15a | T07–T12, T19, T21–T23, T25, T26 | T15b, T16a, T20, T24a |
-| get_weather | T13, T14, T15b, T18a | T20, T25 | T15a, T16a, T19, T23 |
-| predict_soil_moisture | — (documented: never sole) | T09, T10, T19, T21–T23, T26 | T04 (D24) |
-| calc_irrigation | T07, T11, T16b | — | T16a (D24) |
-| plot_timeseries | T24a | — | T24b |
+Derived from §2. A distractor claim appears only where a template names the tool in its `Must-not:`
+line; train-side slots are **bold**.
 
-Every tool appears at least once as necessary-and-sufficient (except the
-model, by design, and T18b whose gold set is deliberately empty) and at least
-once as a distractor. The model-chain rows still predate architecture §8/D21:
-under the self-contained GR2L tool, `query_database`/`get_weather` leave the
-T09/T10/T19/T21–T23 chains — re-derive the matrix wholesale in T002.
+| Tool | Sole necessary | In chain | Critical distractor (listed must-nots) |
+|---|---|---|---|
+| `lookup_reference` | T06, T16a, T17a, T17b | T08, T12, T20, T26(i) | **T01**, T16b |
+| `text_to_sql_agent` | T01–T05, T15a, T24b | T08, T12, T25 (one accepted route) | **T15b**, **T16a**, **T24a**, **T27(i,iii)**, T20 |
+| `get_weather_forecast_tool` | T13, T14, T15b, T18a | T20, T25 | **T16a**, **T19**, T23 |
+| `predict_green_roof_water_balance_tool` | T09, T10, T19, T21, T22, T23, T27(i,iii) | T26 | **T04** |
+| `calc_irrigation` | T07, T11, T16b, T27(ii) | — | **T16a** |
+| `plot_timeseries` | T24a | — | **T24b** |
+
+**Invariant 1 — only listed must-nots score.** Trajectory is binary over the gold set and the listed
+must-not set alone; unlisted calls are free. The former blanket claim that every A/C/D/G-non-doc/H
+template implicitly forbade the docs route is deleted, not restated: it scored nothing.
+
+**Invariant 2 — every tool holds a distractor slot inside train.** Checked against the holdout list
+(T16b, T17b, T18b, T20, T22, T23, T26): no column is empty of train templates. This is the binary
+metric's only defence against a shotgun candidate, since extra calls cost nothing.
+
+Margin, stated because it is thin: four of six columns rest on a single train template each —
+`lookup_reference` on T01, the model tool on T04, `calc_irrigation` on T16a, `plot_timeseries` on
+T24b — and T16a alone supplies three slots. Moving any of T01, T04, T16a or T24b to holdout empties a
+column and voids Invariant 2.
+
+`get_weather_forecast_tool`'s standalone identifiability rests on T13, T14, T15b and T18a; T18b's
+gold set is deliberately empty. The model tool is sole-necessary across families D and G because it
+is self-contained — `text_to_sql_agent` and `get_weather_forecast_tool` are not in those gold sets,
+so a candidate that skips them loses nothing and one that calls them pays nothing.
 
 ---
 
-## 4 Prerequisites / blockers
+## 4 Open
 
-1. `roofs.py` + `rules_constants.py` + the **card store** whose `values:` blocks
-   are test-bound to them (architecture §3.2, D32). Cards, with provenance:
-   `irrigation_rule`, `irrigation_threshold`, `substrate_hydraulics`,
-   `irrigation_dose`, `data_freshness`, `heatwave_definition` (**duration rule
-   authored** — the deployed controller has only `HEAT_THRESHOLD_C`),
-   `retention_target` (**fully authored**, no deployed source),
-   `roof_reference_ranges` (rendered from the `swc` record); and three static
-   cards with no constants behind them — `roof_directory`, `sensor_reference`,
-   `et0_method`.
-   Deliberately absent: wind-shutoff threshold, wetland **soil-moisture**
-   threshold. The second is now better grounded, not weakened: the wetland's
-   rule is a lysimeter *level* in kg, and its θ sensor saturates near 86 %
-   (`MM_ONLY_ROOFS`), so `irrigation_threshold`'s `not_applicable:` block must
-   name the exclusion and `roof_reference_ranges` must carry the level threshold
-   — otherwise the card silently answers T17b, whose abstention is the point.
-   **No card may be named after a single constant** (D32): cards name subjects,
-   or absence becomes inferable from the topic enum and T17a degenerates.
-2. Lysimeter collection areas added to the semantic layer → unblocks T12
-   (and L↔mm conversions generally). Plan T077.
-3. Semantic-layer alias map + typo fixes (paraphrase robustness for A/E).
-   Plan T078.
-
-Former items here — a frozen hourly fixture schema and the
-`predict_soil_moisture` pure-function refactor — are **superseded**, not
-pending: the request-keyed response cache replaced fixtures (architecture D4)
-and the built self-contained `predict_green_roof_water_balance_tool` replaced
-the pure function (D13/D14). §1.4/§1.5 above are stale for the same reason and
-await the T002 re-derivation.
+- **T07's phrasing.** "According to the operations manual" cues the docs route against a
+  `calc_irrigation` gold set, colliding with T16a's probe. Wording left as-is. Settling it decides
+  whether T07 is a clean E-family positive or a second docs-vs-calculator probe.
+- **The T16a / T16b cue.** Must-nots are symmetric, so phrasing alone must cue docs versus
+  calculator, and a docs lookup before calculating is defensible behaviour that currently fails T16b.
+  Settling it makes the transfer axis measurable rather than a phrasing artifact.
+- **Abstention share.** §1.6 targets 7–10 %; the swept set yields 15.6 % overall and 12.0 % on train.
+  Either the band widens to match a five-template abstention set, or abstention templates take a
+  lower m and n stops being `templates × m`. Blocks freezing §1.7's numbers.
+- **Category shares.** The eight previously stated shares were targets set before the template set
+  settled; derived shares miss them by up to 8.6 pp (Pure SQL 19.6 % vs 28 %, hybrid 17.4 % vs 20 %,
+  pure weather 15.9 % vs 10 %). Either the derived table becomes the suite's stated composition, or m
+  varies per template — which contradicts §1.7's derivation rule. Blocks the suite-composition claim.
+- **T12's train-only basis.** It rests on the count of qualifying rain events in the pinned record.
+  The area blocker is gone — the lysimeter collects 1 m², so outflow in litres is already
+  millimetres and retention carries no area factor (`findings.md`) — so the count is computable
+  now, over P1f's four roofs. If it supports disjoint train and test_seen event sets, T12 returns
+  to test_seen and every §1.7 number moves.
+- **Coverage margin.** No tool is short of a train-side distractor, but four columns hold exactly
+  one. Deciding whether that margin is acceptable, or whether a second slot is authored per tool,
+  blocks the shotgun-mitigation claim.

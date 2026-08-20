@@ -1,0 +1,840 @@
+# Decisions
+
+Rejected alternatives and evaluation-validity conditions, keyed by subject.
+
+**Admission rule.** An entry earns its place here only by recording a *rejected
+alternative* — a road not taken, with the reason — or an *evaluation-validity
+condition*: something the thesis claim rests on, which would be void if the
+system stopped doing it. Anything whose mechanism is simply how the system
+works belongs in `agent_architecture.md`. Anything measured belongs in
+`findings.md` and is cited here, never restated.
+
+**How to read it.** Entries are keyed by subject and carry no numbers. Where a
+decision was later narrowed or reversed, the narrowing is folded into the entry
+rather than appended after it: one current position, one list of what it
+rejects. The order in which any of this was settled is not recorded, and is not
+needed — that history is what this file replaces.
+
+---
+
+## No fitted correction between the instrument and the oracle
+
+Where a measured input is known to be biased, the bias is disclosed as a scope
+limit and the raw value is served. No correction estimated from the site's own
+data sits between an instrument and an oracle the agent is scored against.
+
+The ground is reproducibility, not accuracy. An uncorrected station reading, or
+a constant carried verbatim from the deployed controller, is reproducible from
+the pinned database and the site's documentation by anyone; a factor fitted
+here — over an overlap window we chose, against a reference we chose — is
+reproducible only from this repository, and every oracle downstream inherits
+that dependency. Two entries rest on this and neither restates it: **Weather
+sources** (radiation is not calibrated against the on-site pyranometers) and
+**The irrigation calculator** (thresholds are not re-derived after the unit
+fix).
+
+---
+
+## Arbitration and naming
+
+Where the specification and the code disagree about *mechanism* — names,
+signatures, module paths, data sources — the code wins and the specification is
+rewritten. Where they disagree about an *evaluation property* — determinism,
+leakage, injectability, typed abstention, the addressable optimizable
+surface — the specification wins and the code changes.
+
+**Rejected:**
+
+- *Letting the specification's preferred tool names stand in gold
+  trajectories.* Scoring matches the strings the framework actually emits: the
+  sub-agent is exposed under its own name, and its inner query tool never
+  appears in a root-agent trajectory at all (`findings.md`, Codebase seams). A
+  name chosen for prose scores 0 on a fully correct run, invisibly.
+
+**Validity condition:** the second half of the rule is what makes the
+evaluation properties non-negotiable — they are the conditions the thesis claim
+rests on, so no implementation detail may trade one away by precedent. Where
+the code contradicts one, the code is the defect.
+
+---
+
+## The construction seam
+
+Nothing the harness needs is a module-level singleton: the scenario context is
+built per case and passed explicitly, and the agent, its toolset and the frozen
+sub-agent are built per rollout by factories taking the candidate's text as an
+argument.
+
+**Rejected:**
+
+- *A contextvar-scoped context.* Far less invasive, but the optimizer evaluates
+  records in a thread pool whose workers drop ContextVars — already observed
+  here breaking cost attribution (`findings.md`, Codebase seams). The failure
+  is silent: the context reverts to a production default and the case still
+  answers.
+- *Resolving `as_of` from session state inside the frozen sub-agent.* Much less
+  code, and the state does cross the tool boundary — but a missing key falls
+  back to the unbounded view, the exact leakage the testbed exists to prevent,
+  and it fails quietly. It also couples the framework-free lower layers to
+  ambient stringly-keyed state, the shape already rejected above.
+- *Rejecting generated SQL containing `CURRENT_DATE` or `now()` rather than
+  rewriting those nodes to the literal `as_of`.* The sub-agent that emits them
+  is dateless by design — date resolution is the root agent's job — so
+  rejection penalizes behaviour no candidate can optimize.
+
+**Validity condition:** an unbound case must fail loudly before any rollout
+runs. Every seam here is one where a silent default still yields a scoreable
+answer, so "it produced a number" is not evidence the case was measured as
+pinned.
+
+---
+
+## The response cache
+
+One request-keyed response cache serves both live dependencies — the weather
+API and the remote GR2L service — hashing the exact request into a committed
+entry. A miss is filled by a live fetch and recorded, **gated on the service's
+committed canary matching**; a diverging canary is a hard failure, and so is a
+miss the service cannot serve.
+
+**Rejected:**
+
+- *A separate fixture path* with its own client, file schema and generator. Two
+  replay mechanisms to keep honest where one covers both dependencies, and a
+  fixture format is a second artefact that can drift from what the client
+  actually sends — a request hash cannot.
+- *Failing the case on every miss in replay.* The stricter rule, and the one
+  held here until the candidate's argument freedom was priced in. A GR2L key
+  hashes the weather rows and parameters of the window **the candidate chose**,
+  while capture runs over the oracle's window: a candidate asking for five days
+  where gold asked for three misses, and inside the search — which has no
+  exclusion channel — scores 0. The search is then taught to reproduce the
+  baseline's arguments, on the counterfactual and model-chain families above
+  all, which are the families the thesis reads. The strict rule was also
+  protecting a determinism GR2L supplies on its own: it is deterministic in
+  `(rows, parameters)`, so a live call on a miss returns what a captured entry
+  would have returned, provided the service has not moved — which is precisely
+  what the canary decides.
+- *Record-on-miss without the canary gate.* It cannot tell "this window was
+  never captured" from "the service changed under us", which is the one failure
+  the committed entries exist to catch.
+
+**Validity conditions:** every input to a key derives from the case's `as_of`
+and never from wall-clock time, so a key cannot change between capture and
+replay. The canary is checked in the same pass as any run that records, so no
+entry enters the cache from a service the run has not just verified. The count
+of entries recorded per arm is published beside the harness-error count: a large
+asymmetry means the arms explored different argument space, which is a finding
+about the candidates rather than a fault in the run. Note what the cache does
+*not* buy: GR2L is the only component whose determinism it carries, since
+station rows are a pure function of the pinned database and the reanalysis is
+re-fetchable indefinitely. For weather it is cost and speed, and no
+reproducibility claim rests on it.
+
+---
+
+## Window resolution and the scenario clock
+
+Time reaches every layer through one callable, evaluated per read, so
+production and evaluation run identical readers and differ only in what it
+returns. Relative windows resolve to absolute dates at layer 1 against the
+case's `as_of` before any client is called; the pure layer takes the date it
+needs as a required argument.
+
+**Rejected:**
+
+- *Letting the client read the context itself.* The pure layer has no channel
+  to a context, and giving it one reintroduces the ambient state the
+  construction seam rejects.
+- *A wall-clock default on that required argument.* A caller who forgets it
+  silently leaks real time into a pinned case; with no default the same mistake
+  fails at the call site.
+- *Removing the relative-window parameters from the tool signature* once
+  resolution moved to layer 1. They help the model and match both tool specs,
+  so they stay — with the cost accepted openly: a parameter name is a
+  non-optimizable surface, and one of them voids a routing probe that pointed
+  the other way (see **Trajectory scoring and routing probes**).
+- *A numeric cap on the back-window,* validated in code. No source imposes one:
+  the station is bounded by the record it covers, the reanalysis reaches back
+  decades. A cap would abstain on an answerable question and hand the
+  abstention metric a false positive, while the bounded-series rule already
+  bounds what a long window returns — by truncating and summarizing, not by
+  refusing. The forward horizon is a different mechanism and remains a real
+  scope limit (see **Typed abstention**).
+
+(A construction-time `as_of` datetime was a drafting slip rather than a
+considered alternative: it reintroduces the midnight-staleness bug in
+production.)
+
+---
+
+## Weather sources
+
+Daily weather has two sources, chosen in code from the window alone and never
+named by the agent: the site's own station, derived from the half-hourly record
+through the as-of view wherever that record covers the window entirely, and the
+Open-Meteo ERA5 Archive for everything else. Resolution lives in a composite
+weather client at layer 2, constructed with the as-of executor, because the
+station path reads the case's database handle and the pure layer has no channel
+to it. Station rows are served uncorrected.
+
+**Rejected:**
+
+- *An agent-facing source selector.* The agent names a window and a question,
+  never a provenance. A selector makes source an optimizable axis, so two arms
+  could be scored against different forcing data on the same case.
+- *The reanalysis as the retrospective source.* The ground for the station is
+  **consistency with the validation data**, not "measurements beat a model":
+  the lysimeters whose runoff and soil-moisture records the model is scored
+  against sat under this gauge and this pyranometer, so forcing from the same
+  instruments makes prediction and measurement commensurable, where reanalysis
+  forcing against lysimeter truth mixes two worlds. The station is also better
+  for temperature and is the conceptually correct wind forcing (`findings.md`,
+  Weather source measurements) — supporting facts, not the ground, since it is
+  not better everywhere.
+- *Calibrating the station's shortwave radiation against the on-site
+  pyranometers.* The station reads low on shortwave (`findings.md`, Weather
+  source measurements) and the overlap exists, so the factor is computable — and
+  it is exactly the fitted correction the standing principle forbids.
+- *Taking radiation from Open-Meteo with everything else from the station.* It
+  mixes provenance inside one window, so no forcing series is attributable to
+  one instrument set.
+- *Falling back to the reanalysis on frozen-precipitation days.* Same
+  single-provenance objection, per day rather than per variable, and the switch
+  is itself a correction chosen by knowing which days the gauge undercatches
+  (`findings.md`, Weather source measurements).
+- *Open-Meteo's live Forecast endpoint.* It refuses a window as old as a case's
+  `as_of` outright (`findings.md`, Weather source measurements), so it cannot
+  serve a testbed whose clock sits inside the measurement record; the two
+  Open-Meteo backends also disagree materially on the same past day, a second
+  reason no window may draw from both.
+- *Open-Meteo's Historical Forecast API.* It serves those windows at finer
+  resolution from a nearer grid cell, but archives model analyses rather than
+  lead-time forecasts (`findings.md`, Weather source measurements) — resolution
+  without forecast semantics, at the price of a third source, a new cache
+  surface and a new pin. Revisit only if the reanalysis cell proves too coarse
+  for model forcing.
+- *Dropping the future-facing templates.* It removes the forecast-weather,
+  model-chain and hybrid-chain families — around a third of the suite — to avoid
+  a limit that can simply be stated (see the architecture's scope limits).
+
+**Validity condition:** coverage is tested **through the as-of view**, so a
+window reaching past `as_of` can never resolve to the station and a partly
+covered window falls to the Archive whole. Every window therefore has exactly
+one provenance, which keeps a case's forcing reproducible from the pin and
+keeps the station biases disclosable as one property of one source rather than
+as a per-day mixture.
+
+---
+
+## Typed abstention
+
+Tools report one of three outcomes, and `not_available` always means a genuine
+scope limit, never a bad argument. On weather the single scope limit is the
+forecast horizon, checked in code against the case's `as_of`. Where a limit has
+no tool surface at all, the abstention is the agent's alone, grounded in the
+documented variable list, and the gold trajectory is empty.
+
+**Rejected:**
+
+- *A `variables` selector on the weather tool.* It changes the tool contract
+  and the upstream request shape for one template family — and hands the
+  unsignalled-abstention holdout exactly the tool surface it must lack, turning
+  a test of the agent's own judgment into another relay of a typed
+  `not_available`.
+- *Requiring a verification call before an unsignalled abstention,* as
+  "evidence-based abstention". The call proves nothing the agent's context
+  lacks — the documented contract already says the field does not exist — so it
+  contradicts the ground of the typed abstention and penalizes the agent that
+  correctly trusts the documentation.
+
+**Validity conditions:** the holdout claim is transfer from *tool-signalled* to
+*unsignalled* abstention, and is void if any other template presents an
+unsignalled abstention — which is what forces card granularity under
+**Retrieval**. And the false-abstention metric is interpretable only because a
+malformed argument never returns `not_available`; otherwise it mixes agent
+fumbles with wrong declines, two behaviours with different fixes.
+
+---
+
+## Bounded series
+
+Every tool's summary is sufficient on its own to answer, and the series
+returned alongside it is capped, with truncation flagged.
+
+**Rejected:**
+
+- *Dropping the series entirely* to satisfy the "never row dumps" principle
+  both built tools were already violating. A bounded series *is* the tool's
+  product — plot specs, counterfactual comparisons and per-day answers need
+  days — and re-deriving them from a summary would measure something the
+  deployed assistant does not do. What the tools violated was unboundedness,
+  not the presence of rows.
+
+**Validity condition:** the cap keeps answer accuracy independent of how much
+data survived the turn, so arms differ in their prompts rather than in how much
+of a long window each managed to hold in context.
+
+---
+
+## The answer contract
+
+The evaluation contract — a small JSON object with a two-valued status and a
+scalar-or-null answer — is carried by the *candidate* instruction, which also
+explicitly forbids asking a question back. The production instruction keeps
+prose and keeps clarification.
+
+**Rejected:**
+
+- *One unified contract with a `needs_clarification` status.* No case would
+  exercise it, so no optimizer would ever receive signal on it and the shipped
+  behaviour would be the one branch the thesis never measured. "It would break
+  the frontend" is explicitly **not** the reason — the frontend could render a
+  contract card, as it already does for SQL results; the reason is that
+  production needs a turn type the contract cannot express and the evaluation
+  cannot exercise.
+- *Extending the answer field to numeric arrays* so a two-roof comparison could
+  report both values. It touches the contract, the parser and the scorer for
+  one template; that template is rephrased to a single percentage-point gap
+  instead.
+- *Narrowing that template to one roof.* Cheaper still, but it breaks the
+  presentation-verb pair whose twin plots both roofs, so the halves would no
+  longer share an information need.
+
+**Validity condition:** the two-valued contract is safe **only** because the
+generation filter discards sampled parameters whose oracle is ambiguous. A
+genuinely ambiguous paraphrase surviving the filter forces the model to guess,
+and a clarifying question would score as a wrong answer rather than as correct
+behaviour. Separately, a message parsing as neither status is reported as a
+parse failure apart from answer accuracy, so a candidate degrading the output
+format stays distinguishable from one degrading its reasoning.
+
+---
+
+## Tool errors and harness exclusion
+
+The criterion: exclude what the candidate could not have avoided and the
+harness cannot reproduce; score what the candidate deterministically causes.
+Deterministic argument errors never exclude; upstream failures and replay cache
+misses mark the case a harness error, excluded from every aggregate in the
+measurement run and counted per candidate arm.
+
+**Rejected:**
+
+- *Excluding argument errors too.* Exploitable: a candidate's errors on hard
+  cases would leave the denominator and *raise* its average, so the worse it
+  handled a template the better it would look.
+- *Scoring harness errors 0 as the design.* It penalizes a candidate for an
+  outage and biases selection toward whichever candidate ran while the service
+  was up.
+- *Neutral fill at the batch mean.* It preserves the denominator while
+  shrinking the effective *n* — hiding the loss instead of reporting it, the
+  one outcome worse than either honest option.
+
+**Validity condition:** exclusion is a property of the measurement path only.
+Inside the search there is no exclusion channel — the optimizer consumes one
+float per record (`findings.md`, Optimizer internals) — so the protection is
+structural: the search replays over a cache asserted complete, with training
+records pre-filtered to fully captured cases. A residual failure there scores 0
+as a declared residual with the per-arm count published beside it; diverging
+counts between arms mean the run is compromised and is repeated. That
+comparison is the condition under which the search numbers are interpretable at
+all.
+
+---
+
+## Plotting
+
+The plot tool takes source *declarations*, never data: each names where a
+series comes from and which variable to draw, and the tool fetches through the
+same context seams every other tool uses. It returns the resolved spec and
+summary statistics, no series.
+
+**Rejected:**
+
+- *Letting the agent pass the series in as an argument.* It drives the data
+  through the LLM and turns the family's argument checking into a test of
+  whether the model retyped forty floats correctly — non-deterministic, and
+  measuring transcription rather than tool selection.
+- *A session-state handle to a prior tool result.* It avoids the re-fetch, but
+  makes a plot scorable only in the context of the turn before it and ends the
+  family's single-call property. It stays available as a chat-path
+  optimization; it is not the evaluation mechanism.
+- *A server-side artifact store.* A new HTTP endpoint plus a retention story
+  the testbed does not otherwise need.
+- *The framework's own artifact service.* It couples the render path to
+  plumbing the frontend bridge may not forward.
+- *A model-chosen aggregation argument.* One plot-level operator cannot serve a
+  mixed plot — precipitation sums where soil moisture averages — so aggregation
+  is derived from the variable in code, adding no model-owned field to fumble.
+- *Echoing the plot spec into the final message as the answer.* A transcription
+  slip inside a perfectly executed call would score as a wrong answer.
+
+**Validity conditions:** the scored surface is the agent-supplied half of the
+spec; derived fields — unit, axis, aggregation — are constant across candidates
+and discriminate nothing, so scoring them inflates every candidate equally. And
+the answer metric is *skipped* for this family rather than scored 0: comparing
+a null answer against an oracle would charge the family's share of the suite
+against fully correct cases.
+
+---
+
+## Trajectory scoring and routing probes
+
+Trajectory is binary per case — 1 if and only if every gold tool was called, no
+listed must-not tool was called, and the declarative argument checks pass.
+Calls beyond the gold set cost nothing and are reported as a diagnostic, so a
+template discriminates routing only through its must-not set; a must-not binds
+only where the wrong route is inferable from a surface no candidate can
+rewrite — tool name, signature, parameter names — or from a disclosure the
+tool's contract mandates.
+
+**Rejected:**
+
+- *Unordered-set precision/recall/F1 with a mild extra-call penalty.* Doubly
+  undefined and double-counting: the penalty had no magnitude, and with gold
+  sets of one to three tools a single extra call inside the F1 already costs up
+  to a third of the score — not "mild" — while a penalty outside the F1 charges
+  the same call twice.
+- *Optional-call markers.* With no penalty an optional call and an unlisted
+  call are indistinguishable, so the marker names a distinction the scorer
+  cannot make.
+- *Narrowing the weather tool to forecast-only* so its signature would enforce
+  the routing convention. It makes the failed probes fair by construction and
+  costs the lower layers nothing, but removes "what was the weather last week"
+  from the deployed assistant — a real regression in a shipped capability,
+  traded for a scoring convenience.
+- *Stating the routing convention in the candidate instruction.* The
+  instruction is itself optimizable, so the probe still fails whichever
+  candidate deleted the clause — measuring compliance with a convention rather
+  than routing judgment.
+
+**Accepted risks, stated plainly:**
+
+- A shotgun candidate that calls every tool scores perfect trajectory on any
+  template without a must-not. The mitigation is coverage: every tool holds at
+  least one distractor slot inside train, so a call-everything policy hard-fails
+  those templates and cannot win overall. A step cap would bound the excess
+  physically, but no cap is set today, so the claim currently rests on
+  distractor coverage alone.
+- A candidate that looks the rule up before calculating fails the
+  calculator-routing template, though the behaviour is defensible. Accepted
+  because the pair probes routing only through symmetric must-nots — which is
+  what makes the question phrasing load-bearing, since the wording must cue the
+  intended route unambiguously.
+
+**Validity condition:** the shotgun mitigation is void unless every registered
+tool holds a must-not slot **inside train**. A distractor slot living only in
+the holdout leaves the search free to learn the shotgun policy and reveals it
+only afterwards.
+
+---
+
+## The irrigation calculator
+
+The calculator answers "irrigate?" as a boolean and states the fixed per-roof
+dose alongside it for disclosure. It runs its own bucket model in local Python
+against constants carried verbatim from the deployed controller, and the unit
+correction is measured rather than absorbed: a decision-diff harness replays a
+historical window through both unit regimes and reports every date and roof
+where the decision flips.
+
+**Rejected:**
+
+- *A per-case volume computation.* The deployed algorithm has none — the dose
+  is policy, not a calculation — so a volume template would score the agent
+  against arithmetic nobody runs.
+- *Reusing the GR2L call for the predictive irrigation chain.* It would score
+  the agent against a model the site does not run, and the disagreement is not
+  academic: the deployed controller applies a flat 22 %θ field capacity to all
+  three substrate roofs, which for the semi-intensive roof sits **12.6 mm
+  below** GR2L's measured `Ssubmax`, so the two models disagree about when that
+  roof overflows at all. The property at stake is that these templates measure
+  the *deployed* rule.
+- *Routing the agent's irrigation path through HTTP,* as the model path does.
+  GR2L's remoteness is a constraint — its core exists only as a service — not a
+  precedent; here the implementation is ours and the placement is free, so it
+  goes where it costs nothing to reproduce.
+- *Re-deriving the trigger thresholds* so the unit-corrected model reproduces
+  the controller's historical decisions. This is the standing principle: a
+  fitted correction between instrument and oracle. The deployed constants are
+  reproducible from the site's own documentation by anyone; a rescaled set is
+  not. Whether to re-tune is the site's call, made against the decision-diff
+  evidence.
+- *Any conformance check against the R port of the same model* — a bespoke
+  fixture file, or a committed canary replayed through the response cache. Both
+  were held here while the R endpoint sat in the plan; it no longer does. The
+  endpoint serves consumers outside this system and no case's answer depends on
+  it (architecture §1.1), so a conformance artefact in *this* repo pins a surface
+  the testbed never reads, and lands in a pin list whose every other entry can
+  fail a run. Keeping the two implementations in step is the API repo's
+  obligation, discharged there.
+
+**Validity condition:** irrigation cases are fully offline and the oracles
+import the very function the tool calls, so oracle and tool cannot diverge and
+no network sits on the answer path. The cost is stated rather than hidden: the
+bucket and the threshold ladder exist in two languages with no shared CI, and
+this repo carries no check that they agree. Nothing measured here rests on that
+agreement — the R port is downstream of the model, never upstream of an answer.
+
+---
+
+## Retrieval
+
+Reference lookup is an exact card read over a closed, packaged set of YAML
+cards, addressed by a topic enum in the tool signature. A known topic returns
+its card whole, including the block stating what the card does not cover.
+
+**Rejected:**
+
+- *Lexical (BM25) retrieval over a chunked markdown corpus.* Ranking a closed
+  set by lexical overlap is machinery without a problem, and it was not free: it
+  imported a German-query-against-English-corpus gap to be settled before
+  generation, a chunker whose heading-derived section IDs became a scored
+  contract, and an index hash in the pin set. A lexical miss is also a failure
+  mode the thesis would have to explain rather than measure.
+- *The dense-retrieval ablation arm.* It existed only to mitigate lexical
+  brittleness; an exact lookup has none, so it was dropped with its motivation
+  rather than deferred.
+- *A free-text query matched against card keys.* It reintroduces lexical
+  matching at the boundary while appearing not to, and makes an unknown query
+  indistinguishable from an absent fact.
+- *Typing the abstention at the tool level.* The cleanest contract, but it
+  collapses the scope-exclusion template into the already-tested "relay a typed
+  `not_available`" behaviour and costs the catalog its strongest hallucination
+  probe.
+
+**Validity conditions:**
+
+- The topic vocabulary lives in the **signature**, not the docstring, because
+  docstrings are candidate-owned: a candidate that rewrote the topic list away
+  would disable the reference route while still appearing optimizable. The
+  framework renders the literal type into the function declaration, so the
+  vocabulary reaches the model either way (`findings.md`, Codebase seams).
+- **No card is named after a single constant,** so absence is never inferable
+  from the vocabulary alone. Otherwise the agent abstains from reading the enum
+  without opening anything, that template's gold set is forced empty, and it
+  duplicates the unsignalled-abstention holdout — voiding the claim that the
+  holdout is the only abstention with no tool signal (see **Typed abstention**).
+- A non-empty gold card set implies a lookup call in the gold trajectory. Card
+  recall is scored, so a gold card on a template that never looks one up scores
+  0 on an otherwise correct run.
+- The German/English gap is **relocated into the model**, not eliminated: a
+  German question maps to an enum value through the LLM rather than through
+  lexical overlap with an English corpus, and is measured as routing accuracy
+  on German paraphrases instead of as a retriever scope limit.
+
+---
+
+## Case time (the `as_of` band)
+
+Each case's `as_of` is drawn from a band inside the measurement record; the
+wall clock never enters a case. The floor is derived rather than chosen — from
+when runoff recording starts, so the earliest case has weeks of runoff and
+months of station weather behind it, and so summer falls inside the band for
+the heat templates to balance (record dates: `findings.md`, Data record).
+
+**Rejected:**
+
+- *A single frozen `as_of` at the record's end.* Simplest, and the model seeds
+  are maximally fresh — but the forecast-side heat template is degenerate from
+  late April, the balance filter works by rejection-sampling dates and would
+  have nothing to sample, and every forecast-bearing case (about 30 % of the
+  suite) would share one horizon window of ground truth, destroying the
+  effective *n*.
+- *`as_of` at wall-clock time with the freshness filter dropped.* Every model
+  chain would seed from a reading months stale: the score stays well-defined,
+  since tool and oracle share code, but the initial condition is physically
+  meaningless — and the station source would serve nothing, making it dead
+  weight.
+
+**Validity condition:** the band is what makes `as_of` a genuine split
+dimension and keeps the database hash a permanent pin. Each template's period
+parameter must be intersected with its own `as_of`, since the as-of view makes
+any later period empty — an un-intersected period silently yields an empty
+result the oracle would then encode as truth.
+
+---
+
+## Splits, sizing and the holdout
+
+Three splits — train, test_seen, test_unseen. Train doubles as the optimizer's
+Pareto-tracking set, so the number reported on it is a **selection score**,
+never a training accuracy. Per-split sizing is derived from template count
+times instances per template, the paired bootstrap resamples the template, and
+every holdout template is the b-side of a train-side pair moving exactly one
+named axis.
+
+**Rejected:**
+
+- *Passing a validation set through the optimizer's escape-hatch keyword
+  arguments.* It would in fact arrive — the merge order lets the key survive
+  (`findings.md`, Optimizer internals) — but it stakes an evaluation-validity
+  property on an undocumented keyword of an experimental API, where a future
+  version setting the key itself would silently drop ours with no warning.
+- *Keeping a fourth split for method selection.* The entry point exposes one
+  dataset channel and the optimizer never sets a validation set (`findings.md`,
+  Optimizer internals), so a committed validation file is a file nothing reads.
+  The outer role that split served — choosing between arms, reflection models
+  and budget — is replaced by a protocol, not a split: budget and
+  hyperparameters are pre-registered before any test run, all method debugging
+  happens on train, and every arm is reported on test, never "best of".
+- *Growing the holdout by instances rather than templates.* At seven templates,
+  doubling instances moves effective trajectory *n* from roughly nine to
+  eleven; authoring templates is the only lever that moves the ceiling.
+
+**Validity conditions:**
+
+- Errors cluster by template — trajectory is route-determined and binary, so a
+  candidate that misroutes a template misroutes every instance of it.
+  Resampling cases rather than templates reports intervals several times too
+  narrow, and the holdout's trajectory result is a per-template win/loss table,
+  never an accuracy with an interval.
+- The two generalization gaps are reported separately because they catch
+  different failures, and the template-overfit gap is invisible on test_seen by
+  construction — a candidate accreting a per-template routing rule scores
+  perfectly there. Since such a routing table is the most likely artifact the
+  search produces, the failure of greatest concern is visible only on the
+  smallest split.
+- Per-parameter disjointness between train and test_seen is a hard generation
+  constraint, not a nicety: the reflective record carries the gold answers
+  (`findings.md`, Optimizer internals), so a candidate can accrete a memorized
+  constant and only disjoint parameter values detect it.
+- A holdout entry composing an axis that is itself holdout is confounded — a
+  failure cannot be separated from failure on that axis — so it is interpretable
+  only where the axis passes, and is reported conditionally.
+- The suite detects large effects and not small ones: a stated limit of a suite
+  this size, not a defect more instances would repair.
+
+---
+
+## The optimizer entry point and the candidate surface
+
+The search runs through the MLflow prompt-optimization entry point with the
+GEPA optimizer; the candidate surface is a set of registered prompts, one per
+optimizable component, reached by a per-case prediction function that builds a
+scenario context and reads candidate text back through the registry.
+
+**Rejected:**
+
+- *A hand-written GEPA adapter driving the optimizer library directly.* The
+  entry point already ships an adapter implementing both required methods plus
+  per-iteration logging against the sink already in use here (`findings.md`,
+  Optimizer internals). Writing our own buys nothing and duplicates a moving
+  part; it stays the fallback if the experimental API moves.
+- *The agent framework's own evaluator and evalset format.* Three independent
+  disqualifiers: candidate text has no channel into an agent looked up by module
+  path, so every iteration would score the production singleton; its trajectory
+  metric is argument-exact with no must-not concept; and its answer metric is
+  ROUGE over the final message, which cannot express the
+  tolerance/skip/abstention split. The format exists for the inverse loop —
+  capture-replay regression of a *fixed* agent — and binds the agent by module
+  path precisely because of that assumption. Its resemblance to our ground truth
+  is a coincidence of shape.
+- *One concatenated prompt holding all optimizable text.* It denies
+  per-component mutation, which is the granularity the optimizer works at, and
+  attributes every reflective observation to a single blob — collapsing the
+  addressable optimizable surface the arbitration rule names as a validity
+  condition.
+
+**Validity conditions:**
+
+- A component is addressable per candidate only if its text is applied to a
+  factory-produced callable and read back through the registry inside the
+  prediction function. A module-level docstring is not addressable; and a
+  registered prompt never read is *silently frozen while appearing
+  optimizable* — invisible in the results, visible only in the framework's
+  "prompts were not used" warning, which is therefore asserted on.
+- The reflective signal is the scorer's rationale, not its float
+  (`findings.md`, Optimizer internals): a float-only scorer optimizes blind.
+- The ground-truth envelope is dictated, not designed — ground truth reaches
+  scorers only through the expectations column, and inputs is the sole required
+  column (`findings.md`, Optimizer internals).
+- Candidate text is injected by a process-global patch for the duration of a
+  batch (`findings.md`, Optimizer internals): one candidate per process, and
+  any other in-process reader of those prompts sees candidate text.
+
+---
+
+## GR2L argument surface
+
+The model tool's arguments are flat scalars; forcing overrides are keyed by the
+weather row's own field names and echoed back in the response; the model is
+seeded at the earlier of the window start and the case's `as_of`.
+
+**Rejected:**
+
+- *Nested argument objects* — a parameters dictionary rather than a scalar
+  argument. Flat scalars are the right shape for function declarations and
+  nested dicts measurably degrade tool-calling accuracy; the declarative
+  argument checks would also have to reach inside a dict to score a value the
+  model chose.
+- *Either one-sided seed rule.* Seeding at or before `as_of` alone seeds a
+  retrospective window from a much later reading; seeding at or before the
+  window start alone leaks post-`as_of` sensor data into forecast cases. Each
+  fails a case the other handles.
+- *A separate forcing vocabulary* with a translation table to the weather row.
+  One vocabulary means a counterfactual argument and the row it overrides never
+  need translating, and a translation table is a second place for a field rename
+  to go wrong silently.
+
+**Validity condition:** the counterfactual families are scored on the presence
+and plausibility of these arguments, never on the tool result — possible only
+because the arguments are flat, named after the fields they replace, and echoed
+back unchanged.
+
+---
+
+## Model pinning
+
+The task model and the reflection model are pinned by **served model id,
+endpoint, decoding parameters and a committed request/response canary** — the
+same mechanism GR2L already uses — rather than by a dated version string.
+
+**Rejected:**
+
+- *Requiring a dated model version.* The specification asked for one, and the
+  provider does not offer one: the endpoints in use serve open-weight models
+  under undated names. A requirement no provider can satisfy is not a pin, it is
+  an unmet condition that would sit in the document unenforced.
+- *Moving the task model to a provider that does publish dated versions,* to
+  satisfy the requirement literally. It changes the system under study — the
+  thesis measures prompt optimization over the assistant this site actually runs
+   — for a reproducibility gain the canary already delivers.
+
+**Validity condition:** the canary is checked in the same pass on every arm of a
+comparison. It detects a provider-side model swap **after the fact**, never
+prevents one, so a swap landing between two arms is the residual risk; diverging
+canaries mean the comparison is repeated. Decoding is otherwise fixed —
+`temperature=0` and one pinned seed, the seed **sent but not verifiably
+honoured**, since these endpoints serve open-weight models under no documented
+seed contract. Residual nondeterminism is therefore measured rather than
+controlled, on §7's statistical terms (see **Replication and the LLM cache**).
+
+---
+
+## Replication and the LLM cache
+
+Three rollouts per condition on the measurement path, at one pinned decoding
+seed, with the LLM response cache **off** for those runs. The cache stays on
+inside the search, where it is keyed by the **full request** — messages, tool
+declarations, model id and decoding parameters — so it can never serve one
+candidate's response to another.
+
+**Rejected:**
+
+- *Three distinct decoding seeds with the cache left on.* The obvious reading of
+  "three seeds per condition", and it does yield three keys and three samples —
+  but only where the endpoint honours `seed`, which this deployment's endpoints
+  do not guarantee (see **Model pinning**). Where the parameter is ignored the
+  arrangement is the accepted one wearing extra bookkeeping, and the bookkeeping
+  asserts a control that is not there.
+- *One fixed seed with the cache on,* which is what the architecture said until
+  now. The three replicates hash to one key, return the same bytes, cost nothing
+  and carry no information: the clause multiplies *n* by one while appearing to
+  shrink noise.
+- *Dropping replication entirely.* Cheapest, and defensible at temperature 0 —
+  but nondeterminism on a batched endpoint survives greedy decoding, and it would
+  become an error term stated rather than bounded, on a suite already limited to
+  large effects.
+- *Moving replication into the search* — three optimizer runs, each measured
+  once. It measures search variance, a real quantity and arguably the more
+  interesting one, but it leaves per-case noise unmeasured and spends three times
+  the optimizer budget instead of three times the far cheaper evaluation.
+
+**Validity conditions:** the repeats are near-replicates, not independent draws —
+they shrink per-case noise, they do not multiply *n*, and the unit of analysis
+stays the template. And the cache key must carry the tool declarations, not the
+messages alone: two candidates differing only in a docstring would otherwise
+share entries and one would be scored on the other's responses — the
+silently-frozen-component failure of **The optimizer entry point and the
+candidate surface**, arriving through a second door.
+
+---
+
+## The day boundary
+
+A day is a **Europe/Berlin calendar day**, everywhere: the station derivation,
+the semantic layer the SQL model reads, every oracle, the generation filters'
+coverage predicate, and the plot tool's aggregation. The five tables hold naive
+UTC, so a conversion sits at every grouping site — and it is written once, in
+code, rather than retyped per site.
+
+**Rejected:**
+
+- *UTC days,* which the columns already carry, so no conversion would exist
+  anywhere and no generated SQL could forget one. Rejected because "a day" would
+  stop meaning what the researchers asking the questions mean, and because the
+  station derivation and GR2L's daily rows are already specified in local days
+  (`weather_tool.md` § Station source): the choice is not between two conventions
+  but between one convention and two.
+- *Berlin for the weather and model paths, UTC for database aggregation* — the
+  de-facto state of these documents before this entry. The two groupings differ
+  on 106 of 482 record days by up to 6.664 mm of rain (`findings.md`), which
+  moves a peak-day argmax, flips a daily runoff boolean near a boundary, and
+  breaks the tense-pair template whose two routes are supposed to return the
+  identical number.
+
+**Validity condition:** the oracle and the candidate must group alike, or the
+oracle encodes as truth a total no route could produce. The semantic layer states
+the boundary so the model can honour it, and the boundary lives in one helper for
+the same reason the window resolver does: three call sites that each convert
+correctly today drift independently tomorrow.
+
+---
+
+## The as-of cut
+
+A case's `as_of` is an **instant**, written in the case file in the site's own
+offset-bearing form and converted to UTC inside `connect_asof` before it meets
+the tables' naive UTC timestamps. The conversion belongs to the seam, never to
+the caller.
+
+**Rejected:**
+
+- *Passing the bound to DuckDB as written.* A timezone-aware parameter is
+  rendered into the connection's **session** timezone — inherited from the host
+  `TZ` — before being compared against a naive column, so one case file admits an
+  hour of post-`as_of` data in winter, two in summer, and a different hour again
+  on a host set to UTC (`findings.md`). The `water.duckdb` hash cannot see it, so
+  every captured response and materialized answer downstream would be stamped
+  against a pin that does not cover the thing that moved.
+- *Naive UTC in the case file.* It removes the conversion and the whole bug class
+  at the source, and was close-run — but the stamp then reads an hour or two off
+  the site's own clock, and near midnight it names a different Berlin day than the
+  case is about, which is the boundary every oracle groups on (see **The day
+  boundary**).
+- *Requiring the caller to pass a correctly normalized bound.* The failure is
+  silent and the case still answers, which is the shape **The construction seam**
+  rejects wholesale.
+
+**Validity condition:** the convention is pinned by a test asserting the cut is
+identical under at least two host `TZ` settings. Nothing else in the pin set can
+detect a violation.
+
+---
+
+## The `radiation` timestamp offset
+
+`radiation` is stamped an hour behind the other four tables (`findings.md`). The
+pinned database is **not** rebuilt: the offset is stated in the semantic layer
+and disclosed as a scope limit, and the data is served as recorded.
+
+**Rejected:**
+
+- *Correcting the timestamps on ingest.* The clean fix, and the one that would
+  let a single `as_of` literal cut all five tables alike — but it moves the
+  `water.duckdb` sha256, which is the permanent pin every captured cache entry
+  and every materialized answer is stamped against. Paying that at any point
+  after the first capture means regenerating the suite; paying it before buys a
+  correction on a table most of the suite never reads, since `radiation` covers
+  only 2025-03-01 → 2025-10-01 and leaves most of the `as_of` band empty.
+- *Applying the shift in the as-of view instead,* so the file stays byte-stable.
+  It hides the offset behind a view definition that the DB hash does not cover
+  and the semantic layer does not describe, which is the failure mode the
+  station-derivation pin exists to prevent.
+
+**Validity condition:** the offset is disclosed wherever `radiation` is
+reachable — the semantic layer and the plot vocabulary — because a `radiation`
+series drawn beside another table's is misaligned by two half-hourly rows, and a
+reader who does not know that reads the misalignment as physics.

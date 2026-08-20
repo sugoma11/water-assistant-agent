@@ -6,6 +6,7 @@ environment (prefix ``WATER_ASSISTANT_``) and/or the project ``.env``.
 """
 
 from functools import lru_cache
+from typing import Any
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -34,6 +35,21 @@ class AssistantSettings(BaseSettings):
     # Optional OpenAI-compatible endpoint (e.g. KISSKI / Blablador) passthrough.
     llm_api_base: str | None = None
     llm_api_key: str | None = None
+
+    # --- Decoding, pinned (agent_architecture.md §5; decisions.md § Model pinning) ---
+    # Greedy decoding plus one fixed seed, sent on every call. The seed is **sent
+    # but not verifiably honoured** — these endpoints serve open-weight models
+    # under no documented seed contract — so what is left over is measured
+    # statistically (three repeats per condition), not asserted here.
+    llm_temperature: float = 0.0
+    llm_seed: int = 42
+
+    # --- LLM response cache (decisions.md § Replication and the LLM cache) ---
+    # On inside the search, where it is keyed by the full request; **off** on the
+    # measurement path, where the three repeats per condition are the replication
+    # and a cache would collapse them to one sample. Off is therefore the default.
+    llm_cache_enabled: bool = False
+    llm_cache_dir: str = ".cache/llm"
 
     # --- GR2L green-roof water-balance API (predict_gr2l tool) ---
     # Base URL including the deployment prefix, e.g. "https://host/api-weinbau".
@@ -76,9 +92,22 @@ class AssistantSettings(BaseSettings):
     # Lifetime of a minted access token, in days (C8).
     auth_token_ttl_days: int = 7
 
-    def litellm_extra(self) -> dict[str, str]:
-        """Extra kwargs forwarded to litellm / the LiteLlm wrapper."""
-        extra: dict[str, str] = {}
+    def litellm_extra(self) -> dict[str, Any]:
+        """Extra kwargs forwarded to litellm / the LiteLlm wrapper.
+
+        Carries the pinned decoding parameters as well as the endpoint, so every
+        model this package builds — the root agent, the sub-agent, the builder and
+        the fixers — is pinned by construction rather than at four call sites.
+        ``caching`` is the search/measurement switch; it only takes effect once
+        :func:`..llm.configure_llm_cache` has installed a cache, and it is a
+        litellm parameter, so it never reaches the provider and never enters the
+        cache key.
+        """
+        extra: dict[str, Any] = {
+            "temperature": self.llm_temperature,
+            "seed": self.llm_seed,
+            "caching": self.llm_cache_enabled,
+        }
         if self.llm_api_base is not None:
             extra["api_base"] = self.llm_api_base
         if self.llm_api_key is not None:

@@ -610,10 +610,36 @@ The blocking phase: no case is reproducible until this lands.
   `run_config_factory`, but capping there turns a live user's long conversation
   into a 500, which is not what T036's "the prose answer path is unchanged"
   means. `uv run ruff check .` and `uv run pytest` clean — 115 passed.
-- [ ] T033 Pin the task LLM: `temperature=0` and the decoding seed through
+- [x] T033 Pin the task LLM: `temperature=0` and the decoding seed through
   `litellm_extra()`, the served model id and endpoint recorded per run, and the
   response cache switchable — on inside the search, off on the measurement path
   (`decisions.md § Replication and the LLM cache`). → T021
+  Done. `litellm_extra()` now carries `temperature` (0.0), `seed` (42) and the
+  `caching` flag alongside the endpoint, which pins **all four** models this
+  package builds — root agent, sub-agent, SQL builder, both fixers — by
+  construction rather than at four call sites that could drift. Production
+  decoding does change: those calls previously took the provider's default
+  temperature, and now run greedy. That is §5's row, and the direction is toward
+  reproducibility, but it is a live-behaviour change and not merely bookkeeping.
+  The record and the switch live in a new `assistant/llm.py`, apart from
+  `settings.py`, which holds values and not policy: `task_model_pin()` /
+  `sub_agent_model_pin()` return served id + endpoint + decoding parameters (the
+  `canary` slot is `eval/pins.json`'s, since capturing one means talking to the
+  endpoint, which this module never does), and `configure_llm_cache(enabled)`
+  installs or removes litellm's disk cache. **Off is the default**, because the
+  measurement path is where a mistake is unrecoverable: three repeats behind a
+  cache are one sample and two copies.
+  Two things verified rather than assumed about the key, since
+  `decisions.md`'s validity condition rests on them. litellm builds it from
+  `ModelParamHelper._get_all_llm_api_params()`, which **does** include `tools` and
+  `tool_choice` as well as `model`, `messages`, `temperature` and `seed` — checked
+  directly, and then behaviourally: two requests differing only in a tool's
+  `description` hash to different keys, as do two differing only in the seed. So
+  a candidate cannot be scored on another candidate's responses. But `api_base` is
+  **not** in the key, so the cache is namespaced by the endpoint here; without
+  that, the same model id served from a second provider would replay the first
+  provider's answers under a pin that claims to distinguish them.
+  `uv run ruff check .` and `uv run pytest` clean — 115 passed.
 - [ ] T034 `eval/pins.json` and a `just pins` check covering plan §4's pin list,
   with the card-store and reflection-model entries stubbed until P4 and P8 fill
   them. → T033

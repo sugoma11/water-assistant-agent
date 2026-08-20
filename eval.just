@@ -15,3 +15,7 @@ pins:
 # Re-pin deliberately from the current tree (review the diff before committing)
 pins-write:
     uv run python scripts/check_pins.py --write
+
+# Probe the live GR2L service and pin its canary response hash (needs the service up)
+pins-canary:
+    uv run python scripts/check_pins.py --capture-gr2l-canary

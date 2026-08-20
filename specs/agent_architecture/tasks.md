@@ -1715,6 +1715,42 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   repository, and discovering the service is unreachable during T116 costs a
   capture session rather than a five-minute check. Listed in P7 because that is
   where its output is consumed. → T023, T034
+  **Blocked on a credential, which is exactly the failure this row was pulled
+  forward to find early — and it found it in one session rather than in a
+  capture session.** The machinery is built and committed; only the value is
+  missing.
+  **What the probe established.** The gateway is up and answering:
+  `GET /api-weinbau/health` returns `gr2l_service_connected: true`, and
+  `POST /api-weinbau/predict_gr2l` exists in its OpenAPI document with an
+  `APIKeyHeader` scheme named `API-KEY` — the header the client already sends.
+  The canary request hash is unchanged from what T023 committed
+  (`c24f571f…`), so the probe body is the pinned one.
+  **What blocks it.** The `GR2L_MODEL_API_KEY` in `.env` is rejected with
+  **401 Unauthorized** — by the client and by a bare `curl` with the same header
+  alike, so it is the key's standing in the gateway's own store, not this
+  repository's request. Minting or rotating one through the gateway's admin
+  endpoints is not something to do unasked. **To finish:** put a key with
+  `predict_gr2l` (or `any`) access in `GR2L_MODEL_API_KEY` and run
+  `just pins-canary`.
+  **The served build is the canary response, not a version string.** The health
+  payload's `tag` is empty in this deployment and the gateway reports a static
+  `1.0.0`, so neither identifies a build. That is the reason §5 pins the service
+  by base URL plus a request/response hash in the first place, and why nothing
+  new was added to the pin list: `gr2l_canary_response_sha256` *is* the record of
+  which build served.
+  **What landed instead**, so the remaining step is one command:
+  `gr2l_client.fetch_canary()` sends `CANARY_REQUEST` through the same
+  `_endpoint()` (extracted from `run_gr2l`, so a probe cannot be addressed to a
+  different deployment than the requests it vouches for);
+  `check_pins.py --capture-gr2l-canary` and `just pins-canary` capture it, refuse
+  to overwrite a hash that has **moved** rather than re-pinning silently, and
+  print what to do; and `LIVE_ONLY_PINS` makes `check()` report a captured pin as
+  pinned instead of failing it as "now uncomputable" — without which committing
+  the first canary would have made `just pins` fail permanently. Verified by
+  temporarily committing a placeholder hash: the check reports
+  `ok … (captured live)`, 9 pinned, and exits 0.
+  `uv run ruff check .` and `uv run pytest` clean — 254 passed, same 15
+  pre-existing findings; `just pins` unmoved at 8 pinned, 8 unpinned, 0 moved.
 - [ ] T116 Capture pass in record mode over every case, then commit `eval/cache/`;
   re-run in replay and assert zero live calls. Family H is part of the capture
   surface wherever a plot fetches weather or GR2L itself. → T114, T115

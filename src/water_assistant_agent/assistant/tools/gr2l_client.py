@@ -214,6 +214,48 @@ async def _post_gr2l(url: str, headers: dict[str, str], body: dict[str, Any]) ->
     return response.json()
 
 
+def _endpoint() -> tuple[str, dict[str, str]]:
+    """The URL and headers every request to this service uses.
+
+    One place builds them, so the canary probe cannot end up addressed to a
+    different deployment than the requests whose comparability it is asserting.
+
+    Raises :class:`Gr2lConfigError` when the base URL or key is unset.
+    """
+    settings = get_settings()
+    if not settings.gr2l_api_base_url or not settings.gr2l_api_key:
+        raise Gr2lConfigError(
+            "GR2L is not configured: set WATER_ASSISTANT_GR2L_API_BASE_URL and "
+            "GR2L_MODEL_API_KEY in the environment."
+        )
+    return (
+        f"{settings.gr2l_api_base_url.rstrip('/')}/predict_gr2l",
+        {"API-KEY": settings.gr2l_api_key, "Content-Type": "application/json"},
+    )
+
+
+async def fetch_canary() -> Any:
+    """POST :data:`CANARY_REQUEST` to the live service and return its response.
+
+    The service-version probe, run **live and deliberately**: it is what
+    ``eval/pins.json``'s ``gr2l_canary_response_sha256`` is the hash of, and what
+    every later cache fill re-fetches and compares against
+    (``agent_architecture.md`` §5). It goes through the same :func:`_endpoint` and
+    the same POST as any other request, so a pin captured here and a canary
+    verified during a capture pass cannot diverge by construction.
+
+    Closes the module client afterwards: the one caller is a script, and leaving
+    a live connection behind an ``asyncio.run`` boundary is a warning at exit.
+    """
+    url, headers = _endpoint()
+    try:
+        return await _post_gr2l(url, headers, CANARY_REQUEST)
+    finally:
+        if _ClientHolder.instance is not None:
+            await _ClientHolder.instance.aclose()
+            _ClientHolder.instance = None
+
+
 async def run_gr2l(
     rows: list[DailyWeatherRow],
     parameters: RoofParameters,
@@ -240,16 +282,8 @@ async def run_gr2l(
     cached call's respective failures (the ADK tool wrapper catches and converts
     to an ``ErrorResult``).
     """
-    settings = get_settings()
-    if not settings.gr2l_api_base_url or not settings.gr2l_api_key:
-        raise Gr2lConfigError(
-            "GR2L is not configured: set WATER_ASSISTANT_GR2L_API_BASE_URL and "
-            "GR2L_MODEL_API_KEY in the environment."
-        )
-
+    url, headers = _endpoint()
     request = Gr2lRequest(data=rows, **parameters.model_dump())
-    url = f"{settings.gr2l_api_base_url.rstrip('/')}/predict_gr2l"
-    headers = {"API-KEY": settings.gr2l_api_key, "Content-Type": "application/json"}
     canonical_request = request.model_dump(exclude_none=True)
 
     logger.debug("Calling GR2L", url=url, days=len(rows), cached=cache is not None)

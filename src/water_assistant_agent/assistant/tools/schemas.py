@@ -284,6 +284,81 @@ class MeasuredComparison(BaseModel):
     )
 
 
+class IrrigationDose(BaseModel):
+    """How much water the site applies when the answer is yes.
+
+    Stated **alongside** the decision, never derived from it: the deployed
+    algorithm has no volume calculation, so quoting anything computed here would
+    score the agent against arithmetic nobody runs
+    (``decisions.md`` § The irrigation calculator). ``dose_mm`` is owed by the
+    site and is null until it arrives; the valve minutes are what a disclosure
+    can honestly state meanwhile.
+    """
+
+    dose_mm: float | None = Field(
+        default=None, description="The roof's dose as a depth, mm — null until the site states it"
+    )
+    valve_minutes: int = Field(
+        description="How long the deployed controller opens this roof's valve"
+    )
+
+
+class IrrigationFeatures(BaseModel):
+    """The four quantities the decision turned on, and the windows they were read over.
+
+    Soil moisture is reported in %θ whichever unit the balance ran in: millimetres
+    stay internal and the site's own unit is what a surface speaks
+    (``agent_architecture.md`` §3.5).
+    """
+
+    min_swc_pct: float = Field(description="Driest point of the decision window, %θ")
+    max_temperature_c: float = Field(description="Warmest day of the decision window, °C")
+    will_reach_capacity: bool = Field(
+        description="The roof is expected to refill on its own inside the refill horizon"
+    )
+    refill_expected_on: str | None = Field(
+        default=None, description="First day the roof is expected to reach field capacity"
+    )
+    decision_horizon_hours: int = Field(
+        description="How far ahead moisture and heat were read"
+    )
+    refill_horizon_hours: int = Field(description="How far ahead a refill was looked for")
+
+
+class IrrigationResult(BaseModel):
+    """Result of :func:`calc_irrigation` — a decision, never a volume."""
+
+    status: Literal["success"] = "success"
+    roof_type: str
+    irrigate: bool = Field(description="Whether the deployed rule recommends irrigating")
+    reason: str = Field(
+        description="Which rung of the priority ladder decided it — a code, not prose"
+    )
+    inputs: Literal["modelled", "stated"] = Field(
+        description="`modelled` ran the bucket over the roof's own sensor and the "
+        "forecast; `stated` applied the rule to values the caller supplied, with no "
+        "simulation. An answer says which"
+    )
+    features: IrrigationFeatures
+    dose: IrrigationDose
+    seed: SwcSeed | None = Field(
+        default=None,
+        description="Where the modelled run's day-1 soil moisture came from; null on "
+        "the stated path, which starts from the caller's own value",
+    )
+    weather_source: Literal["station", "archive"] | None = Field(
+        default=None,
+        description="Which source forced the modelled run — `station` means the site's "
+        "own instruments; null on the stated path, which fetches nothing",
+    )
+    window_start: str | None = Field(
+        default=None, description="First day of the simulated window (modelled runs only)"
+    )
+    window_end: str | None = Field(
+        default=None, description="Last day of the simulated window (modelled runs only)"
+    )
+
+
 class GreenRoofBalanceResult(BaseModel):
     """Result of :func:`predict_green_roof_water_balance_tool`."""
 

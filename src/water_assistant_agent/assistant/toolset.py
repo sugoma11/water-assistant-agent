@@ -17,8 +17,8 @@ being ignored: a silently dropped component is scored as if it had been applied,
 which is the failure ``decisions.md`` § The optimizer entry point and the
 candidate surface exists to prevent.
 
-Three tools today. The card, irrigation and plot tools join this list in P3–P5,
-and the names below are what the catalog's trajectory expectations key on.
+Four tools today. The card and plot tools join this list in P4 and P5, and the
+names below are what the catalog's trajectory expectations key on.
 """
 
 from collections.abc import Mapping
@@ -34,6 +34,7 @@ from water_assistant_agent.assistant.agents.text_to_sql.agent import (
 )
 from water_assistant_agent.assistant.context import ScenarioContext
 from water_assistant_agent.assistant.tools.gr2l import make_green_roof_balance_tool
+from water_assistant_agent.assistant.tools.irrigation import make_irrigation_tool
 from water_assistant_agent.assistant.tools.site import site_now
 from water_assistant_agent.assistant.tools.warehouse import SETTINGS_EXECUTOR
 from water_assistant_agent.assistant.tools.weather import make_weather_forecast_tool
@@ -44,8 +45,14 @@ logger = structlog.get_logger(__name__)
 TEXT_TO_SQL_TOOL = "text_to_sql_agent"
 GREEN_ROOF_TOOL = "predict_green_roof_water_balance_tool"
 WEATHER_TOOL = "get_weather_forecast_tool"
+IRRIGATION_TOOL = "calc_irrigation"
 
-TOOL_NAMES: tuple[str, ...] = (TEXT_TO_SQL_TOOL, GREEN_ROOF_TOOL, WEATHER_TOOL)
+TOOL_NAMES: tuple[str, ...] = (
+    TEXT_TO_SQL_TOOL,
+    GREEN_ROOF_TOOL,
+    WEATHER_TOOL,
+    IRRIGATION_TOOL,
+)
 """The addressable tools, in the order the root agent declares them.
 
 Declaration order is part of the prompt the model sees, so it is fixed here
@@ -69,7 +76,7 @@ def build_toolset(
 
     Returns:
         The tool list, in :data:`TOOL_NAMES` order: the sub-agent wrapped in
-        :class:`TextToSqlAgentTool`, then the two function tools.
+        :class:`TextToSqlAgentTool`, then the function tools.
 
     Raises:
         ValueError: *docstrings* names something that is not a tool.
@@ -90,8 +97,13 @@ def build_toolset(
     )
     green_roof_tool = make_green_roof_balance_tool(ctx)
     weather_tool = make_weather_forecast_tool(ctx)
+    irrigation_tool = make_irrigation_tool(ctx)
 
-    for name, tool in ((GREEN_ROOF_TOOL, green_roof_tool), (WEATHER_TOOL, weather_tool)):
+    for name, tool in (
+        (GREEN_ROOF_TOOL, green_roof_tool),
+        (WEATHER_TOOL, weather_tool),
+        (IRRIGATION_TOOL, irrigation_tool),
+    ):
         text = texts.get(name)
         if text is not None:
             # Safe because the callable is this context's own closure, freshly
@@ -99,7 +111,7 @@ def build_toolset(
             tool.__doc__ = text
 
     logger.debug("Built toolset", tools=TOOL_NAMES, overridden=sorted(texts))
-    return [TextToSqlAgentTool(sub_agent), green_roof_tool, weather_tool]
+    return [TextToSqlAgentTool(sub_agent), green_roof_tool, weather_tool, irrigation_tool]
 
 
 class _ProductionContextHolder:

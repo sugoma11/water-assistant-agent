@@ -1743,11 +1743,46 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   than a conversion of its own.
   `uv run ruff check .` and `uv run pytest` clean — 382 passed, same 15
   pre-existing findings.
-- [ ] T066 `calc_irrigation` ADK tool and factory: self-contained by default with
+- [x] T066 `calc_irrigation` ADK tool and factory: self-contained by default with
   its own seed via `swc` and forcing via `ctx.weather`; supplying soil moisture,
   max temperature and forecast rain makes the call pure — no DB, no weather, no
   simulation. Gravel, wetland and seedless windows → `not_available`; three
   outcomes with `error_type`. → T063, T029, T043
+  Done, `tools/irrigation.py` + `make_irrigation_tool(ctx)`, wired into
+  `build_toolset` as the fourth tool. Three bindings read per call — `ctx.as_of`
+  for the day, `ctx.weather` for the forcing, `ctx.db` for the seed — and no
+  service behind any of it: no cache entry, no canary, and the only `upstream`
+  sites are the weather fetch and the database.
+  **The window takes no date arguments and is the refill horizon from today.**
+  §3.5's signature has none, and it should not: this tool answers "should we
+  water it now?", so the window is 7 daily rows from `ctx.as_of` — exactly
+  `horizon_rows(REFILL_HORIZON_HOURS, step_hours=24)`, so the rule's own constant
+  sizes the fetch rather than a literal week.
+  **All three stated values or none.** A partly stated call is an
+  `invalid_argument` naming what is missing, because the two paths differ in more
+  than provenance: the modelled one spends part of the forecast rain on
+  evaporation before the roof fills and the stated one takes the rain at face
+  value, so a half-and-half call would produce a number no disclosure could
+  describe. The stated branch is entered on all three being present, which also
+  narrows them to `float` before either helper sees them.
+  **Same scope, different sentence.** Membership is `NON_MODELLABLE_ROOFS` — one
+  set for both water-balance tools — and the roof's identity comes from
+  `roofs.resolve_roof`, so there is no third list here; the *wording* is this
+  rule's own. GR2L declines the wetland because ponded storage has no
+  water-content contract, and the rule declines it because it has no soil store
+  to read a wilting point against, which is the answer a researcher asking about
+  irrigation needs.
+  **Millimetres stay internal.** The payload's `min_swc_pct` comes back through
+  `Regime.theta_pct_from_store`, and the daily heat test reads `tx` — a measured
+  daily maximum, the stated deviation from the site's hourly mean
+  (`irrigation_tool.md` § Horizons and step).
+  Smoke-run against the pinned database at `as_of` 2026-04-20: the seed reads
+  29.77 %θ, above the deployed flat 22 %θ capacity, so the store caps on the seed
+  step and the *seed-day outflow artifact does not set* `will_reach_capacity` —
+  the refill window's offset doing exactly what it exists for. Seeds above the
+  deployed capacity are common in this record and T067's table will show it.
+  `uv run ruff check .` and `uv run pytest` clean — 382 passed, same 15
+  pre-existing findings.
 - [ ] T067 Decision-diff harness: replay a historical window through **both** unit
   regimes with the same Python ET0, so unit handling is the only variable, and emit
   a markdown table of every date and roof where the irrigate decision flips, with

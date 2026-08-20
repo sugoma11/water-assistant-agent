@@ -53,12 +53,19 @@ class DailyWeatherRow(BaseModel):
 
 
 class WeatherResult(BaseModel):
-    """Daily weather over one absolute window, from whichever source served it."""
+    """Daily weather over one absolute window, from whichever source served it.
+
+    Carries **no ``elevation``**: a weather source cannot know the surveyed height
+    of a roof, only the height of whatever cell or mast it answered from, and the
+    two differ by tens of metres in a city. Elevation is a site fact — the tool
+    wrapper composes ``site.py``'s own value into its agent-facing payload, and
+    GR2L's ``hoehe_nn`` comes from the same place through its own wrapper
+    (``agent_architecture.md`` §3.3).
+    """
 
     status: Literal["success"] = "success"
     latitude: float
     longitude: float
-    elevation: float = Field(description="Site elevation, m — use as GR2L hoehe_nn")
     timezone: str
     source: Literal["station", "archive"] = Field(
         description="Which source served the whole window — the site's own station, "

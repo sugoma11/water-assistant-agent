@@ -167,14 +167,21 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
                     "Please try a different date window."
                 )
             ).model_dump()
-        # Report the site's own coordinates/height rather than Open-Meteo's grid cell.
-        return result.model_copy(
-            update={
+        # The site's own coordinates and surveyed height, not the source's. Only
+        # `elevation` is *composed* here rather than overwritten: `WeatherResult`
+        # does not carry one, because no weather source can know the height of a
+        # roof — Open-Meteo reports its ~1 km cell and the station its mast. GR2L
+        # takes `hoehe_nn` from the same `site.py` through its own wrapper, so the
+        # two never disagree (`agent_architecture.md` §3.3).
+        payload = result.model_dump()
+        payload.update(
+            {
                 "latitude": SITE_LATITUDE,
                 "longitude": SITE_LONGITUDE,
                 "elevation": SITE_ELEVATION_M,
             }
-        ).model_dump()
+        )
+        return payload
 
     # ADK reads `__name__`; the qualname is reset so a `<locals>`-qualified name
     # never surfaces in logs or reprs (as in ``warehouse.make_query_database_tool``).

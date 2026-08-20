@@ -119,7 +119,6 @@ class RecordingWeatherClient:
         return WeatherResult(
             latitude=51.353484,
             longitude=12.432152,
-            elevation=142.0,
             timezone="Europe/Berlin",
             source="archive",
             data=[

@@ -32,7 +32,6 @@ from water_assistant_agent.assistant.cache import ResponseCache
 from water_assistant_agent.assistant.ports import ReadOnlyWarehouseQuery
 from water_assistant_agent.assistant.tools.schemas import DailyWeatherRow, WeatherResult
 from water_assistant_agent.assistant.tools.site import (
-    SITE_ELEVATION_M,
     SITE_LATITUDE,
     SITE_LONGITUDE,
     SITE_TIMEZONE,
@@ -358,10 +357,12 @@ async def fetch_daily_weather(
     payload = response.json()
 
     rows = _transpose(payload.get("daily", {}))
+    # Open-Meteo's own `elevation` is deliberately dropped rather than carried:
+    # it is the height of a ~1 km model cell, and the surveyed roof height is
+    # `site.py`'s to state (`agent_architecture.md` §3.3).
     return WeatherResult(
         latitude=payload.get("latitude", latitude),
         longitude=payload.get("longitude", longitude),
-        elevation=payload.get("elevation", 0.0),
         timezone=payload.get("timezone", "auto"),
         source=ARCHIVE_SOURCE,
         data=rows,
@@ -496,7 +497,6 @@ class CompositeWeatherClient:
             return WeatherResult(
                 latitude=SITE_LATITUDE,
                 longitude=SITE_LONGITUDE,
-                elevation=SITE_ELEVATION_M,
                 timezone=SITE_TIMEZONE,
                 source=STATION_SOURCE,
                 data=rows,

@@ -36,6 +36,11 @@ Three rules make a packet fit:
 3. **Write findings back as you go** — measurements into `findings.md`, decisions
    into `decisions.md`, consequences into `plan.md`. Anything re-derived in a
    later session is a session half spent.
+4. **A packet that changes behaviour syncs its own tool spec, inside the packet**
+   — T056, T057, T071. The obligation used to be one standing task and it did not
+   fire: P2a shipped the station source while `weather_tool.md` still called it
+   planned. An obligation attached to no boundary is deferred by default, which is
+   the same reason T035 became three tasks.
 
 | Packet | Tasks | Sections to read | Exit |
 |---|---|---|---|
@@ -43,16 +48,16 @@ Three rules make a packet fit:
 | **P1a** context, cache, clock | T020–T023, T031, T035a | arch §4, §5 (as-of views, response cache); `decisions.md § The construction seam`, `§ The response cache`, `§ The as-of cut`, `§ Window resolution and the scenario clock`; `findings.md § Codebase seams` | as-of bound on all five tables; the cut identical under two host `TZ`s; cache round-trip, canary divergence, unfillable miss |
 | **P1b** DB seams, frozen sub-agent | T024–T028, T035b | arch §3.1, §5 (generated-SQL bullet); `decisions.md § The construction seam`; `findings.md § Codebase seams` (executor injectability, `AgentTool` name) | two contexts' sub-agents run one query concurrently, each on its own bound; the `CURRENT_DATE` rewrite pinned |
 | **P1c** factories, pins, smoke | T029, T030, T032–T034, T035c, T036 | arch §2, §5's pin list; `decisions.md § Model pinning`, `§ Replication and the LLM cache` | independent toolsets for two `as_of` values; `just pins` verifies; the chat UI unchanged |
-| **P2a** weather: window, horizon, sources | T040–T045, T055 | arch §3.3; `weather_tool.md § Station source` + the two unit conversions; `decisions.md § Weather sources`, `§ Typed abstention`, `§ The day boundary`; `findings.md § Weather source measurements`, `§ Data record` | station derivation field by field; midnight-straddling rain in the right Berlin day; routing at both record edges; a station case in replay with **zero** cache entries and zero live calls |
-| **P2b** GR2L: seed, counterfactuals, scope, taxonomy | T046–T054, and **T115 pulled forward** | arch §3.4 + §3's preamble; `gr2l_tool.md`; `decisions.md § GR2L argument surface`, `§ Bounded series`, `§ Tool errors and harness exclusion`; `findings.md § Data record` (QWetland) | T054's list green; `roof_type` pinned as `str`; a model case in replay issues no live call; the GR2L canary committed |
+| **P2a** weather: window, horizon, sources | T040–T045, T055, T056 | arch §3.3; `weather_tool.md § Station source` + the two unit conversions; `decisions.md § Weather sources`, `§ Typed abstention`, `§ The day boundary`; `findings.md § Weather source measurements`, `§ Data record` | station derivation field by field; midnight-straddling rain in the right Berlin day; routing at both record edges; a station case in replay with **zero** cache entries and zero live calls |
+| **P2b** GR2L: seed, counterfactuals, scope, taxonomy | T046–T054, T057, and **T115 pulled forward** | arch §3.4 + §3's preamble; `gr2l_tool.md`; `decisions.md § GR2L argument surface`, `§ Bounded series`, `§ Tool errors and harness exclusion`; `findings.md § Data record` (QWetland) | T054's list green; `roof_type` pinned as `str`; a model case in replay issues no live call; the GR2L canary committed |
 | **P3a** roof table, ET0, constants | T060–T062 | arch §1 principle 4, §3.5; `irrigation_tool.md § Units`, `§ Which extensive roof is which`; `findings.md § Not every roof is instrumented`, `§ The lysimeter collection area` | one roof table feeds `swc` and the presets with no value changes |
-| **P3b** bucket, faithfulness, unit fix, tool | T063–T067, T070 | `irrigation_tool.md` in full; `decisions.md § The irrigation calculator`, `§ No fitted correction between the instrument and the oracle` | the port reproduces the deployed controller **before** the unit fix; the diff list exists |
+| **P3b** bucket, faithfulness, unit fix, tool | T063–T067, T070, T071 | `irrigation_tool.md` in full; `decisions.md § The irrigation calculator`, `§ No fitted correction between the instrument and the oracle` | the port reproduces the deployed controller **before** the unit fix; the diff list exists |
 | **P4** cards | T068, T069, T080–T084 | arch §3.2; `decisions.md § Retrieval` | a lookup case in replay with zero cache entries and zero live calls; every drift test green |
 | **P5** plotting | T090–T097, T099 | arch §3.6; `decisions.md § Plotting`, `§ Bounded series` | a `model` + `weather` + `measured` plot issues no live call in replay |
 | **P5f** frontend render | T098 | the existing tool-result component; arch §3.6's headless paragraph | the chat renders a plot from the stashed payload |
 | **P6a** rollout, contract | T100, T101, T104 | arch §2 (contract), §6, §7's exclusion paragraph; `decisions.md § The answer contract`, `§ Tool errors and harness exclusion` | one case runs end to end; an injected `upstream` error marks `harness_error` where an `invalid_argument` does not; `parse_failure` reported apart from a wrong answer |
 | **P6b** scoring | T102 | arch §7 in full, §6.1's `expectations` fields; `decisions.md § Trajectory scoring and routing probes`, `§ Plotting` (skip), `§ Retrieval` (card recall) | four metrics over fixture results, each with its edge case: unit normalization, binary trajectory, skip **and** coverage on both users, false abstention kept separate |
-| **P6c** pre-freeze text, pilot oracles | T103, T105, T106, T011 | arch §3.1; `questions.md` §1.6 and the T01/T07/T09 entries | the semantic layer carries the area *value* and the alias map; three oracles reproduce hand-computed answers |
+| **P6c** pre-freeze text, pilot oracles | T103, T105, T106, T011 | arch §3.1; `questions.md` §1.6 and the T01/T07/T09 entries; the three tool specs | the semantic layer carries the area *value* and the alias map; three oracles reproduce hand-computed answers; T011 finds no tool spec contradicting the code |
 | **P6d** pilot and freeze | T107 | — | three repeats on T01/T07/T09, paired; the freeze recorded |
 | **P7a1** oracles, measured families | T110 (A, B, C, H) | `questions.md` §2 those families; arch §3.2, §3.3, §3.6 | each oracle reproduces a hand-checked answer and stamps `expectations.pins` |
 | **P7a2** oracles, model families | T110 (D, E, F, G, I) | `questions.md` §2 those families; arch §3.4, §3.5; `decisions.md § The irrigation calculator` | same, and every oracle imports the very function its tool calls |
@@ -218,23 +223,29 @@ against a document that still contradicts itself.
   deliverable and the abstention alike. One constraint is left to the generator
   because a schema cannot compare sibling arrays: a gold tool may not also be a
   must-not.
-- [ ] T011 Standing task, closed at the freeze gate: keep `gr2l_tool.md`,
-  `weather_tool.md` and `irrigation_tool.md` in step with P2 and P3 as behaviour
-  lands — the seed rule, typed outcomes, window resolution, the series cap, the
-  station derivation, the wetland's scope change. These specs are accurate today
-  and must drift neither ahead of nor behind the code.
-  **Open by design — it closes at the freeze gate, not in P0.** Phase 0 changed no
-  tool behaviour, so the three specs needed no edit here; their standing state is
-  that the wetland's scope change is stated *ahead* of the code, which plan §2.4
-  makes deliberate (the code follows in T051) rather than drift. Checked at the
-  P0 exit: every markdown link in the five specs and the three tool specs
-  resolves, and every `decisions.md § …` citation names a heading that exists.
+- [ ] T011 **Assert at the freeze gate** (packet P6c) that no tool spec
+  contradicts the code: read `gr2l_tool.md`, `weather_tool.md` and
+  `irrigation_tool.md` against the built behaviour one final time and record the
+  result. This is a **check, not a sync** — the syncing itself belongs to the
+  packet that changes the behaviour, and is T056, T057 and T071. A tool spec is
+  frozen text after T107 in the same sense the sub-agent's prompt is, so this is
+  the last moment a contradiction can be repaired rather than disclosed. → T056,
+  T057, T071
+  **Was a standing task; restated after P2a.** The standing form did not fire:
+  P2a built, tested and committed the station source while `weather_tool.md` went
+  on saying "Station source (planned)", which is the failure mode T035's split
+  was meant to prevent — an obligation with no packet boundary attached is an
+  obligation that gets deferred. Its P0 record stands: Phase 0 changed no tool
+  behaviour, the wetland's scope is stated ahead of the code by design (plan
+  §2.4, code follows in T051), and at the P0 exit every markdown link in the five
+  specs and the three tool specs resolved with every `decisions.md § …` citation
+  naming a heading that exists.
 
 **Exit — met.** Every cross-document reference resolves (links and
 `decisions.md § …` citations swept mechanically), and `questions.md` §4 is empty:
 its six items are settled and recorded in the sections they govern, with the one
-residual filed as an accepted risk in `decisions.md`. T011 stays open as the
-standing task it is defined to be.
+residual filed as an accepted risk in `decisions.md`. T011 stays open — it is now
+the freeze-gate check rather than the standing task it was written as.
 
 ---
 
@@ -1034,13 +1045,36 @@ process and neither sees the other's data or clock.
   is outside this packet's edit set.
   `uv run ruff check .` and `uv run pytest` clean — 142 passed, same 15
   pre-existing findings; `just pins` unmoved.
-- [ ] T046 Remove `WeatherResult.elevation` from `schemas.py` — the client cannot
+- [x] T046 Remove `WeatherResult.elevation` from `schemas.py` — the client cannot
   know the surveyed height. The weather wrapper composes the site's own
   `latitude` / `longitude` / `elevation` into its agent-facing payload; consumers
   needing `hoehe_nn` take it from `site.py` explicitly. **Lands in packet P2b,
   not P2a**, though it is a weather change: `schemas.py` is otherwise T052's
   file, and one packet per file is what keeps the two halves of P2 sequential
   rather than conflicting. → T043
+  Done. The field is gone from `WeatherResult`, and with it both places that
+  filled it: `fetch_daily_weather` no longer reads Open-Meteo's `elevation` key
+  at all, and the station half no longer restates `SITE_ELEVATION_M` (the import
+  left `weather_client.py` with it). Neither *knew* the surveyed height — one
+  reported a ~1 km cell, the other a value it had copied from `site.py` — so the
+  removal takes out a field that was a guess on one path and a duplicate on the
+  other.
+  **The wrapper composes rather than overrides.** `weather.py` used
+  `model_copy(update=…)`, which needs the field to exist to overwrite it; it now
+  builds the payload with `model_dump()` and adds `elevation` beside the two
+  coordinates it still overrides. The agent-facing shape is byte-identical to
+  before — same three keys, same values — which is what keeps this a schema
+  change and not a contract change.
+  `GreenRoofBalanceResult` needed nothing: `gr2l.py` already took `hoehe_nn`
+  from `site.py` directly (`resolve_roof_parameters(..., hoehe_nn=SITE_ELEVATION_M)`)
+  and never read the weather result's copy, so "consumers take it from `site.py`
+  explicitly" was already true of the only consumer there was.
+  Three test doubles dropped the field from their `WeatherResult(...)` calls —
+  the two `SpyArchive`s and `RecordingWeatherClient`. That they had to is the
+  useful part: pydantic rejects the unknown keyword, so nothing can keep
+  constructing a `WeatherResult` with an elevation it invented.
+  `uv run ruff check .` and `uv run pytest` clean — 171 passed, same 15
+  pre-existing findings; `just pins` unmoved at 8 pinned, 8 unpinned, 0 moved.
 - [ ] T047 Seed rule `seed_at = min(window_start, as_of)` in
   `swc.latest_measured_swc`, with staleness flagging beyond 7 days and the
   never-substitute-a-default rule (`not_available`, never a generic value). Every
@@ -1136,8 +1170,21 @@ process and neither sees the other's data or clock.
   `uv run ruff check .` and `uv run pytest` clean — 171 passed, same 15
   pre-existing findings; `just pins` unmoved at 8 pinned, 8 unpinned, 0 moved.
 
-**Exit:** every §3.3 and §3.4 outcome is reachable and tested, and no wrapper
-reads a wall clock.
+- [ ] T056 **Owed by P2a.** Sync `weather_tool.md` to the weather behaviour that
+  landed: drop "(planned)" from the station-source heading and the banner, state
+  the **two** sources and that resolution is code's and never the agent's, the
+  16-day horizon as the tool's single typed scope limit, the retired Forecast
+  backend and its constant, and the derivation as built rather than as designed.
+  The file already carries uncommitted D-number removals; finish that pass here
+  rather than beside it. → T042, T043, T045
+- [ ] T057 Sync `gr2l_tool.md` to what P2b lands: the wetland in
+  `NON_MODELLABLE_ROOFS` and out of layer-1 scope, the `min(window_start, as_of)`
+  seed rule with its staleness flag, `forcings` and `evaluate_against_measured`,
+  the 31-day series cap, and the `invalid_argument` / `upstream` split. Its
+  pending working-tree edits belong to this pass too. → T051, T052, T054
+
+**Exit:** every §3.3 and §3.4 outcome is reachable and tested, no wrapper reads a
+wall clock, and neither weather nor GR2L spec contradicts the code.
 
 ---
 
@@ -1196,8 +1243,14 @@ reads a wall clock.
   conversion round-trips; and an irrigation case completing in replay with zero
   cache entries and zero live calls. → T066
 
-**Exit:** the port reproduces the deployed controller before the unit fix, and
-the diff list exists.
+- [ ] T071 Sync `irrigation_tool.md` to what P3 lands: the millimetre balance and
+  what the `100/SH_mm` rescaling moves, the decision-diff list as the disclosure
+  it is, the reason-code ladder as implemented, and the R endpoint recorded as a
+  deliverable **outside** this testbed rather than as pending work — its pending
+  working-tree edits belong to this pass. → T065, T066, T067
+
+**Exit:** the port reproduces the deployed controller before the unit fix, the
+diff list exists, and the irrigation spec contradicts nothing in the code.
 
 ---
 
@@ -1425,15 +1478,15 @@ the diff list exists.
 
 ## Summary
 
-**98 tasks** across nine phases, 15 of them parallelizable, executed as **23
+**101 tasks** across nine phases, 15 of them parallelizable, executed as **23
 packets** — one session each, mapped above.
 
 | Phase | Tasks | Parallelizable | Packets | Gates |
 |---|---|---|---|---|
 | P0 specification reconciliation | 11 | 6 | 1 | T010 blocks every ground-truth writer |
 | P1 injection seam | 19 | 4 | 3 | blocks P2–P8 entirely |
-| P2 tool completeness | 16 | 2 | 2 | blocks P5, P7 |
-| P3 rules | 11 | 2 | 2 | blocks P4 |
+| P2 tool completeness | 18 | 2 | 2 | blocks P5, P7 |
+| P3 rules | 12 | 2 | 2 | blocks P4 |
 | P4 cards | 5 | — | 1 | — |
 | P5 plotting | 10 | 1 | 2 | — |
 | P6 harness and pilot | 8 | — | 4 | **T107 freezes the testbed** |

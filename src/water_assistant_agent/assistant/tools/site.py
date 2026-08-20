@@ -16,11 +16,11 @@ use, so "today" means today at the site — not on whatever the server's clock i
 set to. Production's "now" goes through :func:`site_now`: the date the agent is
 told (:mod:`..prompts.temporal`) and the date each tool wrapper resolves its
 window against (:func:`..tools.weather_client.resolve_window`) must be the same
-one, or a window the agent treats as in-range can land on the wrong backend. The
-weather client itself takes no clock of its own — window resolution and backend
-selection both take the caller's already-resolved date as an explicit argument,
-so the same code path serves production's site clock and a harness case's frozen
-``as_of`` alike.
+one, or the agent reasons about a different day than the tools answer for. The
+weather client itself takes no clock of its own at all — window resolution takes
+the caller's already-resolved date as an explicit argument, and the fetch takes
+no date beyond the window, so the same code path serves production's site clock
+and a harness case's frozen ``as_of`` alike.
 """
 
 from datetime import datetime

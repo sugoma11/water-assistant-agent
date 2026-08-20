@@ -44,15 +44,21 @@ from water_assistant_agent.assistant.tools.weather_station import (
 
 logger = structlog.get_logger(__name__)
 
-FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 
-# The Forecast backend reaches ~92 days into the past via ``past_days``; older
-# windows must use the Archive backend.
-_FORECAST_PAST_LIMIT_DAYS = 92
+ARCHIVE_SOURCE = "archive"
+"""The provenance the Open-Meteo half stamps. The only Open-Meteo backend in use.
 
-# Open-Meteo's default when a Forecast request names no window at all; kept so a
-# bare call still means "the coming week" after resolution.
+Open-Meteo's live Forecast endpoint is **retired here, not merely unused**: it
+refuses a window as old as a case's ``as_of`` outright, it disagrees materially
+with Archive on the same past day (2.50 mm vs 0.00 mm of rain at this site), and
+with the station serving every window the record covers there is nothing left
+for it to answer that Archive cannot (``findings.md`` § Weather source
+measurements, ``decisions.md`` § Weather sources).
+"""
+
+# Open-Meteo's default when a request names no window at all; kept so a bare call
+# still means "the coming week" after resolution.
 _DEFAULT_FORECAST_DAYS = 7
 
 FORECAST_HORIZON_DAYS = 16
@@ -100,10 +106,9 @@ class WeatherFetchError(RuntimeError):
 class OpenMeteoError(WeatherFetchError):
     """Open-Meteo rejected the request; ``reason`` is its own explanation."""
 
-    def __init__(self, reason: str, *, backend: str) -> None:
-        super().__init__(f"Open-Meteo ({backend}) rejected the request: {reason}")
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"Open-Meteo rejected the request: {reason}")
         self.reason = reason
-        self.backend = backend
 
 
 class IncompleteWeatherError(WeatherFetchError):
@@ -243,21 +248,7 @@ def beyond_horizon(end_date: str, as_of: date) -> bool:
     return date.fromisoformat(end_date) > as_of + timedelta(days=FORECAST_HORIZON_DAYS)
 
 
-def _choose_backend(start_date: str | None, today: date) -> str:
-    """Pick the Archive backend for windows older than the Forecast reach.
-
-    The cutoff is measured from *today*, the caller's own resolved date — never
-    read from the wall clock here — so backend selection and window resolution
-    always agree on what day it is.
-    """
-    if start_date is not None:
-        cutoff = today - timedelta(days=_FORECAST_PAST_LIMIT_DAYS)
-        if date.fromisoformat(start_date) < cutoff:
-            return "archive"
-    return "forecast"
-
-
-def _transpose(daily: dict[str, list], backend: str) -> list[DailyWeatherRow]:
+def _transpose(daily: dict[str, list]) -> list[DailyWeatherRow]:
     """Turn Open-Meteo's parallel arrays into GR2L-ready daily rows."""
     times = daily.get("time", [])
     rows: list[DailyWeatherRow] = []
@@ -274,7 +265,7 @@ def _transpose(daily: dict[str, list], backend: str) -> list[DailyWeatherRow]:
         missing = [name for name, val in values.items() if val is None]
         if missing:
             raise IncompleteWeatherError(
-                f"Open-Meteo ({backend}) returned no data for {day}: "
+                f"Open-Meteo returned no data for {day}: "
                 f"missing {', '.join(missing)}. Narrow the date window."
             )
         rows.append(
@@ -292,7 +283,7 @@ def _transpose(daily: dict[str, list], backend: str) -> list[DailyWeatherRow]:
     return rows
 
 
-def _upstream_error(response: httpx.Response, backend: str) -> OpenMeteoError:
+def _upstream_error(response: httpx.Response) -> OpenMeteoError:
     """Turn a rejected response into an error carrying Open-Meteo's own ``reason``.
 
     Open-Meteo answers a bad request with ``{"error": true, "reason": "..."}``, which
@@ -306,7 +297,7 @@ def _upstream_error(response: httpx.Response, backend: str) -> OpenMeteoError:
         body = None
     if isinstance(body, dict):
         reason = body.get("reason")
-    return OpenMeteoError(reason or f"HTTP {response.status_code}", backend=backend)
+    return OpenMeteoError(reason or f"HTTP {response.status_code}")
 
 
 def _build_params(latitude: float, longitude: float, start_date: str, end_date: str) -> dict[str, object]:
@@ -332,55 +323,47 @@ async def fetch_daily_weather(
     *,
     start_date: str,
     end_date: str,
-    today: date | None = None,
     client: httpx.AsyncClient | None = None,
-    force_archive: bool = False,
 ) -> WeatherResult:
     """Fetch daily weather for one point over an absolute window, as GR2L-ready rows.
 
+    **One endpoint, no selection.** Archive (ERA5 reanalysis) is the only
+    Open-Meteo backend this deployment uses: with the station serving every
+    window the site's own record covers, nothing is left for the live Forecast
+    endpoint to answer that Archive cannot, and Archive refuses none of it
+    (`decisions.md` § Weather sources). So there is no backend argument, no
+    cutoff, and no date parameter at all — this function no longer needs to know
+    what day it is, which is the strongest form of the wall-clock guarantee
+    ``site.py`` claims for it.
+
     The window is **always explicit**: callers resolve any relative form with
     :func:`resolve_window` first, so no request can inherit Open-Meteo's implicit
-    seven-day forecast tail. Backend is chosen automatically — Archive for windows
-    older than ~92 days, otherwise Forecast — unless *force_archive* selects Archive
-    outright, which :class:`ArchiveWeatherClient` uses to stay wall-clock-free.
+    seven-day forecast tail.
 
-    *today* drives that backend cutoff and carries no wall-clock fallback: it is
-    required whenever *force_archive* is not set, and omitting it fails loudly
-    here rather than silently reading the host's real date
-    (`decisions.md` § Window resolution and the scenario clock). It is unused,
-    and may be omitted, when *force_archive* is set.
-
-    *client* defaults to the module-level singleton when omitted, so existing
-    callers are unaffected; :class:`ArchiveWeatherClient` passes its own owned
-    ``httpx.AsyncClient`` instead of reaching into that shared singleton.
+    *client* defaults to the module-level singleton when omitted;
+    :class:`ArchiveWeatherClient` passes its own owned ``httpx.AsyncClient``
+    instead of reaching into that shared singleton.
 
     Raises:
-        OpenMeteoError: the backend rejected the request (carries its ``reason``).
+        OpenMeteoError: Open-Meteo rejected the request (carries its ``reason``).
         IncompleteWeatherError: a day in the window has no data for some variable.
     """
-    if force_archive:
-        backend = "archive"
-    else:
-        if today is None:
-            raise TypeError("fetch_daily_weather() requires `today` when force_archive is not set.")
-        backend = _choose_backend(start_date, today)
-    url = ARCHIVE_URL if backend == "archive" else FORECAST_URL
     params = _build_params(latitude, longitude, start_date, end_date)
     http_client = client if client is not None else _get_client()
 
-    logger.debug("Fetching Open-Meteo weather", backend=backend, url=url, params=params)
-    response = await http_client.get(url, params=params)
+    logger.debug("Fetching Open-Meteo weather", url=ARCHIVE_URL, params=params)
+    response = await http_client.get(ARCHIVE_URL, params=params)
     if response.is_error:
-        raise _upstream_error(response, backend)
+        raise _upstream_error(response)
     payload = response.json()
 
-    rows = _transpose(payload.get("daily", {}), backend)
+    rows = _transpose(payload.get("daily", {}))
     return WeatherResult(
         latitude=payload.get("latitude", latitude),
         longitude=payload.get("longitude", longitude),
         elevation=payload.get("elevation", 0.0),
         timezone=payload.get("timezone", "auto"),
-        source=backend,
+        source=ARCHIVE_SOURCE,
         data=rows,
     )
 
@@ -405,16 +388,16 @@ class WeatherClient(Protocol):
 class ArchiveWeatherClient:
     """Cached :data:`WeatherClient` implementation over Open-Meteo's Archive backend.
 
-    Always resolves through Archive (ERA5 reanalysis) — deterministic in
-    ``(rows, parameters)`` and therefore the one Open-Meteo path safe to cache — and
-    never touches the wall clock in doing so. Owns one ``httpx.AsyncClient`` for its
-    own lifetime instead of reaching into :func:`fetch_daily_weather`'s module-level
-    singleton, the same construction-seam move
+    Archive (ERA5 reanalysis) is deterministic in its window and therefore the one
+    Open-Meteo path worth caching; since T045 it is also the only one there is, so
+    this client selects nothing and reads no clock. Owns one ``httpx.AsyncClient``
+    for its own lifetime instead of reaching into :func:`fetch_daily_weather`'s
+    module-level singleton, the same construction-seam move
     :mod:`agents.text_to_sql.executor`-style factories make for the database
     (`decisions.md` § The construction seam).
 
     A hit returns straight from *cache*, issuing no request at all. A miss fetches
-    live via :func:`fetch_daily_weather` (``force_archive=True``) and records it,
+    live via :func:`fetch_daily_weather` and records it,
     keyed on exactly the query parameters sent — see
     ``decisions.md`` § The response cache. No canary is required here: unlike GR2L,
     Archive's cache is load-bearing only for cost and speed, and carries no
@@ -455,7 +438,6 @@ class ArchiveWeatherClient:
                 start_date=start_date,
                 end_date=end_date,
                 client=self._http_client,
-                force_archive=True,
             )
             return result.model_dump()
 

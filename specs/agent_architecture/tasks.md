@@ -1004,9 +1004,36 @@ process and neither sees the other's data or clock.
   0 moved.
   `uv run ruff check .` and `uv run pytest` clean — 142 passed, same 15
   pre-existing findings. The replay assertion the row implies is T055's.
-- [ ] T045 [P] Delete the Forecast backend and `_FORECAST_PAST_LIMIT_DAYS`: with
+- [x] T045 [P] Delete the Forecast backend and `_FORECAST_PAST_LIMIT_DAYS`: with
   two sources chosen from the window, the third backend and its wall-clock cutoff
   have no caller. → T043
+  Done. Gone: `FORECAST_URL`, `_FORECAST_PAST_LIMIT_DAYS`, `_choose_backend`, and
+  `fetch_daily_weather`'s `force_archive` flag — the flag existed only to bypass
+  the selector, so deleting the selector deletes its own workaround.
+  **`fetch_daily_weather` lost its `today` parameter outright**, which is the
+  real prize here. T031 could only make that argument conditionally required (a
+  `TypeError` raised when `force_archive` was unset), because `_choose_backend`
+  genuinely needed a date; with one endpoint the function has no use for one, so
+  the wall-clock guarantee stops being a runtime check and becomes a property of
+  the signature. `site.py`'s docstring is updated accordingly: the client "takes
+  no clock of its own at all" now, rather than taking one as an explicit
+  argument.
+  `backend` also stops being threaded through `_transpose`, `_upstream_error`
+  and `OpenMeteoError`, which each carried it only to name which endpoint had
+  failed. `ARCHIVE_SOURCE` replaces the computed value at the one construction
+  site, and `WeatherResult.source`'s literal narrows to
+  `"station" | "archive"` — the pairing T043's rename set up, now that no code
+  path can produce `"forecast"`.
+  `_DEFAULT_FORECAST_DAYS` **stays**: despite the name it is the bare-call window
+  ("the coming week"), a `resolve_window` concern with no connection to the
+  retired endpoint.
+  One stale mention left deliberately: `weather_tool.md` § Notes & limits names
+  `_choose_backend` while explaining that the Forecast backend's 64-day reach is
+  "now moot: the Forecast backend is retired". The sentence is explicitly
+  historical and already states the outcome this task implements, and the file
+  is outside this packet's edit set.
+  `uv run ruff check .` and `uv run pytest` clean — 142 passed, same 15
+  pre-existing findings; `just pins` unmoved.
 - [ ] T046 Remove `WeatherResult.elevation` from `schemas.py` — the client cannot
   know the surveyed height. The weather wrapper composes the site's own
   `latitude` / `longitude` / `elevation` into its agent-facing payload; consumers

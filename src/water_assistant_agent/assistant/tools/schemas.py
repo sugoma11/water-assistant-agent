@@ -60,7 +60,7 @@ class WeatherResult(BaseModel):
     longitude: float
     elevation: float = Field(description="Site elevation, m — use as GR2L hoehe_nn")
     timezone: str
-    source: Literal["station", "forecast", "archive"] = Field(
+    source: Literal["station", "archive"] = Field(
         description="Which source served the whole window — the site's own station, "
         "or the Open-Meteo reanalysis. Chosen in code from the window, never named "
         "by the agent; an answer discloses it whenever it is the station"

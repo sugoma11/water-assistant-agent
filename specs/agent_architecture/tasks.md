@@ -1144,9 +1144,35 @@ process and neither sees the other's data or clock.
   is the one failure mode a sparse overlay can hide.
   `uv run ruff check .` and `uv run pytest` clean — 171 passed, same 15
   pre-existing findings. Tests are T054's.
-- [ ] T049 `evaluate_against_measured=True`: join the predicted `swc_pct` series to
+- [x] T049 `evaluate_against_measured=True`: join the predicted `swc_pct` series to
   the `swc` as-of view and return mean and max |predicted − measured| in %θ over
   the overlap, plus the overlap window. → T024, T047
+  Done. `swc.daily_mean_swc` is the measured series, `_compare_to_measured` the
+  join, `MeasuredComparison` the payload, and `evaluation` a field on
+  `GreenRoofBalanceResult` that is `null` unless the caller asked.
+  **The comparison series is grouped by `site_day_expr`**, the same day boundary
+  the station derivation and every oracle use. Grouping the raw UTC column
+  instead would attribute part of every deviation to the boundary rather than to
+  the model — the same failure `decisions.md` § The day boundary records for
+  rain, arriving here through the join key instead of through a sum.
+  **It reads `ctx.db`, so the comparison is bounded at the same cut as the seed.**
+  A case cannot be scored against readings taken after its own `as_of`; that the
+  join is on the day itself means the overlap is simply whatever both series
+  hold, with no special case for the forecast tail.
+  `_SENSOR_UNRELIABLE_FROM` applies here too: a flat-lined column is not a
+  measurement to score a prediction against, and reusing the seed's own bound
+  keeps one answer to "is this sensor trustworthy on this day".
+  **Zero overlap is an outcome, not a failure.** §3.4's `not_available` triggers
+  are the two roofs and a missing seed, and this is neither — a forecast window
+  simply has nothing measured yet — so the run succeeds and `evaluation` carries
+  `days: 0` with a `reason` instead of statistics. Reporting a deviation of 0.0
+  over an empty overlap is the one answer that would be actively wrong.
+  Verified against a hand computation: a seven-day station window with a
+  deterministic ramped `Ssub` gives `mean 7.75` / `max 12.23` %θ, and the same
+  numbers come out of `statistics.fmean` over `mm_to_theta_pct` applied in
+  Python to the same days.
+  `uv run ruff check .` and `uv run pytest` clean — 171 passed, same 15
+  pre-existing findings. Tests are T054's.
 - [ ] T050 Bounded series in **both** wrappers: cap the daily series at 31 days,
   beyond which return the summary plus weekly aggregates and set a truncation flag.
   An absolute Archive window is otherwise unbounded. → T040

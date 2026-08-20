@@ -31,6 +31,7 @@ from datetime import UTC, date, datetime
 import structlog
 
 from water_assistant_agent.assistant.ports import ReadOnlyWarehouseQuery
+from water_assistant_agent.assistant.tools.site import site_day_expr
 
 logger = structlog.get_logger(__name__)
 
@@ -209,6 +210,51 @@ def latest_measured_swc(
         age_days=age_days,
         seed_at=upper_bound,
     )
+
+
+def daily_mean_swc(
+    executor: ReadOnlyWarehouseQuery,
+    roof_type: str,
+    start_date: date,
+    end_date: date,
+) -> dict[str, float]:
+    """Measured daily mean %θ per **site** day over ``[start_date, end_date]``.
+
+    The comparison series behind ``evaluate_against_measured``: one value per
+    calendar day at :data:`~..tools.site.SITE_TIMEZONE`, keyed by ISO date so it
+    joins a GR2L day row by ``Date`` with no second date vocabulary. The day
+    boundary is :func:`~..tools.site.site_day_expr`'s, the same one the station
+    derivation groups by — a comparison that bucketed sensor readings in UTC
+    while the model ran on Berlin days would attribute part of every deviation to
+    the boundary (``decisions.md`` § The day boundary).
+
+    Days inside a period the sensor is known to have failed are absent rather
+    than compared: the same :data:`_SENSOR_UNRELIABLE_FROM` bound the seed obeys,
+    for the same reason — a flat-lined column is not a measurement to score a
+    prediction against. Missing days are simply absent, so the caller's overlap
+    is whatever both series hold.
+
+    Raises ``ValueError`` on an unmodelled roof type.
+    """
+    column = ROOF_SWC_COLUMNS.get(roof_type)
+    if column is None:
+        valid = ", ".join(sorted(ROOF_SWC_COLUMNS))
+        raise ValueError(f"No soil-moisture column for roof_type {roof_type!r}. Valid: {valid}.")
+
+    day = site_day_expr()
+    conditions = [
+        f'"{column}" IS NOT NULL',
+        f"{day} BETWEEN DATE '{start_date.isoformat()}' AND DATE '{end_date.isoformat()}'",
+    ]
+    unreliable_from = _SENSOR_UNRELIABLE_FROM.get(column)
+    if unreliable_from is not None:
+        conditions.append(f"timestamp < TIMESTAMP '{unreliable_from:%Y-%m-%d} 00:00:00'")
+
+    result = executor.execute_query(
+        f'SELECT {day} AS day, avg("{column}") FROM swc '  # noqa: S608 - column from ROOF_SWC_COLUMNS
+        f"WHERE {' AND '.join(conditions)} GROUP BY 1 ORDER BY 1"
+    )
+    return {measured_day.isoformat(): float(mean) for measured_day, mean in result.rows}
 
 
 def _unavailable_message(

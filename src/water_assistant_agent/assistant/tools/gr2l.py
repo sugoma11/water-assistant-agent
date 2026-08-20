@@ -54,6 +54,7 @@ from water_assistant_agent.assistant.tools.schemas import (
     GreenRoofDay,
     GreenRoofSummary,
     Gr2lResultRow,
+    MeasuredComparison,
     NotAvailableResult,
     RoofParameters,
     SwcSeed,
@@ -66,6 +67,7 @@ from water_assistant_agent.assistant.tools.site import (
 from water_assistant_agent.assistant.tools.swc import (
     MM_ONLY_ROOFS,
     SwcUnavailableError,
+    daily_mean_swc,
     latest_measured_swc,
     mm_to_theta_pct,
     theta_pct_to_mm,
@@ -254,6 +256,40 @@ def _summarize(
     )
 
 
+def _compare_to_measured(
+    days: list[GreenRoofDay],
+    measured: dict[str, float],
+) -> MeasuredComparison:
+    """Deviation statistics over the days both the prediction and the record hold.
+
+    The join is on the day itself, so the overlap is whatever the two series
+    share — a forecast tail simply has no counterpart, and a gap in the record
+    drops that day rather than the window. Deviations are absolute and in %θ, the
+    unit both sides already speak, so nothing is converted to compare them.
+    """
+    overlap = [
+        (row.Date, abs(row.swc_pct - measured[row.Date]))
+        for row in days
+        if row.swc_pct is not None and row.Date in measured
+    ]
+    if not overlap:
+        return MeasuredComparison(
+            days=0,
+            reason=(
+                "The soil-moisture record covers none of the simulated days, so there is "
+                "nothing to compare this run against."
+            ),
+        )
+    deviations = [deviation for _, deviation in overlap]
+    return MeasuredComparison(
+        days=len(overlap),
+        overlap_start=overlap[0][0],
+        overlap_end=overlap[-1][0],
+        mean_abs_deviation_pct=round(sum(deviations) / len(deviations), 2),
+        max_abs_deviation_pct=round(max(deviations), 2),
+    )
+
+
 async def _resolve_seed(
     executor: ReadOnlyWarehouseQuery,
     roof_type: str,
@@ -318,6 +354,7 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
         initial_soil_moisture_pct: float | None = None,
         albedo: float | None = None,
         forcings: dict[str, dict[str, float]] | None = None,
+        evaluate_against_measured: bool = False,
         tool_context: ToolContext | None = None,
     ) -> dict[str, Any]:
         """Predict a green roof's daily water balance (moisture, runoff, ET) over a period.
@@ -386,6 +423,16 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
                 ``tm`` / ``tx`` / ``tn`` (°C), ``rf`` (%), ``w`` (km/h), ``gs``
                 (J/cm²/day) — and every day named must fall inside the window.
                 Say in the answer which values were assumed rather than measured.
+            evaluate_against_measured: Set it to ``True`` when the user asks how
+                well the model matches reality — "how close was the simulation to
+                the sensor?", "did the model get last month right?" — and the
+                result gains an ``evaluation``: the mean and largest daily gap
+                between predicted and measured soil moisture, in the same %θ, over
+                the days both cover. Only past windows have anything to compare
+                against; on a forecast the comparison comes back with ``days: 0``
+                and a reason, which is not a failure. Leave it off otherwise: it
+                costs an extra database read and answers a question about the
+                model rather than about the roof.
 
         Returns:
             dict: on success ``status='success'`` with the resolved ``roof_type``,
@@ -397,7 +444,10 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
             ``seed`` that day 1 started from (its %θ, where it came from, and whether
             the reading was stale — say so in the answer if it was), a ``data`` list
             (one day per row, with ``swc_pct`` and ``Ssub``), and a ``summary``
-            (retention mm/%, driest day, drought flag). When the request is outside
+            (retention mm/%, driest day, drought flag). With
+            ``evaluate_against_measured`` it also carries ``evaluation``: the
+            compared days, the overlap window, and the mean and largest
+            |predicted − measured| soil moisture in %θ. When the request is outside
             what can be modelled — the gravel roof, or a window with no soil-moisture
             record to start from — ``status='not_available'`` with a ``reason`` to
             pass on to the user; that is a scope limit, not a malfunction. On failure
@@ -536,6 +586,29 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
         # Summarized over the rows the model actually ran on: a counterfactual's
         # retention is against its own rain, not against the rain it replaced.
         summary = _summarize(rows, days, parameters)
+
+        evaluation: MeasuredComparison | None = None
+        if evaluate_against_measured:
+            try:
+                # Read through `ctx.db`, so the comparison series is bounded at the
+                # same cut as the seed: a case can never be scored against sensor
+                # readings taken after its own `as_of`.
+                measured = await asyncio.to_thread(
+                    daily_mean_swc,
+                    ctx.db,
+                    roof_type,
+                    date.fromisoformat(days[0].Date),
+                    date.fromisoformat(days[-1].Date),
+                )
+            except Exception:
+                logger.exception("Failed to read the measured soil-moisture series")
+                return ErrorResult(
+                    error_details=(
+                        "Failed to read the roof's measured soil moisture for the comparison."
+                    )
+                ).model_dump()
+            evaluation = _compare_to_measured(days, measured)
+
         return GreenRoofBalanceResult(
             roof_type=roof_type,
             forcings=applied_forcings or None,
@@ -544,6 +617,7 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
             seed=seed,
             data=days,
             summary=summary,
+            evaluation=evaluation,
         ).model_dump()
 
     # ADK reads `__name__`; the qualname is reset so a `<locals>`-qualified name

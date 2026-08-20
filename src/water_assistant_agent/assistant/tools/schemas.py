@@ -192,6 +192,29 @@ class GreenRoofSummary(BaseModel):
     )
 
 
+class MeasuredComparison(BaseModel):
+    """How far the predicted %θ series ran from what the roof's sensor recorded.
+
+    Present only when the caller asked for it. ``days = 0`` is a real outcome
+    rather than a failure — a forecast window has no measured counterpart yet —
+    and carries ``reason`` instead of statistics, so an answer says why the
+    comparison is missing rather than quoting a deviation of zero.
+    """
+
+    days: int = Field(description="Days both series cover")
+    overlap_start: str | None = Field(default=None, description="First compared day")
+    overlap_end: str | None = Field(default=None, description="Last compared day")
+    mean_abs_deviation_pct: float | None = Field(
+        default=None, description="Mean |predicted − measured| over the overlap, %θ"
+    )
+    max_abs_deviation_pct: float | None = Field(
+        default=None, description="Largest single-day |predicted − measured|, %θ"
+    )
+    reason: str | None = Field(
+        default=None, description="Why there is no overlap to compare (only when days is 0)"
+    )
+
+
 class GreenRoofBalanceResult(BaseModel):
     """Result of :func:`predict_green_roof_water_balance_tool`."""
 
@@ -213,3 +236,8 @@ class GreenRoofBalanceResult(BaseModel):
     seed: SwcSeed
     data: list[GreenRoofDay]
     summary: GreenRoofSummary
+    evaluation: MeasuredComparison | None = Field(
+        default=None,
+        description="Deviation from the measured record, present only when the "
+        "caller asked for it with `evaluate_against_measured`",
+    )

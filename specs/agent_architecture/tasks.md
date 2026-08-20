@@ -1449,11 +1449,45 @@ process and neither sees the other's data or clock.
   backend and its constant, and the derivation as built rather than as designed.
   The file already carries uncommitted D-number removals; finish that pass here
   rather than beside it. → T042, T043, T045
-- [ ] T057 Sync `gr2l_tool.md` to what P2b lands: the wetland in
+- [x] T057 Sync `gr2l_tool.md` to what P2b lands: the wetland in
   `NON_MODELLABLE_ROOFS` and out of layer-1 scope, the `min(window_start, as_of)`
   seed rule with its staleness flag, `forcings` and `evaluate_against_measured`,
   the 31-day series cap, and the `invalid_argument` / `upstream` split. Its
   pending working-tree edits belong to this pass too. → T051, T052, T054
+  Done, all five, plus three new sections — "Counterfactual weather", "Comparing
+  a run with the measurement", "The series is bounded" — because each argument
+  needs a place to say *why* it behaves as it does, not just that it exists.
+  The pending working-tree edits (the wetland-scope pass) went in with T051,
+  which is where the behaviour they describe landed; a `git add -A` over the
+  tools directory carried them a commit early. See the repair note below.
+  **The routing paragraph was rewritten even though the row does not name it.**
+  It still described the Open-Meteo Forecast backend and a "🔜 Planned" station
+  source — both of which P2a shipped and retired respectively — and Phase 2's
+  exit is that *neither* weather nor GR2L spec contradicts the code. It now
+  states the two sources, that resolution is code's, that every window has one
+  provenance, and the 16-day horizon as a `not_available`. `weather_tool.md` is
+  T056's and was left alone.
+  Three other things the file claimed that the code no longer does: the tool
+  "calls Open-Meteo via `fetch_daily_weather`" (it goes through `ctx.weather`),
+  the seed is "at or before the day the window opens" (now the `min` rule, with
+  both halves' failure modes written out), and the outcomes list omitted
+  `weather_source`, `forcings`, `truncated`/`weekly` and `evaluation`.
+  The `roof_type`-is-not-a-`Literal` rule is now stated in the file itself, as a
+  warning beside the signature. It was only in the architecture document, and
+  this file is where someone editing the signature would look.
+  `age_days` gets a sentence of its own: it is measured against the window start
+  rather than the seed bound, which is what makes a forecast seeded at today's
+  cut disclose how stale it *will* be. That distinction is invisible from the
+  field name and was the one part of T047 a reader could get backwards.
+  Anchors checked mechanically after the edit: 23 headings, 10 internal links,
+  none dangling.
+  **Repair, recorded here because it crosses tasks.** T051's commit also swept in
+  the unrelated pending edits to `weather_tool.md` (T056's, owed by P2a) and
+  `irrigation_tool.md` (P3's). Both files are restored to their pre-packet state
+  in a follow-up commit and returned to the working tree as the uncommitted edits
+  they were, so each still lands with the task that owns it.
+  `uv run ruff check .` and `uv run pytest` clean — 254 passed, same 15
+  pre-existing findings.
 
 **Exit:** every §3.3 and §3.4 outcome is reachable and tested, no wrapper reads a
 wall clock, and neither weather nor GR2L spec contradicts the code.

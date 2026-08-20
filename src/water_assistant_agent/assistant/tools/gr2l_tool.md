@@ -114,7 +114,7 @@ between the two layers of this document.
 
 | Layer | Who supplies the daily weather rows |
 | ----- | ----------------------------------- |
-| **Agent-facing tool** (`predict_green_roof_water_balance`) | **The tool itself.** It calls Open-Meteo via `weather_client.fetch_daily_weather` at the pinned site coordinates, transposes the response into GR2L rows and applies the two unit conversions, then POSTs. The agent supplies only a date window and a roof type. |
+| **Agent-facing tool** (`predict_green_roof_water_balance`) | **The tool itself.** It resolves the window through `ctx.weather` — the composite that picks the site's own station or Open-Meteo's Archive from the window alone — and POSTs the rows it gets back, already unit-converted. The agent supplies only a date window and a roof type, and the response echoes which source forced the run in `weather_source`. |
 | **HTTP endpoint** (`POST …/predict_gr2l`) | **Its caller** — i.e. the tool above. The endpoint has no weather source of its own; `data[]` is required. |
 
 **Implications for the agent** (this is the layer-1 contract — it is what the
@@ -128,16 +128,20 @@ tool docstring says, and it is the *opposite* of the endpoint's rule):
 - Call the [weather tool](./weather_tool.md) **only** when the user asks about the
   weather *itself* (e.g. "will it rain this week?"), not as a step towards a roof
   simulation.
-- **Past vs. future is resolved from the window, not decided by the agent.**
-  Windows starting more than ~92 days ago go to the Open-Meteo Archive backend;
-  anything more recent (including future days, up to the 16-day forecast horizon)
-  goes to the Forecast backend. The agent just names the dates the question is
-  about. (🔜 Planned, architecture §3.3: windows the site's own station record
-  covers entirely will be forced from the DB instead of Open-Meteo — same
-  `DailyWeatherRow` shape, same units, resolved in code, still no agent-facing
-  source argument. A retrospective run and a forecast run will then be forced by
-  different instruments, and the response will echo which. See
-  [weather tool](./weather_tool.md).)
+- **Which source forces the run is resolved from the window, not decided by the
+  agent.** There are two, and no argument selects them: the site's own **station**
+  record whenever it covers the window entirely, and Open-Meteo's ERA5 **Archive**
+  for everything else, including every window reaching past the case's present.
+  Every window has exactly one provenance — a partly covered window falls to
+  Archive whole rather than being stitched together — and the response says which
+  in `weather_source`. A retrospective run and a forecast run are therefore forced
+  by different instruments, and an answer **discloses the station** when it served
+  (architecture §3.3, [weather tool](./weather_tool.md)).
+- **The window may not reach more than 16 days past today.** GR2L needs a
+  meteorological row for every day it simulates and no source has one beyond the
+  forecast horizon, so a window ending later is `status='not_available'` — the
+  same limit, checked the same way, as the weather tool's. Nothing bounds how far
+  **back** a window may reach.
 
 **Day-to-day state and cold starts.** The only thing GR2L carries between days is
 the roof's **internal water state** (`Ssub`, `Sret`), seeded on day 1 from
@@ -192,8 +196,19 @@ they are fluxes, not states, and have no θ equivalent.
 ## Where day 1's soil moisture comes from
 
 The tool reads it from the roof's own SMT100 sensor: the **latest reading at or
-before the day the window opens** (`swc.latest_measured_swc`, `data/water.duckdb`,
-`swc` table), converted %θ → mm before the request. The agent supplies nothing.
+before `min(window_start, as_of)`** (`swc.latest_measured_swc` /
+`swc.seed_bound`, `data/water.duckdb`, `swc` table), converted %θ → mm before the
+request. The agent supplies nothing.
+
+**Both halves of that bound are load-bearing, and each fails a case the other
+handles.** Seeding at or before the *window start* alone lets a forecast window —
+one that opens in the future — read sensor data recorded after the moment the
+question is being asked from, which for a frozen evaluation case is leakage.
+Seeding at or before *now* alone starts a retrospective run from a reading taken
+months after that window closed. Taking the earlier of the two is the only rule
+that holds for both, and it is applied inside `latest_measured_swc` rather than
+left to the caller's database view, because an oracle may call the same function
+with an unbounded connection.
 
 - **Do not query the database for soil moisture to feed this tool.** It is
   already doing that, against the same table, for exactly the right day.
@@ -201,15 +216,18 @@ before the day the window opens** (`swc.latest_measured_swc`, `data/water.duckdb
   stated or hypothetical starting value ("if the roof started out dry, at 5 %"),
   not to nudge a result.
 - The response echoes what was used in `seed`: `source` (`measured` / `caller`),
-  `swc_pct`, the `substrate_storage_mm` actually sent, `measured_at` and
-  `age_days`.
+  `swc_pct`, the `substrate_storage_mm` actually sent, `measured_at`, `age_days`
+  and `is_stale`.
 
 **Freshness.** Substrate moisture has a memory of days, not months, so a reading
-much older than the window start describes a roof that no longer exists. Beyond
-`swc.STALE_AFTER_DAYS` (7) the seed is flagged `is_stale`; the run still
-proceeds, and **the answer must say what it was seeded from and when**. This is
-not hypothetical: the sensor record currently ends 2026-04-24, so present-day
-forecasts are seeded from stale readings until the record is refreshed.
+much older than the window start describes a roof that no longer exists. `age_days`
+is measured against **the window's start**, not against the bound the reading was
+picked at, precisely so a forecast seeded at today's cut reports how stale it will
+be by the time the window opens. Beyond `swc.STALE_AFTER_DAYS` (7) the seed is
+flagged `is_stale`; the run still proceeds, and **the answer must say what it was
+seeded from and when**. This is not hypothetical: the sensor record currently ends
+2026-04-24, so present-day forecasts are seeded from stale readings until the
+record is refreshed.
 
 **When there is nothing to seed from** — the window opens before the record
 starts, or every candidate reading falls in a period the sensor is known to have
@@ -407,8 +425,17 @@ async def predict_green_roof_water_balance_tool(
     forecast_days: int | None = None,
     initial_soil_moisture_pct: float | None = None,
     albedo: float | None = None,
+    forcings: dict[str, dict[str, float]] | None = None,
+    evaluate_against_measured: bool = False,
 ) -> dict
 ```
+
+> ⚠️ **`roof_type` is a plain `str` and must stay one.** ADK renders a
+> `Literal[...]` into the function declaration as a schema `enum`, which would
+> leave the agent unable to *name* the gravel roof or the wetland — and naming
+> one is how a scope question gets asked at all. Scope is decided in code against
+> `NON_MODELLABLE_ROOFS`, after normalizing the argument once at entry, and a
+> test pins the annotation (architecture §3.4).
 
 | Argument | Required | Meaning |
 | -------- | -------- | ------- |
@@ -417,22 +444,99 @@ async def predict_green_roof_water_balance_tool(
 | `past_days` / `forecast_days` | one of the two pairs | Relative window: 0–92 back, 0–16 ahead. `past_days` is complete past days ending **yesterday** and carries no forecast tail; the two forms are exclusive. Resolved to absolute dates before the weather fetch — see [weather § Relative windows are resolved first](./weather_tool.md#relative-windows-are-resolved-first) |
 | `initial_soil_moisture_pct` | no | Day-1 soil moisture in **%θ**. Omitted → read from the roof's sensor for the window's first day — see "[Where day 1's soil moisture comes from](#where-day-1s-soil-moisture-comes-from)" |
 | `albedo` | no | Override the roof's default albedo, `0.0–1.0`. Omit unless explicitly asked — see "[Overriding `albedo`](#overriding-albedo)" |
+| `forcings` | no | Counterfactual weather: `{field: {day: value}}` in the daily row's **own** field names, e.g. `{"precip": {"2026-07-22": 50.0}}`. Sparse — unnamed days and fields keep what was fetched. Every day named must fall inside the window. See "[Counterfactual weather](#counterfactual-weather)" |
+| `evaluate_against_measured` | no | Compare the predicted `swc_pct` series against the roof's own sensor record and return the deviation. See "[Comparing a run with the measurement](#comparing-a-run-with-the-measurement)" |
 
-Not arguments, deliberately: **weather** (fetched internally), **starting soil
-moisture** (read from the sensor), **latitude/longitude/elevation** (pinned in
-`site.py`), and every other roof parameter (fixed per roof type).
+Not arguments, deliberately: **weather** (fetched internally — `forcings`
+overrides values, it does not supply the series), **starting soil moisture**
+(read from the sensor), **latitude/longitude/elevation** (pinned in `site.py`),
+**which weather source forces the run** (resolved in code from the window), and
+every other roof parameter (fixed per roof type).
 
 Three outcomes:
 
-- `status='success'` — the resolved `roof_type`, the full effective `parameters`
-  (echoing `albedo` and the `theta_01` in mm actually sent), the `seed` day 1
-  started from, `data` (one row per day: the GR2L fields plus `swc_pct`), and a
-  `summary` (`retention_mm`/`retention_pct`, `min_substrate_storage_mm`,
-  `min_swc_pct`, `drought_stress`, `retention_excludes_seed_day_runoff`).
+- `status='success'` — the resolved `roof_type`, the `weather_source` that forced
+  the run (`station` / `archive`), the `forcings` actually applied (`null` when
+  none were), the full effective `parameters` (echoing `albedo` and the
+  `theta_01` in mm actually sent), the `seed` day 1 started from, `data` (one row
+  per day: the GR2L fields plus `swc_pct`), and a `summary` (`retention_mm`/
+  `retention_pct`, `min_substrate_storage_mm`, `min_swc_pct`, `drought_stress`,
+  `retention_excludes_seed_day_runoff`). Past the series cap, `data` is empty,
+  `truncated` is `true` and `weekly` carries the run instead — see
+  "[The series is bounded](#the-series-is-bounded)". With
+  `evaluate_against_measured` it also carries `evaluation`.
 - `status='not_available'` with a `reason` — the request is outside what can be
-  modelled: the gravel roof or the wetland, or a window with no soil-moisture
-  record to start from. Report the scope limit; this is not a fault.
-- `status='error'` with `error_details` — something actually failed.
+  modelled: the gravel roof or the wetland, a window with no soil-moisture record
+  to start from, or a window ending more than 16 days ahead. Report the scope
+  limit; this is not a fault.
+- `status='error'` with `error_details` **and an `error_type`**:
+  - `invalid_argument` — the call itself was wrong, and the message says what
+    would have been valid: an unknown `roof_type`, a malformed window, an
+    `albedo` or `initial_soil_moisture_pct` out of range, a `forcings` naming a
+    field that is not a weather field, a day outside the window, or a
+    non-numeric value. Every one of these is decided **before any I/O**, so a bad
+    argument costs no upstream hop. Correct the arguments and retry.
+  - `upstream` — something the call depended on failed: the weather fetch, the
+    soil-moisture read, the GR2L service, its configuration, or a cache miss
+    replay cannot fill. Nothing the agent can rephrase fixes it; report the
+    system-side problem. The harness excludes these from its aggregates and
+    scores the `invalid_argument` ones (architecture §7).
+
+## Counterfactual weather
+
+`forcings` answers "what if the weather had been different?" — a 50 mm downpour
+tomorrow, a week 5 °C warmer — by **replacing values in the rows the model runs
+on**, before the request. The what-if is therefore computed by GR2L rather than
+estimated from a baseline result afterwards.
+
+```python
+forcings={"precip": {"2026-07-22": 50.0}, "tm": {"2026-07-22": 24.0}}
+```
+
+- **Keyed by the daily row's own field names**: `precip` (mm), `tm` / `tx` / `tn`
+  (°C), `rf` (%), `w` (km/h), `gs` (J/cm²/day) — the same names `data[]` uses and
+  the weather tool returns, never `precip_mm` or a second vocabulary. One naming
+  means a forcing and the row it replaces never need translating.
+- **Sparse.** A field not named keeps its fetched value on every day; a day not
+  named keeps every field. Only what is written is replaced.
+- **Bounded by the window.** Every day named must fall inside the resolved
+  window; one outside it is an `invalid_argument`, not a silent no-op.
+- **Echoed back** in the response's `forcings`, exactly as applied, so an answer
+  can attribute the assumed values — and so the arguments themselves can be
+  checked without reading the result.
+- The `summary` is computed over the **forced** rows: a counterfactual's
+  retention is measured against its own rain, not against the rain it replaced.
+
+## Comparing a run with the measurement
+
+`evaluate_against_measured=True` joins the predicted `swc_pct` series to the
+roof's own `swc` record and adds an `evaluation`:
+
+| Field | Meaning |
+| ----- | ------- |
+| `days` | Days both series cover |
+| `overlap_start` / `overlap_end` | The compared window |
+| `mean_abs_deviation_pct` | Mean \|predicted − measured\|, **%θ** |
+| `max_abs_deviation_pct` | Largest single-day \|predicted − measured\|, **%θ** |
+| `reason` | Why there is nothing to compare (only when `days` is 0) |
+
+The measured series is the sensor's **daily mean per Europe/Berlin day**, the same
+day boundary the model's rows use, so no part of a deviation comes from the
+grouping. Days inside a period the sensor is known to have failed are left out
+rather than compared. A window with no overlap — a forecast, typically — comes
+back with `days: 0` and a `reason`: that is a success, and quoting a deviation of
+zero for it would be wrong.
+
+## The series is bounded
+
+`data` is capped at **31 days**. Past the cap the response carries `truncated:
+true`, an empty `data`, and `weekly` — consecutive seven-day aggregates (the last
+short, with its own `days`) in the same field names, fluxes accumulated and
+states averaged, plus `min_swc_pct` per week. The `summary` still covers the
+whole run, and so does `evaluation`: **the cap bounds the response, never the
+simulation** — GR2L is still run day by day, because the balance carries state
+from one day to the next. Answer from the summary and the weekly rows rather than
+re-running the window in pieces to get the days back.
 
 ## Endpoint contract
 
@@ -587,6 +691,12 @@ initial stores and computes `ET`; the flux terms are defined from day 2 onward).
 - **Cooling / evaporative service** is tracked by `ET` (actual, not `ET_PM`).
 - The gap between `ET_PM` and `ET` shows how water-limited the roof is: when they
   diverge, evapotranspiration is being throttled by low substrate moisture.
+- **Three things in the response the answer is obliged to pass on**, because each
+  one changes what the number means: `seed.is_stale` (what the run started from
+  and when), a non-default `parameters.albedo` (a non-standard surface was
+  assumed), and a non-null `forcings` (those values were assumed, not measured or
+  forecast). `weather_source == "station"` is disclosed for the same reason —
+  the run was forced by the site's own instruments.
 
 ## Reference implementation
 

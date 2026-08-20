@@ -1112,9 +1112,38 @@ process and neither sees the other's data or clock.
   looking for a reading that does exist.
   `uv run ruff check .` and `uv run pytest` clean — 171 passed, same 15
   pre-existing findings. Tests for both halves are T054's.
-- [ ] T048 `forcings={"precip": {"2026-07-22": 50.0}}` applied to the fetched rows
+- [x] T048 `forcings={"precip": {"2026-07-22": 50.0}}` applied to the fetched rows
   before the GR2L request: sparse, keyed by the row's own field names, validated
   against the window, echoed in the response for argument checking. → T040
+  Done. `forcings: dict[str, dict[str, float]] | None` on the tool,
+  `_normalize_forcings` / `_apply_forcings` beside it, and `forcings` echoed on
+  `GreenRoofBalanceResult`. Since P2a the rows it overlays are the ones
+  `ctx.weather` returned, so a counterfactual is applied to the same station or
+  Archive forcing the standalone weather tool would report for that window.
+  **The vocabulary is derived, not listed.** `FORCEABLE_FIELDS` is
+  `DailyWeatherRow.model_fields` minus `Date`, so the "one vocabulary" the
+  decision record asks for is enforced by construction rather than by a hand-kept
+  list that a field rename could desynchronize silently. All seven value fields
+  are forceable; `Date` is the key a forcing is addressed *by*.
+  **Validation is genuinely pre-I/O**, against the resolved window and before
+  `ctx.weather.fetch`, so a malformed counterfactual costs no upstream hop —
+  which is also what makes it classifiable as `invalid_argument` in T052. Five
+  faults are separated: an unknown field (echoing the valid list, as §3's
+  `invalid_argument` rule requires), a day outside the window, an unparseable
+  day, a non-numeric value, and a non-mapping shape.
+  **Sparse means sparse in both directions** — an unnamed field keeps its fetched
+  value on every day, an unnamed day keeps every field. Verified end to end:
+  forcing `precip` and `tm` on one day of a seven-day station window leaves
+  2025-06-11's `precip` at its measured 0.0 and moves only the named day.
+  Two consequences the row does not spell out but the arithmetic requires.
+  `_summarize` now runs over the **overlaid** rows, so a counterfactual's
+  retention is against its own rain (56.92 mm total on the check above, not the
+  6.92 mm actually measured) — summarizing the fetched rows would have reported
+  retention against rain the model never saw. And a forced day the fetch did not
+  return is reported rather than dropped: an override that silently does nothing
+  is the one failure mode a sparse overlay can hide.
+  `uv run ruff check .` and `uv run pytest` clean — 171 passed, same 15
+  pre-existing findings. Tests are T054's.
 - [ ] T049 `evaluate_against_measured=True`: join the predicted `swc_pct` series to
   the `swc` as-of view and return mean and max |predicted − measured| in %θ over
   the overlap, plus the overlap window. → T024, T047

@@ -17,6 +17,12 @@ Units are the other thing this layer owns: GR2L speaks substrate storage in mm,
 the sensors and the researchers speak %θ, so the conversion happens here (via
 :mod:`swc`) in both directions and never in the model's head.
 
+Counterfactuals are applied to the *forcing*, never to the result: ``forcings``
+overlays the fetched rows before the request, so the model computes the what-if
+rather than this wrapper adjusting an answer afterwards. The overlay is keyed by
+``DailyWeatherRow``'s own field names — one vocabulary, no translation table
+(``decisions.md`` § GR2L argument surface).
+
 The tool is produced by :func:`make_green_roof_balance_tool`, which closes over one
 :class:`~water_assistant_agent.assistant.context.ScenarioContext`: the window
 resolves against ``ctx.as_of``, the weather comes from ``ctx.weather`` and the
@@ -81,6 +87,114 @@ GreenRoofBalanceTool = Callable[..., Awaitable[dict[str, Any]]]
 # Fraction of the substrate storage range above Ssubmin below which the roof is
 # considered water-stressed.
 _DROUGHT_FRACTION = 0.05
+
+FORCEABLE_FIELDS: tuple[str, ...] = tuple(
+    name for name in DailyWeatherRow.model_fields if name != "Date"
+)
+"""What a counterfactual may override — ``DailyWeatherRow``'s own field names.
+
+Derived from the row model rather than listed, because the point of the
+vocabulary is that there is only one: a forcing argument and the row it replaces
+must never need translating, and a hand-kept list is a second place for a field
+rename to go wrong silently (``decisions.md`` § GR2L argument surface). ``Date``
+is excluded — it is the key a forcing is addressed by, not a value it can move.
+"""
+
+
+class ForcingError(ValueError):
+    """A ``forcings`` argument that cannot be applied — an argument fault, pre-I/O.
+
+    Raised before the weather fetch, so a malformed counterfactual costs no
+    upstream hop and the message names what to fix.
+    """
+
+
+def _normalize_forcings(
+    forcings: dict[str, dict[str, float]],
+    window_start: str,
+    window_end: str,
+) -> dict[str, dict[str, float]]:
+    """Validate *forcings* against the resolved window; return it with float values.
+
+    Sparse by construction: nothing here requires a day to be present, only that
+    every day named *is* in the window. A field the caller did not mention keeps
+    the fetched value for every day, and a day it did not mention keeps it for
+    that field.
+
+    Raises:
+        ForcingError: a field that is not one of :data:`FORCEABLE_FIELDS`, a day
+            that is not ``YYYY-MM-DD`` or falls outside the window, or a value
+            that is not a number.
+    """
+    if not isinstance(forcings, dict):
+        raise ForcingError(
+            "forcings must map a weather field to a {day: value} mapping, e.g. "
+            '{"precip": {"2026-07-22": 50.0}}.'
+        )
+
+    start, end = date.fromisoformat(window_start), date.fromisoformat(window_end)
+    normalized: dict[str, dict[str, float]] = {}
+    for field, days in forcings.items():
+        if field not in FORCEABLE_FIELDS:
+            valid = ", ".join(FORCEABLE_FIELDS)
+            raise ForcingError(
+                f"forcings names {field!r}, which is not a weather field. Valid fields: {valid}."
+            )
+        if not isinstance(days, dict):
+            raise ForcingError(
+                f"forcings[{field!r}] must map days to values, e.g. "
+                f'{{"{start.isoformat()}": 1.0}}.'
+            )
+        values: dict[str, float] = {}
+        for day, value in days.items():
+            try:
+                parsed = date.fromisoformat(str(day))
+            except ValueError:
+                raise ForcingError(
+                    f"forcings[{field!r}] has key {day!r}; days must be YYYY-MM-DD dates."
+                ) from None
+            if not start <= parsed <= end:
+                raise ForcingError(
+                    f"forcings[{field!r}] names {parsed.isoformat()}, which is outside the "
+                    f"window {window_start}..{window_end}. Force only days the run covers."
+                )
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                raise ForcingError(
+                    f"forcings[{field!r}][{parsed.isoformat()!r}] must be a number, got {value!r}."
+                )
+            values[parsed.isoformat()] = float(value)
+        normalized[field] = values
+    return normalized
+
+
+def _apply_forcings(
+    rows: list[DailyWeatherRow],
+    forcings: dict[str, dict[str, float]],
+) -> tuple[list[DailyWeatherRow], set[str]]:
+    """Overlay *forcings* on the fetched *rows*; return them and the days that landed.
+
+    The rows GR2L runs on are the fetched ones with the named fields replaced —
+    the counterfactual is applied to the *forcing*, not to the result, so the
+    model computes it rather than the wrapper adjusting an answer afterwards.
+    The returned day set is what the caller checks the request against: a day the
+    fetch did not return is a day the override silently would not have reached.
+    """
+    forced_days = {day for days in forcings.values() for day in days}
+    if not forced_days:
+        return rows, set()
+
+    applied: set[str] = set()
+    overlaid: list[DailyWeatherRow] = []
+    for row in rows:
+        updates = {
+            field: days[row.Date] for field, days in forcings.items() if row.Date in days
+        }
+        if updates:
+            applied.add(row.Date)
+            overlaid.append(row.model_copy(update=updates))
+        else:
+            overlaid.append(row)
+    return overlaid, applied
 
 
 def _to_days(
@@ -203,6 +317,7 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
         forecast_days: int | None = None,
         initial_soil_moisture_pct: float | None = None,
         albedo: float | None = None,
+        forcings: dict[str, dict[str, float]] | None = None,
         tool_context: ToolContext | None = None,
     ) -> dict[str, Any]:
         """Predict a green roof's daily water balance (moisture, runoff, ET) over a period.
@@ -260,12 +375,25 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
                 away, which lowers evapotranspiration and leaves the roof wetter. One
                 value applies to the whole window. Never set it to make a result
                 match an expectation, and when it is set, say so in the answer.
+            forcings: Optional **what-if weather**, replacing the fetched value for
+                the days named and leaving every other day and field as measured or
+                forecast: ``{"precip": {"2026-07-22": 50.0}}`` runs the window with
+                50 mm of rain on 22 July. Use it when the user asks what *would*
+                happen under different weather ("what if we got a 50 mm downpour
+                tomorrow?", "what if next week were 5 °C warmer?"); omit it
+                otherwise, and never use it to nudge a result toward an expectation.
+                The fields are the same ones the day rows carry — ``precip`` (mm),
+                ``tm`` / ``tx`` / ``tn`` (°C), ``rf`` (%), ``w`` (km/h), ``gs``
+                (J/cm²/day) — and every day named must fall inside the window.
+                Say in the answer which values were assumed rather than measured.
 
         Returns:
             dict: on success ``status='success'`` with the resolved ``roof_type``,
             the ``weather_source`` the run was forced by (``'station'`` means the
-            site's own instruments — say so in the answer),
-            the effective ``parameters`` (including the albedo actually used), the
+            site's own instruments — say so in the answer), the ``forcings``
+            actually applied (null when none were, and otherwise the what-if
+            values the answer must attribute), the effective ``parameters``
+            (including the albedo actually used), the
             ``seed`` that day 1 started from (its %θ, where it came from, and whether
             the reading was stale — say so in the answer if it was), a ``data`` list
             (one day per row, with ``swc_pct`` and ``Ssub``), and a ``summary``
@@ -312,6 +440,17 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
             logger.info("Rejected green-roof window", error=str(exc))
             return ErrorResult(error_details=str(exc)).model_dump()
 
+        # Checked against the *resolved* window, and still before the fetch: both
+        # window forms are bound by the one rule, and a counterfactual naming a day
+        # the run does not cover fails without an upstream hop.
+        applied_forcings: dict[str, dict[str, float]] = {}
+        if forcings:
+            try:
+                applied_forcings = _normalize_forcings(forcings, window_start, window_end)
+            except ForcingError as exc:
+                logger.info("Rejected green-roof forcings", error=str(exc))
+                return ErrorResult(error_details=str(exc)).model_dump()
+
         try:
             weather = await ctx.weather.fetch(start_date=window_start, end_date=window_end)
         except WeatherFetchError as exc:
@@ -334,6 +473,21 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
         if not weather.data:
             return ErrorResult(
                 error_details="No weather days were returned for that window. Try a different one."
+            ).model_dump()
+
+        # The rows the model runs on, counterfactual included. A forced day the
+        # fetch did not return would be an override that silently did nothing, so
+        # it is reported rather than dropped.
+        rows, applied_days = _apply_forcings(weather.data, applied_forcings)
+        requested_days = {day for days in applied_forcings.values() for day in days}
+        if requested_days - applied_days:
+            missing = ", ".join(sorted(requested_days - applied_days))
+            return ErrorResult(
+                error_details=(
+                    f"The weather source returned no rows for {missing}, so the forcings for "
+                    f"{'those days' if len(requested_days - applied_days) > 1 else 'that day'} "
+                    "could not be applied."
+                )
             ).model_dump()
 
         # The seed describes the roof going into day 1, so it is read as of the day
@@ -368,7 +522,7 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
         )
 
         try:
-            result_rows = await run_gr2l(weather.data, parameters)
+            result_rows = await run_gr2l(rows, parameters)
         except Gr2lConfigError as exc:
             logger.error("GR2L not configured", error=str(exc))
             return ErrorResult(error_details=str(exc)).model_dump()
@@ -379,9 +533,12 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
             ).model_dump()
 
         days = _to_days(result_rows, parameters, roof_type)
-        summary = _summarize(weather.data, days, parameters)
+        # Summarized over the rows the model actually ran on: a counterfactual's
+        # retention is against its own rain, not against the rain it replaced.
+        summary = _summarize(rows, days, parameters)
         return GreenRoofBalanceResult(
             roof_type=roof_type,
+            forcings=applied_forcings or None,
             weather_source=weather.source,
             parameters=parameters,
             seed=seed,

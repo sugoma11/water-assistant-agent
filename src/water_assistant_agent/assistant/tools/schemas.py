@@ -197,6 +197,13 @@ class GreenRoofBalanceResult(BaseModel):
 
     status: Literal["success"] = "success"
     roof_type: str
+    forcings: dict[str, dict[str, float]] | None = Field(
+        default=None,
+        description="The counterfactual overrides applied to the fetched weather "
+        "before the model ran, echoed exactly as they were applied — "
+        "`{field: {day: value}}` in `DailyWeatherRow`'s own field names. Null when "
+        "the run was driven by the weather as fetched",
+    )
     weather_source: Literal["station", "archive"] = Field(
         description="Which source forced the run — the same field, from the same "
         "choice, as the weather tool's `source`. A retrospective run is forced by "

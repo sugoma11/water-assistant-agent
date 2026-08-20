@@ -1717,10 +1717,32 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   no longer evidence" rather than surfacing as a drifted decision.
   `uv run ruff check .` and `uv run pytest` clean — 382 passed, same 15
   pre-existing findings.
-- [ ] T065 Carry the balance into millimetres, rescaling each roof's response to
+- [x] T065 Carry the balance into millimetres, rescaling each roof's response to
   rain by `100/SH_mm`. The deployed trigger levels are carried verbatim as site
   policy and are **not** re-derived (`decisions.md § No fitted correction between
   the instrument and the oracle`). → T064
+  Done as a second `Regime` member and a flipped default — three lines of
+  behaviour, because T063 put the unit behind an argument and T064 pinned the
+  port with it. `Regime.MILLIMETRES` reads the millimetre properties
+  `rules_constants.py` already converts once through `swc.theta_pct_to_mm`, and
+  converts the seed the same way; the levels come out 3.5 / 7.0 / 15.4, 2.8 / 7.0
+  / 15.4 and 15.0 / 24.0 / 33.0 — `irrigation_tool.md` § Units' table exactly, no
+  second conversion anywhere.
+  **The golden series still passes, unchanged**, because it names
+  `Regime.PERCENT_THETA` rather than relying on a default. That is the ordering
+  paying off: the deployed regime did not become unreachable when the corrected
+  one became the default, so the port stays checkable against the controller and
+  T067 has its second arm.
+  **Nothing was re-derived.** The trigger levels a millimetre store is compared
+  against are the same site constants, converted rather than re-fitted, and the
+  flat 22 %θ capacity is still flat. Deep roofs get harder to move and shallow
+  ones easier — 0.7× on the 7 cm roofs, 1.5× on the 15 cm — and the decisions
+  that flip are T067's deliverable, not something to absorb here.
+  `theta_pct_from_store` lands with it: millimetres stay internal and the surface
+  speaks %θ (`agent_architecture.md` §3.5), so the tool has one way back rather
+  than a conversion of its own.
+  `uv run ruff check .` and `uv run pytest` clean — 382 passed, same 15
+  pre-existing findings.
 - [ ] T066 `calc_irrigation` ADK tool and factory: self-contained by default with
   its own seed via `swc` and forcing via `ctx.weather`; supplying soil moisture,
   max temperature and forecast rain makes the call pure — no DB, no weather, no

@@ -22,12 +22,18 @@ this tool exists to reproduce the site's decisions rather than to improve them:
 
 **The store's unit is a parameter, not a constant** (:class:`Regime`). The
 deployed controller holds the store in %VWC and adds millimetres of rain and ET
-to it; carrying the balance into millimetres changes what the model predicts, so
-the correction is *measured* rather than absorbed — the same window replays
-through both regimes with everything else held fixed, and the decision-diff
-harness reports where the two disagree (``agent_architecture.md`` §3.5). Every
-threshold below comes from :mod:`.rules_constants`, which authors it in the unit
-the site states it in; nothing here converts anything twice.
+to it; carrying the balance into millimetres rescales each roof's response to
+rain by ``100 / SH_mm``, which changes what the model predicts and with it some
+decisions. Millimetres are what this tool runs — and the deployed regime stays
+reachable, because the correction is *measured* rather than absorbed: the same
+window replays through both with everything else held fixed, and the
+decision-diff harness reports where the two disagree
+(``agent_architecture.md`` §3.5). The trigger levels themselves are the site's
+and are **not** re-derived to absorb the change
+(``decisions.md`` § No fitted correction between the instrument and the oracle).
+Every threshold below comes from :mod:`.rules_constants`, which authors it in the
+unit the site states it in and converts it once; nothing here converts anything
+twice.
 
 **What is dropped.** The wetland's branch — an L6 lysimeter level in kg, its own
 constants, and the extraction's open-water (``water_limited=False``) bucket run —
@@ -59,6 +65,7 @@ from water_assistant_agent.assistant.rules_constants import (
     horizon_rows,
     rules_for,
 )
+from water_assistant_agent.assistant.tools.swc import mm_to_theta_pct, theta_pct_to_mm
 
 
 class ReasonCode(enum.StrEnum):
@@ -131,38 +138,81 @@ class Regime(enum.Enum):
     The deployed controller holds the store in %VWC and adds millimetres of rain
     and ET to it, so a millimetre of rain raises every roof by one point of %θ
     whatever its depth. That is the bug ``irrigation_tool.md`` § Units names, and
-    correcting it rescales each roof's response to rain by ``100 / SH_mm``.
+    correcting it rescales each roof's **response to rain** by ``100 / SH_mm``:
+    about 0.7× on the 7 cm extensive roofs and 1.5× on the 15 cm semi-intensive.
+    Deep roofs become harder to move and shallow ones easier, which is a change
+    in what the model predicts and therefore in some decisions.
 
-    It is an argument rather than a repaired constant because the correction is
-    **measured, not absorbed**: the decision-diff harness replays one historical
-    window through both members with the same forcing, the same ET0 and the same
-    trigger levels, so a decision that flips is attributable to unit handling and
-    to nothing else (``agent_architecture.md`` §3.5).
+    **The trigger levels are not re-derived to absorb it.** They are the site's,
+    carried verbatim from the deployed controller, and a set rescaled here would
+    be reproducible only from this repository where the deployed ones are
+    reproducible from the site's own documentation
+    (``decisions.md`` § No fitted correction between the instrument and the
+    oracle). Whether to re-tune is the site's call, made against the
+    decision-diff evidence.
+
+    Which is why the regime is an argument rather than a repaired constant: the
+    correction is **measured, not absorbed**. The decision-diff harness replays
+    one historical window through both members with the same forcing, the same
+    ET0 and the same trigger levels, so a decision that flips is attributable to
+    unit handling and to nothing else (``agent_architecture.md`` §3.5).
     """
 
     PERCENT_THETA = "percent_theta"
     """The deployed controller's: a store in %VWC with millimetres added to it."""
 
+    MILLIMETRES = "millimetres"
+    """The corrected balance: one unit for the store, the rain and the ET alike."""
+
+    @property
+    def unit(self) -> str:
+        """How a value in this regime is spelled in a disclosure."""
+        return "%θ" if self is Regime.PERCENT_THETA else "mm"
+
     def thresholds(self, rules: RoofRules) -> Thresholds:
-        """This roof's four levels in this regime's unit."""
+        """This roof's four levels in this regime's unit.
+
+        Both sets are the same four site constants: :mod:`.rules_constants`
+        authors them in %θ, as the site states them, and converts once through
+        :func:`~.tools.swc.theta_pct_to_mm`. Nothing is converted twice and
+        nothing is re-derived.
+        """
+        if self is Regime.PERCENT_THETA:
+            return Thresholds(
+                wilting=rules.wilting_pct,
+                dry=rules.dry_pct,
+                capacity=rules.capacity_pct,
+                residual=rules.residual_pct,
+            )
         return Thresholds(
-            wilting=rules.wilting_pct,
-            dry=rules.dry_pct,
-            capacity=rules.capacity_pct,
-            residual=rules.residual_pct,
+            wilting=rules.wilting_mm,
+            dry=rules.dry_mm,
+            capacity=rules.capacity_mm,
+            residual=rules.residual_mm,
         )
 
     def store_from_theta_pct(self, theta_pct: float, rules: RoofRules) -> float:
         """A measured %θ reading as this regime's store value.
 
         The seed is read from the sensor in %θ whichever regime runs, so this is
-        the second half of the unit fix. The deployed regime holds the store in
-        the sensor's own unit and has nothing to convert — which is why *rules*
-        goes unread here and not in the signature: the roof's substrate height is
-        what a converting regime needs, and the caller must not have to know
-        which regime that is.
+        the second half of the unit fix: the deployed regime holds the store in
+        the sensor's own unit and has nothing to convert, and the millimetre
+        regime converts it once, against the roof's own substrate height.
         """
-        return theta_pct
+        if self is Regime.PERCENT_THETA:
+            return theta_pct
+        return theta_pct_to_mm(theta_pct, rules.substrate_height_cm)
+
+    def theta_pct_from_store(self, store: float, rules: RoofRules) -> float:
+        """The inverse: this regime's store value restated as %θ.
+
+        Millimetres stay internal and the site's own unit is what a surface
+        speaks (``agent_architecture.md`` §3.5), so every value the tool reports
+        comes back through here rather than through a conversion of its own.
+        """
+        if self is Regime.PERCENT_THETA:
+            return store
+        return mm_to_theta_pct(store, rules.substrate_height_cm)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -368,7 +418,7 @@ def features_from_stated_values(
     soil_moisture_pct: float,
     max_temperature_c: float,
     forecast_precip_mm: float,
-    regime: Regime = Regime.PERCENT_THETA,
+    regime: Regime = Regime.MILLIMETRES,
 ) -> DecisionFeatures:
     """The ladder's features from values a caller stated, with no simulation.
 
@@ -417,7 +467,7 @@ def irrigation_decision(
     features: DecisionFeatures,
     rules: RoofRules,
     *,
-    regime: Regime = Regime.PERCENT_THETA,
+    regime: Regime = Regime.MILLIMETRES,
 ) -> Decision:
     """Walk the priority ladder over *features* and return the decision.
 
@@ -479,7 +529,7 @@ def run_roof(
     temperature_c: Sequence[float],
     seed_theta_pct: float,
     step_hours: float,
-    regime: Regime = Regime.PERCENT_THETA,
+    regime: Regime = Regime.MILLIMETRES,
 ) -> RoofRun:
     """Simulate *roof_type* over one forcing window and decide from the result.
 

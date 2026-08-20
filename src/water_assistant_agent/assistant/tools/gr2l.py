@@ -469,7 +469,10 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
             no soil-moisture record to start from — ``status='not_available'`` with
             a ``reason`` to
             pass on to the user; that is a scope limit, not a malfunction. On failure
-            ``status='error'`` with ``error_details``.
+            ``status='error'`` with ``error_details`` and an ``error_type``:
+            ``'invalid_argument'`` means the call itself was wrong and can be
+            corrected and retried, ``'upstream'`` means something the tool depends
+            on failed — report the system-side problem rather than retrying.
         """
         # Normalized once, here, and every lookup below uses the result — the
         # scope table, the presets, the soil-moisture column and the echoed
@@ -484,21 +487,24 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
         if roof_type not in ROOF_PRESETS:
             valid = ", ".join(sorted(ROOF_PRESETS))
             return ErrorResult(
-                error_details=f"Unknown roof_type {roof_type!r}. Valid types: {valid}."
+                error_type="invalid_argument",
+                error_details=f"Unknown roof_type {roof_type!r}. Valid types: {valid}.",
             ).model_dump()
 
         # Checked before the weather fetch so a bad value fails without a wasted hop.
         if albedo is not None and not 0.0 <= albedo <= 1.0:
             return ErrorResult(
-                error_details=f"albedo must be between 0.0 and 1.0, got {albedo}."
+                error_type="invalid_argument",
+                error_details=f"albedo must be between 0.0 and 1.0, got {albedo}.",
             ).model_dump()
 
         if initial_soil_moisture_pct is not None and not 0.0 <= initial_soil_moisture_pct <= 100.0:
             return ErrorResult(
+                error_type="invalid_argument",
                 error_details=(
                     "initial_soil_moisture_pct is a percentage water content and must be "
                     f"between 0 and 100, got {initial_soil_moisture_pct}."
-                )
+                ),
             ).model_dump()
 
         # Resolved before the fetch: Open-Meteo's own past_days silently appends a
@@ -511,7 +517,9 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
             )
         except InvalidWindowError as exc:
             logger.info("Rejected green-roof window", error=str(exc))
-            return ErrorResult(error_details=str(exc)).model_dump()
+            return ErrorResult(
+                error_type="invalid_argument", error_details=str(exc)
+            ).model_dump()
 
         # Checked against the *resolved* window, and still before the fetch: both
         # window forms are bound by the one rule, and a counterfactual naming a day
@@ -522,7 +530,9 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
                 applied_forcings = _normalize_forcings(forcings, window_start, window_end)
             except ForcingError as exc:
                 logger.info("Rejected green-roof forcings", error=str(exc))
-                return ErrorResult(error_details=str(exc)).model_dump()
+                return ErrorResult(
+                    error_type="invalid_argument", error_details=str(exc)
+                ).model_dump()
 
         try:
             weather = await ctx.weather.fetch(start_date=window_start, end_date=window_end)
@@ -533,19 +543,21 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
                 window=(window_start, window_end),
                 error=str(exc),
             )
-            return ErrorResult(error_details=str(exc)).model_dump()
+            return ErrorResult(error_type="upstream", error_details=str(exc)).model_dump()
         except Exception:
             logger.exception("Weather fetch failed for green-roof analysis")
             return ErrorResult(
+                error_type="upstream",
                 error_details=(
                     f"Failed to fetch weather for the roof over {window_start}..{window_end}. "
                     "Try a different date window."
-                )
+                ),
             ).model_dump()
 
         if not weather.data:
             return ErrorResult(
-                error_details="No weather days were returned for that window. Try a different one."
+                error_type="upstream",
+                error_details="No weather days were returned for that window. Try a different one.",
             ).model_dump()
 
         # The rows the model runs on, counterfactual included. A forced day the
@@ -556,11 +568,12 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
         if requested_days - applied_days:
             missing = ", ".join(sorted(requested_days - applied_days))
             return ErrorResult(
+                error_type="upstream",
                 error_details=(
                     f"The weather source returned no rows for {missing}, so the forcings for "
                     f"{'those days' if len(requested_days - applied_days) > 1 else 'that day'} "
                     "could not be applied."
-                )
+                ),
             ).model_dump()
 
         # The seed describes the roof going into day 1, so it is read as of the day
@@ -581,7 +594,8 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
         except Exception:
             logger.exception("Failed to read the roof's soil moisture")
             return ErrorResult(
-                error_details="Failed to read the roof's soil moisture from the database."
+                error_type="upstream",
+                error_details="Failed to read the roof's soil moisture from the database.",
             ).model_dump()
 
         # Surveyed site height, not Open-Meteo's ~1 km grid-cell elevation.
@@ -598,11 +612,12 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
             result_rows = await run_gr2l(rows, parameters)
         except Gr2lConfigError as exc:
             logger.error("GR2L not configured", error=str(exc))
-            return ErrorResult(error_details=str(exc)).model_dump()
+            return ErrorResult(error_type="upstream", error_details=str(exc)).model_dump()
         except Exception:
             logger.exception("GR2L prediction failed")
             return ErrorResult(
-                error_details="The green-roof model service is unavailable. The responsible team is looking into it."
+                error_type="upstream",
+                error_details="The green-roof model service is unavailable. The responsible team is looking into it.",
             ).model_dump()
 
         days = _to_days(result_rows, parameters)
@@ -626,9 +641,10 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
             except Exception:
                 logger.exception("Failed to read the measured soil-moisture series")
                 return ErrorResult(
+                    error_type="upstream",
                     error_details=(
                         "Failed to read the roof's measured soil moisture for the comparison."
-                    )
+                    ),
                 ).model_dump()
             evaluation = _compare_to_measured(days, measured)
 

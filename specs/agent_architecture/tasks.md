@@ -1255,11 +1255,44 @@ process and neither sees the other's data or clock.
   family cannot be asked at all.
   `uv run ruff check .` and `uv run pytest` clean — 174 passed, same 15
   pre-existing findings; `just pins` unmoved at 8 pinned, 8 unpinned, 0 moved.
-- [ ] T052 `ErrorResult.error_type: "invalid_argument" | "upstream"` in
+- [x] T052 `ErrorResult.error_type: "invalid_argument" | "upstream"` in
   `schemas.py`, plus a classification pass over every catch site: pre-I/O
   validation and malformed windows are `invalid_argument`; fetch, seed, GR2L,
   configuration and the wrapper catch-alls are `upstream`. The two populations are
   already separated by exception type, so this is tagging, not analysis.
+  Done. `ErrorType` is a named alias in `schemas.py` and `error_type` is
+  **required — no default**, which is what makes this a classification pass
+  rather than a field: every one of the sixteen construction sites had to state
+  which population it belongs to, and a seventeenth added later cannot default
+  into the excluded one. Defaulting to `upstream` would have made every future
+  argument fault silently unscored; defaulting to `invalid_argument` would have
+  scored candidates for outages.
+  Sixteen sites, thirteen in `gr2l.py` and three in `weather.py`. Five
+  `invalid_argument`: unknown roof type, albedo range, `initial_soil_moisture_pct`
+  range, malformed window (both wrappers), malformed `forcings`. Eleven
+  `upstream`: the two `WeatherFetchError`s and two fetch catch-alls, an empty
+  weather response, a forced day the source did not return, the seed read's
+  catch-all, the measured-comparison read, `Gr2lConfigError`, and the GR2L
+  catch-all.
+  The row's premise held — the two populations really were already separated by
+  exception type, and the tagging follows the `try` boundaries exactly. The one
+  judgement call is the **empty weather response** and the **missing forced day**:
+  neither is an exception, but both are the source failing to return what the
+  window asked for, which is not something a different argument would fix.
+  Two sites are deliberately **not** tagged. `SwcUnavailableError` and the two
+  unmodellable roofs are `NotAvailableResult`, not errors at all — mixing a
+  scope limit into either population is exactly what would make §7's
+  false-abstention metric uninterpretable. And `warehouse.py` builds its own
+  status dict inside the **frozen** sub-agent (§3.1); it is not one of the
+  three-outcome tool wrappers, and P2b does not open that file.
+  Both agent-facing docstrings now say what the two mean in behavioural terms —
+  `invalid_argument` is correctable and retryable, `upstream` is to be reported
+  as a system-side problem — since the agent sees the field and would otherwise
+  have to guess whether to retry.
+  Verified across all seven reachable paths with a weather client that raises:
+  each returns the expected tag.
+  `uv run ruff check .` and `uv run pytest` clean — 174 passed, same 15
+  pre-existing findings.
 - [ ] T053 [P] Update the production `ROOT_INSTRUCTION`: three modellable
   segments, not four; the wetland joins the gravel roof as measured-only. → T051
 - [ ] T054 Tests for `gr2l`, `weather` and `swc`: %θ↔mm round-trip per roof;

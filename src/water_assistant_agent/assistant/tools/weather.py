@@ -132,7 +132,10 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
             with a ``reason`` to pass on to the user: no weather exists that far
             out, so that is a scope limit, not a malfunction — say so instead of
             retrying with different arguments. On failure ``status='error'`` with
-            ``error_details``.
+            ``error_details`` and an ``error_type``: ``'invalid_argument'`` means
+            the call itself was wrong and can be corrected and retried,
+            ``'upstream'`` means something the tool depends on failed — report the
+            system-side problem rather than retrying.
         """
         # Resolved before the fetch: Open-Meteo's own past_days silently appends a
         # seven-day forecast tail, which would land in `data` unlabelled. The day
@@ -144,7 +147,9 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
             )
         except InvalidWindowError as exc:
             logger.info("Rejected weather window", error=str(exc))
-            return ErrorResult(error_details=str(exc)).model_dump()
+            return ErrorResult(
+                error_type="invalid_argument", error_details=str(exc)
+            ).model_dump()
 
         # The one scope limit this tool signals. Nothing upstream enforces it —
         # the reanalysis serves any date it holds — so a window past the horizon
@@ -168,14 +173,15 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
         except WeatherFetchError as exc:
             # Upstream said what was wrong; passing it on lets the agent fix the window.
             logger.warning("Weather fetch rejected", window=(window_start, window_end), error=str(exc))
-            return ErrorResult(error_details=str(exc)).model_dump()
+            return ErrorResult(error_type="upstream", error_details=str(exc)).model_dump()
         except Exception:
             logger.exception("Weather fetch failed")
             return ErrorResult(
+                error_type="upstream",
                 error_details=(
                     f"Failed to fetch weather for {window_start}..{window_end}. "
                     "Please try a different date window."
-                )
+                ),
             ).model_dump()
         # Bounded here, at layer 1, and not in the client: the cap is on what the
         # model reads back, and GR2L consumes the same client's rows in full.

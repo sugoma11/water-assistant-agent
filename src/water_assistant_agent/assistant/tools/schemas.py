@@ -14,10 +14,28 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+ErrorType = Literal["invalid_argument", "upstream"]
+"""Which of the two populations a failure belongs to (``agent_architecture.md`` §3).
+
+``invalid_argument`` is deterministic argument validation performed **before any
+I/O**, echoing what would have been valid; ``upstream`` covers HTTP, database and
+configuration failures, including a cache miss the service cannot fill and a
+diverged canary. The split is not cosmetic: §7 excludes an ``upstream`` failure
+from every aggregate as a harness error the candidate could not have avoided,
+while an ``invalid_argument`` is scored — excluding those too would let a
+candidate raise its own average by failing on the templates it handles worst
+(``decisions.md`` § Tool errors and harness exclusion).
+"""
+
+
 class ErrorResult(BaseModel):
     """Uniform failure payload returned by the tool wrappers."""
 
     status: Literal["error"] = "error"
+    error_type: ErrorType = Field(
+        description="`invalid_argument` for a fault in the call itself, `upstream` "
+        "for a failure of something the call depended on"
+    )
     error_details: str
 
 

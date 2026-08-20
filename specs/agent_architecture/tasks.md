@@ -1634,12 +1634,44 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   `rules_constants_version` pinned at `1.0`.
   `uv run ruff check .` and `uv run pytest` clean — 359 passed, same 15
   pre-existing findings; `just pins` unmoved at 11 pinned, 5 unpinned, 0 moved.
-- [ ] T063 `assistant/irrigation.py`: `simulate_store` / `summarize` /
+- [x] T063 `assistant/irrigation.py`: `simulate_store` / `summarize` /
   `irrigation_decision`, pure, no LLM. Preserves the deployed controller's
   semantics exactly — one store, the stress coefficient evaluated on the previous
   step, ET applied before the cap, seed-day initialization only, and the two
   window conventions — returning **bool plus reason code plus the fixed dose
   constant**, never a computed volume. → T062, T061
+  Done, `_simulate_store` and `decide_substrate_roof` line for line. All four of
+  `irrigation_tool.md` § The balance's deliberate defects are carried: the lag,
+  the missing floor, the seed step's ET-less initialisation with its outflow from
+  the *raw* initial value, and ET before the cap. `summarize` owns the two window
+  conventions and is the only place hours become rows, through T062's
+  `horizon_rows`.
+  **The store's unit is a parameter, not a constant.** `Regime` has one member
+  here — the deployed %VWC store with millimetres added to it — and the
+  millimetre arm lands in T065, so the port and the fix are two commits with the
+  golden series between them, which is the whole ordering this packet exists for.
+  It also gives T067 its variable: the same window through two members with the
+  forcing, the ET0 and the trigger levels held fixed.
+  **The stress coefficient is the same algebra, not the same arithmetic.** The
+  extraction writes it over fractions (`(θ/100 − 0.025)/(0.22 − 0.025)`); over %θ
+  the factor of 100 cancels and the constants are the site's own. Measured
+  against the controller over 200 steps on all three roofs: `ks` agrees to
+  2.2e-16 per step and the store to 3.6e-15, with the decisions and the German
+  strings' rungs identical. T064 pins it.
+  **`water_limited=False` is dropped, not ported.** It is the extraction's
+  open-water arm and belongs to the wetland's branch, which leaves with the roof
+  (`NON_MODELLABLE_ROOFS`); a parameter no call site can set is a branch nothing
+  tests. `first_outflow_date` is not carried either: it scans from index 0
+  against `> 0`, so it can report the seed step's artifact as the day the roof
+  fills. `refill_step` reads the refill window instead and is disclosure only —
+  a message, never a decision.
+  **One `DecisionFeatures` for both entry points**, so the comparison chain
+  exists exactly once (`irrigation_tool.md` § The rule): a simulated series
+  reduced by `summarize`, or a caller's three stated values reduced by
+  `features_from_stated_values`, where the refill conjunct is the rain against
+  the deficit to capacity through the same `OUTFLOW_EPSILON_MM`.
+  `uv run ruff check .` and `uv run pytest` clean — 359 passed, same 15
+  pre-existing findings.
 - [ ] T064 **Faithfulness before correctness**: a golden-series test asserting the
   port reproduces the deployed controller — `smart_irrigation.py`,
   `findings.md § External sources on this machine` — element for element *in its

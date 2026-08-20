@@ -311,8 +311,24 @@ The blocking phase: no case is reproducible until this lands.
   verified against a fake `httpx` transport: a second `fetch()` for the same
   window returns the cached `WeatherResult` and the transport records exactly one
   call.
-- [ ] T023 Route `run_gr2l` through the same cache and add the canary
+- [x] T023 Route `run_gr2l` through the same cache and add the canary
   request/response hash as the service-version proxy. → T021
+  Done, in `tools/gr2l_client.py`. `run_gr2l` gains an optional `cache:
+  ResponseCache | None` keyword; the request is unchanged from before
+  (`Gr2lRequest(data=rows, **parameters.model_dump())`), and its
+  `model_dump(exclude_none=True)` — `data[]` plus every roof parameter — is the
+  canonical request that goes into `cache.fetch(...)`, matching §5's "`data[]`
+  plus parameters for GR2L" verbatim. `CANARY_REQUEST` is a fixed, arbitrary
+  one-day probe (never real site data, so it can't collide with an actual case's
+  key) sent through a `Canary` on every cached call; its first live response
+  becomes the committed entry and every later miss re-verifies against it before
+  recording anything new, exactly as `decisions.md` § The response cache
+  requires. `cache=None` (the default) calls GR2L directly with no caching at
+  all, so `gr2l.py`'s existing direct call — untouched, outside this packet — is
+  unaffected. Manually verified against a fake POST client: a second `run_gr2l`
+  call for the same rows/parameters issues zero HTTP calls; a service whose
+  canary response changes between two cached calls raises
+  `CanaryMismatchError` before the second call's own data request is ever sent.
 - [ ] T024 [P] `tools/swc.py`: take the executor from `ctx` instead of building a
   connection from global settings; the module stays pure and ADK-free. → T020
 - [ ] T025 [P] `tools/warehouse.py`: `make_query_database_tool(executor, clock)`

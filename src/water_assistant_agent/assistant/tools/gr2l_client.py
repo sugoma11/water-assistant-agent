@@ -14,9 +14,12 @@ Site geometry is not hard-coded here either; the caller passes ``lat``/``long``/
 reusable for another facility.
 """
 
+from typing import Any
+
 import httpx
 import structlog
 
+from water_assistant_agent.assistant.cache import Canary, ResponseCache
 from water_assistant_agent.assistant.settings import get_settings
 from water_assistant_agent.assistant.tools.schemas import (
     DailyWeatherRow,
@@ -26,6 +29,40 @@ from water_assistant_agent.assistant.tools.schemas import (
 )
 
 logger = structlog.get_logger(__name__)
+
+# A fixed, arbitrary probe request — never a real site's data — sent on every live
+# fill to prove the service answers today what it is committed to have answered
+# when the cache was captured. Its own first response becomes the committed
+# canary entry; every later miss re-fetches it and the two must match byte for
+# byte, or the run is treated as talking to a service that has moved
+# (`decisions.md` § The response cache). Joins `eval/pins.json` in a later packet.
+CANARY_REQUEST: dict[str, Any] = Gr2lRequest(
+    data=[
+        DailyWeatherRow(
+            Date="2000-01-01",
+            tm=10.0,
+            tx=15.0,
+            tn=5.0,
+            rf=70.0,
+            precip=0.0,
+            w=5.0,
+            gs=1000.0,
+        )
+    ],
+    hoehe_nn=100.0,
+    lat=50.0,
+    long=10.0,
+    SH=7,
+    Ssubmin=0.9,
+    Ssubmax=16.0,
+    Sret=0,
+    Sretmax=0,
+    theta_01=8.0,
+    theta_02=0,
+    kg=1,
+    albedo=0.2,
+    open_water=False,
+).model_dump(exclude_none=True)
 
 # GR2L's upstream model service uses a 90 s timeout for the whole hop.
 _TIMEOUT_SECONDS = 90.0
@@ -130,9 +167,18 @@ def resolve_roof_parameters(
     )
 
 
+async def _post_gr2l(url: str, headers: dict[str, str], body: dict[str, Any]) -> Any:
+    """Raw POST to ``{url}``; returns the parsed JSON payload."""
+    response = await _get_client().post(url, json=body, headers=headers)
+    response.raise_for_status()
+    return response.json()
+
+
 async def run_gr2l(
     rows: list[DailyWeatherRow],
     parameters: RoofParameters,
+    *,
+    cache: ResponseCache | None = None,
 ) -> list[Gr2lResultRow]:
     """POST daily weather + roof parameters to GR2L; return one row per day.
 
@@ -142,8 +188,17 @@ async def run_gr2l(
     ``Ssub``/``Sret`` from ``theta_01``/``theta_02`` and computes ``ET``, so its
     ``Qdown``/``Qup``/``OUT`` come back ``None``.
 
-    Raises :class:`Gr2lConfigError` when unconfigured and ``httpx``/parse errors
-    otherwise (the ADK tool wrapper catches and converts to an ``ErrorResult``).
+    When *cache* is given, the request is routed through it — keyed on
+    ``data[]`` plus the roof parameters, gated on :data:`CANARY_REQUEST` matching
+    the committed canary before any new entry records (`decisions.md` § The
+    response cache) — and a cache hit issues no HTTP call at all. Omitting *cache*
+    calls GR2L directly every time, unchanged from before this cache existed.
+
+    Raises :class:`Gr2lConfigError` when unconfigured, ``httpx``/parse errors on a
+    direct call, and :class:`~water_assistant_agent.assistant.cache.CacheMissError`
+    / :class:`~water_assistant_agent.assistant.cache.CanaryMismatchError` on a
+    cached call's respective failures (the ADK tool wrapper catches and converts
+    to an ``ErrorResult``).
     """
     settings = get_settings()
     if not settings.gr2l_api_base_url or not settings.gr2l_api_key:
@@ -155,13 +210,17 @@ async def run_gr2l(
     request = Gr2lRequest(data=rows, **parameters.model_dump())
     url = f"{settings.gr2l_api_base_url.rstrip('/')}/predict_gr2l"
     headers = {"API-KEY": settings.gr2l_api_key, "Content-Type": "application/json"}
+    canonical_request = request.model_dump(exclude_none=True)
 
-    logger.debug("Calling GR2L", url=url, days=len(rows))
-    response = await _get_client().post(
-        url,
-        json=request.model_dump(exclude_none=True),
-        headers=headers,
-    )
-    response.raise_for_status()
-    payload = response.json()
+    logger.debug("Calling GR2L", url=url, days=len(rows), cached=cache is not None)
+
+    async def live_fetch() -> Any:
+        return await _post_gr2l(url, headers, canonical_request)
+
+    if cache is None:
+        payload = await live_fetch()
+    else:
+        canary = Canary(CANARY_REQUEST, lambda: _post_gr2l(url, headers, CANARY_REQUEST))
+        payload = await cache.fetch(canonical_request, live_fetch, canary=canary)
+
     return [Gr2lResultRow.model_validate(row) for row in payload.get("data", [])]

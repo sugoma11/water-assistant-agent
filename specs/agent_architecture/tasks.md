@@ -972,10 +972,38 @@ process and neither sees the other's data or clock.
   executor.
   `uv run ruff check .` and `uv run pytest` clean — 142 passed, same 15
   pre-existing findings.
-- [ ] T044 Station windows bypass the response cache entirely — a pure function of
+- [x] T044 Station windows bypass the response cache entirely — a pure function of
   the pinned DB, so record, replay and off are all no-ops there and a miss must not
   raise. The record's first and last complete day join `eval/pins.json`, read from
   the DB rather than hardcoded. → T021, T043, T034
+  Done. The bypass is **structural, not a rule anyone has to remember**: the
+  coverage test runs first and the Archive half — the only object here holding a
+  cache — is reached only once it has failed, so a station window computes no
+  key, records no entry and cannot raise a miss. Nothing is lost by it either;
+  the station is a pure function of the pinned database, which
+  `water_duckdb_sha256` already covers, so an entry would be a second copy of a
+  thing already pinned.
+  Making the three modes *expressible* is what this row actually added:
+  `ArchiveWeatherClient` gains `allow_live`, threaded into `cache.fetch(...)`,
+  and `make_weather_client(db, cache, allow_live=…)` passes it to the Archive
+  half alone — the station has no channel to call out, so there is nothing to
+  disable. **Off** is `cache=None` (T043, production's binding), **record** is a
+  cache with `allow_live=True`, **replay** is `allow_live=False`. The fourth
+  combination, replay with no cache, has nothing to replay from and raises at
+  construction rather than degrading into a live call.
+  The pin fills `station_derivation`, the slot §5 already named, with all four
+  of the things §5 lists: a sha256 over the per-field aggregation, the day
+  expression and the completeness-plus-sentinel predicate (`derivation_pin()` in
+  `weather_station.py`), plus `first_complete_day` and `last_complete_day` read
+  through `StationWeatherSource.record_bounds()` against `data/water.duckdb`
+  itself. Reading them rather than transcribing `findings.md` is the point: a
+  hardcoded span would keep passing after an ingest that moved the record's
+  edges, and the DB hash cannot see the derivation at all. Committed values:
+  **2025-01-02 → 2026-04-26**, unbounded by any `as_of` — this is the record's
+  extent, not a case's view of it. `just pins` now reports 8 pinned, 8 unpinned,
+  0 moved.
+  `uv run ruff check .` and `uv run pytest` clean — 142 passed, same 15
+  pre-existing findings. The replay assertion the row implies is T055's.
 - [ ] T045 [P] Delete the Forecast backend and `_FORECAST_PAST_LIMIT_DAYS`: with
   two sources chosen from the window, the third backend and its wall-clock cutoff
   have no caller. → T043

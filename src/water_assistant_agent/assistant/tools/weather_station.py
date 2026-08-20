@@ -161,6 +161,23 @@ _BOUNDS_QUERY = (
 )
 
 
+def derivation_pin() -> dict[str, object]:
+    """The parts of the derivation §5 pins, as a hashable mapping.
+
+    Four things, and the ``water.duckdb`` hash covers none of them: the per-field
+    aggregation, the day boundary, the sentinel filter (inside the aggregation
+    and the completeness predicate both), and — added by ``check_pins`` from the
+    database rather than from here — the record's first and last complete day.
+    Move any of them and every oracle downstream moves with it, silently, since
+    the file the rows come from is byte-identical either way.
+    """
+    return {
+        "aggregates": list(_AGGREGATES),
+        "complete_day": _COMPLETE_DAY,
+        "day_expression": site_day_expr(),
+    }
+
+
 def _derivation_query(start_date: date, end_date: date) -> str:
     """The derivation over one window; *start_date* / *end_date* are ``date`` objects."""
     day = site_day_expr()

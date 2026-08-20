@@ -96,6 +96,38 @@ def _module_version(path: Path) -> str | None:
     return None
 
 
+def _station_derivation() -> dict[str, Any] | None:
+    """The station derivation plus the record's first and last complete day.
+
+    The two dates are read **from the database**, through the same
+    :class:`StationWeatherSource` the tool uses, rather than transcribed from
+    ``findings.md``: a hardcoded span would keep passing after an ingest that
+    moved the record's edges, which is the one thing this pin exists to catch
+    beyond the derivation itself. Unbounded by any ``as_of`` — this is the
+    record's own extent, not a case's view of it.
+    """
+    if not DB_PATH.exists():
+        return None
+    from water_assistant_agent.assistant.agents.text_to_sql.executor import (
+        DuckDbQueryExecutor,
+        create_duckdb_connection,
+    )
+    from water_assistant_agent.assistant.tools.weather_station import (
+        StationWeatherSource,
+        derivation_pin,
+    )
+
+    executor = DuckDbQueryExecutor(
+        connection_factory=lambda: create_duckdb_connection(str(DB_PATH))
+    )
+    first, last = StationWeatherSource(executor).record_bounds()
+    return {
+        "derivation_sha256": _sha256_json(derivation_pin()),
+        "first_complete_day": None if first is None else first.isoformat(),
+        "last_complete_day": None if last is None else last.isoformat(),
+    }
+
+
 def _dependency_versions() -> dict[str, str] | None:
     """The resolved versions of :data:`PINNED_DEPENDENCIES` from ``uv.lock``.
 
@@ -146,7 +178,7 @@ def compute_pins() -> dict[str, Any]:
         "reflection_model": None,
         "reflection_model_canary_sha256": None,
         "candidate_prompts": None,
-        "station_derivation": None,
+        "station_derivation": _station_derivation(),
         "dependency_versions": _dependency_versions(),
     }
 

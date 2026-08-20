@@ -420,20 +420,29 @@ class ArchiveWeatherClient:
     Archive's cache is load-bearing only for cost and speed, and carries no
     reproducibility claim (`agent_architecture.md` §5).
 
-    *cache* may be ``None``, which fetches live every time and records nothing.
-    That is production's binding: the running service has no case, and a
-    committed entry keyed on absolute dates would keep serving the *forecast*
-    a window once returned after the same days had become observations.
+    The three cache modes are the two arguments' four useful combinations minus
+    one. *cache* may be ``None`` — **off**: fetch live every time, record
+    nothing. That is production's binding: the running service has no case, and a
+    committed entry keyed on absolute dates would keep serving the *forecast* a
+    window once returned after the same days had become observations. With a
+    cache and ``allow_live=True`` this **records**; with ``allow_live=False`` it
+    **replays**, and a miss is a hard :class:`~..cache.CacheMissError` rather
+    than a quiet call out. The fourth combination — replay with no cache — has
+    nothing to replay from and raises at construction.
     """
 
     def __init__(
         self,
         cache: ResponseCache | None,
         *,
+        allow_live: bool = True,
         latitude: float = SITE_LATITUDE,
         longitude: float = SITE_LONGITUDE,
     ) -> None:
+        if cache is None and not allow_live:
+            raise ValueError("Replay (allow_live=False) needs a cache to replay from.")
         self._cache = cache
+        self._allow_live = allow_live
         self._latitude = latitude
         self._longitude = longitude
         self._http_client = httpx.AsyncClient(timeout=_TIMEOUT_SECONDS)
@@ -457,7 +466,9 @@ class ArchiveWeatherClient:
             "url": ARCHIVE_URL,
             "params": _build_params(self._latitude, self._longitude, start_date, end_date),
         }
-        cached = await self._cache.fetch(canonical_request, live_fetch)
+        cached = await self._cache.fetch(
+            canonical_request, live_fetch, allow_live=self._allow_live
+        )
         return WeatherResult.model_validate(cached)
 
 
@@ -479,6 +490,15 @@ class CompositeWeatherClient:
     forcing a per-day blend of two instruments with a measured offset between
     them, and the station's biases undisclosable as one property of one source
     (``decisions.md`` § Weather sources).
+
+    **A station window never touches the response cache**, and that is
+    structural rather than a rule to remember: the coverage test runs first, and
+    the Archive half — the only thing here holding a cache — is reached only
+    once it has failed. So no key is computed, no entry recorded and no miss
+    raised for a station window, in any of the three cache modes. Nothing is
+    lost by it: the station is a pure function of the pinned database, which the
+    ``water.duckdb`` hash already covers, so an entry would be a second copy of
+    something already pinned (``agent_architecture.md`` §5).
     """
 
     def __init__(self, station: StationWeatherSource, archive: WeatherClient) -> None:
@@ -511,13 +531,20 @@ class CompositeWeatherClient:
 def make_weather_client(
     db: ReadOnlyWarehouseQuery,
     cache: ResponseCache | None,
+    *,
+    allow_live: bool = True,
 ) -> WeatherClient:
     """Build the composite for one context — the ``weather_client_factory`` of §4.
 
     Both halves, in this order: the station reads the as-of views through *db*,
     the Archive half reads *cache*. A factory taking only *db* could not build
     the composite, which is why the seam passes both.
+
+    *allow_live* reaches only the Archive half, because it is the only half that
+    can call out at all. A replay pass (``allow_live=False``) therefore still
+    answers every station window in full, from the pinned database, with no
+    cache entry behind it.
     """
     return CompositeWeatherClient(
-        StationWeatherSource(db), ArchiveWeatherClient(cache)
+        StationWeatherSource(db), ArchiveWeatherClient(cache, allow_live=allow_live)
     )

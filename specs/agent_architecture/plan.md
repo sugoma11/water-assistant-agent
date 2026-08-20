@@ -58,11 +58,15 @@ ones belong in `findings.md` and are recorded there by T004.
   on the `aggregation` output (`gepa/core/state.py:204`). The non-instance
   frontiers additionally *raise* when the evaluator supplies no objective scores
   (`state.py:210-215`). §2.2 settles what this plan does about it.
-- **MLflow ships a default aggregation callable named `weighted_objective`**
-  (`mlflow/genai/optimize/optimize.py:182`), and `create_metric_from_scorers`
-  returns `(aggregated_score, rationales, individual_scores)`
-  (`optimize/util.py:151`). The architecture's `aggregation=weighted_mean`
-  sketch names no real callable and is corrected by T002.
+- **MLflow ships no aggregation callable at all.** The `weighted_objective` in
+  `optimize_prompts`' docstring is an example the caller writes
+  (`mlflow/genai/optimize/optimize.py:172-182`); the parameter itself is
+  `aggregation: AggregationFn | None = None` (`:54`), and omitting it makes the
+  **mean of the numeric scorer values** the objective, with any non-numeric value
+  raising instead (`optimize/util.py:196-214`). `create_metric_from_scorers`
+  (`util.py:135`) returns `(aggregated_score, rationales, individual_scores)`
+  (`:197,203`). The architecture's `aggregation=weighted_mean` sketch named no
+  real callable and is corrected by T001 to name this repo's own.
 - **`roof_type` is a plain `str` at the tool boundary** (`tools/gr2l.py:160`),
   so the gravel and wetland aliases family I needs are expressible. It must stay
   that way: an ADK `Literal` would render an enum into the function declaration

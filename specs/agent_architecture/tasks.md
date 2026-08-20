@@ -22,12 +22,18 @@ else.
 Plan §2's five decisions become document edits here. Nothing in P1 may start
 against a document that still contradicts itself.
 
-- [ ] T001 [P] Amend `agent_architecture.md` §7: selection runs on the aggregated
+- [x] T001 [P] Amend `agent_architecture.md` §7: selection runs on the aggregated
   scalar, per-scorer values reach logging and the reflective dataset only. Delete
   the sentence claiming a Pareto front over the four metrics. Correct §6's sketch
   to name a real aggregation callable rather than `weighted_mean`, and state that
   an explicit `aggregation` stays mandatory for the skip semantics
   (`mlflow/genai/optimize/util.py:200-214`). (plan §2.2)
+  Done. One correction to the plan's own premise, carried into `plan.md` §1.2 and
+  into T004's `findings.md` entry: MLflow ships **no** aggregation callable —
+  `weighted_objective` is an example inside `optimize_prompts`' docstring
+  (`optimize.py:172-182`), not an export — so §6's sketch names this repo's
+  `aggregate_scores`, and omitting the argument would silently mean the *mean of
+  the numeric scorer values*, with a non-numeric value raising.
 - [ ] T002 [P] Amend `agent_architecture.md` §0: add the wetland delta to the GR2L
   row's gap column — `NON_MODELLABLE_ROOFS` covers gravel only, `ROOF_PRESETS`
   still carries a reachable `wetland` entry, `gr2l.py` still routes it through

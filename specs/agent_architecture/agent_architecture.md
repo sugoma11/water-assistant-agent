@@ -604,9 +604,17 @@ mlflow.genai.optimize_prompts(
     prompt_uris=list(PROMPT_URIS.values()),    # one URI per optimizable component
     optimizer=GepaPromptOptimizer(reflection_model=…, max_metric_calls=…),
     scorers=[answer, trajectory, card_recall, abstention],   # §7
-    aggregation=weighted_mean,                 # mandatory here, see §7
+    aggregation=aggregate_scores,              # ours; mandatory, see §7
 )
 ```
+
+- **`aggregation` is this repo's callable and is not optional.** MLflow ships none —
+  the `weighted_objective` its docstring shows is an example, not an export
+  (`findings.md` § Optimizer internals) — and omitting the argument makes the
+  **mean of the numeric scorer values** the objective while any non-numeric value
+  raises. Both of §7's skips are non-numeric by construction, so the callable is
+  what makes them skips instead of an exception, and it is also what the optimizer
+  selects on.
 
 - **The candidate surface is the MLflow prompt registry.** Candidate text reaches
   the system **only** through a registry read whose prompt *name* matches a
@@ -735,9 +743,13 @@ degrading the output format stays distinguishable from one degrading reasoning.
 
 **Two properties ride on the `Scorer` shape.** `Feedback.rationale` is the search
 signal, not decoration: MLflow forwards it into GEPA's reflective dataset. And
-per-scorer values stay separate all the way into GEPA, which receives them as
-`objective_scores` and can hold a Pareto front over them, so the four metrics drive
-selection without being pre-blended.
+per-scorer values stay separate through logging and into that reflective dataset —
+but **not** into selection. GEPA's Pareto front is over *instances* unless
+`frontier_type` says otherwise, and MLflow never sets it, so **selection runs on the
+one scalar the `aggregation` callable returns** (`findings.md` § Optimizer
+internals). The four metrics therefore reach reflection unblended and selection
+blended; a metric that must steer selection has to earn its weight inside
+`aggregation`, and no metric is protected from being traded against another there.
 
 **Reporting rules.**
 

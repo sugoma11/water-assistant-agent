@@ -582,7 +582,34 @@ The blocking phase: no case is reproducible until this lands.
   (`tests/assistant/test_temporal_context.py`); updated to pass `now=site_now()`.
   Manually verified `fetch_daily_weather(...)` with neither `today` nor
   `force_archive` raises `TypeError` before any HTTP call.
-- [ ] T032 [P] Set the ~6-step tool cap on the root agent. → T030
+- [x] T032 [P] Set the ~6-step tool cap on the root agent. → T030
+  Done, but **not as an `Agent` field, because there is none**: ADK bounds a run
+  by *LLM calls*, in `RunConfig.max_llm_calls`, so `build_root_agent` cannot
+  carry the cap at all. `agents/root_agent/agent.py` gains `MAX_TOOL_STEPS = 6`,
+  `MAX_LLM_CALLS = MAX_TOOL_STEPS + 1` and `rollout_run_config()`, and **P6's
+  `run_case` and P8's `predict_fn` must both call that one function** — a search
+  that bounded its candidates differently from the measurement path would differ
+  on the one thing that decides whether a shotgun candidate finishes at all.
+  The arithmetic, written down rather than guessed: in a ReAct loop each tool
+  step costs one model turn (the turn that emits the call) and the answer after
+  the last tool result costs one more, so 6 steps is 7 calls. ADK increments the
+  counter and raises when it *exceeds* the limit
+  (`invocation_context.py:88-99`), so exactly 7 calls are allowed and the 8th
+  raises. Two things the count excludes, both verified in ADK 2.3's source:
+  `AgentTool.run_async` builds its **own** `Runner` with a default `RunConfig`
+  (`agent_tool.py`), so the sub-agent's builder/query turns are bounded by their
+  own 500 and one `text_to_sql_agent` call is one step here however many turns it
+  takes inside; and a model call retried after a transport error counts again, so
+  the bound is on calls issued, not on distinct steps taken.
+  **Open question for P6a, recorded rather than decided here:** the cap *raises*
+  (`LlmCallsLimitExceededError`) mid-run — ADK has no truncate-and-answer mode —
+  so a candidate that loops produces an exception, not a bad answer. Whether that
+  is a wrong answer, an abstention or a harness exclusion belongs with the rest of
+  the error taxonomy (`decisions.md` § Tool errors and harness exclusion), which
+  is T100/T101's. Not applied to the production chat path: `ag_ui_adk` does take a
+  `run_config_factory`, but capping there turns a live user's long conversation
+  into a 500, which is not what T036's "the prose answer path is unchanged"
+  means. `uv run ruff check .` and `uv run pytest` clean — 115 passed.
 - [ ] T033 Pin the task LLM: `temperature=0` and the decoding seed through
   `litellm_extra()`, the served model id and endpoint recorded per run, and the
   response cache switchable — on inside the search, off on the measurement path

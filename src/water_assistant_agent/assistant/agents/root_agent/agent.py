@@ -18,6 +18,7 @@ from typing import Any
 
 from google.adk.agents.llm_agent import Agent
 from google.adk.agents.readonly_context import ReadonlyContext
+from google.adk.agents.run_config import RunConfig
 from google.adk.models.base_llm import BaseLlm
 from google.adk.models.lite_llm import LiteLlm
 
@@ -62,6 +63,28 @@ ROOT_INSTRUCTION = """You are a helpful assistant for a water-management researc
 
 AGENT_NAME = "root_agent"
 AGENT_DESCRIPTION = "Water-Management Data Analyst."
+
+MAX_TOOL_STEPS = 6
+"""The ReAct loop's hard cap on tool steps for one rollout (§2)."""
+
+MAX_LLM_CALLS = MAX_TOOL_STEPS + 1
+"""The cap as ADK enforces it: LLM calls, not tool steps.
+
+There is no tool-step field on an ``Agent``; ADK counts **model turns** per
+invocation, in ``RunConfig.max_llm_calls``. In a ReAct loop each tool step costs
+one model turn — the turn that emits the call — and the answer that follows the
+last tool result costs one more, so ``MAX_TOOL_STEPS`` steps is
+``MAX_TOOL_STEPS + 1`` calls. ADK increments the counter and then raises when it
+*exceeds* the limit, so exactly this many calls are allowed.
+
+Two things it does not count. The sub-agent's own turns run on a separate
+``Runner`` that ``AgentTool`` builds with a default ``RunConfig``
+(``agent_tool.py``), so the text-to-SQL agent's builder/query loop is bounded by
+its own 500 and not by this; one ``text_to_sql_agent`` call is one step here
+however many turns it takes inside. And a retried model call after a transport
+error counts as a call, so the bound is on calls issued, not on distinct steps
+taken.
+"""
 
 
 def _build_model() -> LiteLlm:
@@ -133,6 +156,31 @@ def build_root_agent(
         instruction=_make_temporal_instruction(ctx),
         tools=build_toolset(ctx, docstrings) if tools is None else tools,
     )
+
+
+def rollout_run_config() -> RunConfig:
+    """The ``RunConfig`` every rollout runs under: §2's tool-step cap.
+
+    The cap lives on the run, not on the agent, so :func:`build_root_agent`
+    cannot carry it: whoever drives the ``Runner`` must pass this. **P6's
+    ``run_case`` and P8's ``predict_fn`` both call this one function** — a search
+    that bounded its candidates differently from the measurement path would
+    differ on the one thing that decides whether a shotgun candidate finishes at
+    all.
+
+    Exceeding it raises :class:`~google.adk.agents.invocation_context.LlmCallsLimitExceededError`
+    mid-run; ADK offers no truncate-and-answer mode. Classifying that outcome —
+    a wrong answer, an abstention, or a harness exclusion — is P6a's, with the
+    rest of the error taxonomy (``decisions.md`` § Tool errors and harness
+    exclusion), not this task's.
+
+    The production chat path deliberately keeps ADK's default: ``ag_ui_adk``
+    takes a ``run_config_factory`` and this could be wired into ``bootstrap.py``,
+    but the cap converts a runaway loop into an exception rather than an answer,
+    and turning a live user's long conversation into a 500 is not what "the prose
+    answer path is unchanged" (T036) means.
+    """
+    return RunConfig(max_llm_calls=MAX_LLM_CALLS)
 
 
 root_agent = build_root_agent(production_context())

@@ -259,6 +259,8 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
 
         Returns:
             dict: on success ``status='success'`` with the resolved ``roof_type``,
+            the ``weather_source`` the run was forced by (``'station'`` means the
+            site's own instruments — say so in the answer),
             the effective ``parameters`` (including the albedo actually used), the
             ``seed`` that day 1 started from (its %θ, where it came from, and whether
             the reading was stale — say so in the answer if it was), a ``data`` list
@@ -375,6 +377,7 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
         summary = _summarize(weather.data, days, parameters)
         return GreenRoofBalanceResult(
             roof_type=roof_type,
+            weather_source=weather.source,
             parameters=parameters,
             seed=seed,
             data=days,

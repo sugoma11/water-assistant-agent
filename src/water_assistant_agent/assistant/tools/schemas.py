@@ -190,6 +190,11 @@ class GreenRoofBalanceResult(BaseModel):
 
     status: Literal["success"] = "success"
     roof_type: str
+    weather_source: Literal["station", "archive"] = Field(
+        description="Which source forced the run — the same field, from the same "
+        "choice, as the weather tool's `source`. A retrospective run is forced by "
+        "the site's own instruments; an answer says so"
+    )
     parameters: RoofParameters
     seed: SwcSeed
     data: list[GreenRoofDay]

@@ -1071,13 +1071,70 @@ process and neither sees the other's data or clock.
   stale-seed flag; seed-day retention flag; forcings application and echo;
   `evaluate_against_measured` arithmetic; beyond-horizon → `not_available`; each
   error site's `error_type`. → T041, T047, T048, T049, T051, T052
-- [ ] T055 Tests for the station path: per-field derivation against hand-computed
+- [x] T055 Tests for the station path: per-field derivation against hand-computed
   values; a rain event straddling local midnight landing in the right Berlin day;
   sentinel exclusion from the wind mean; incomplete-day exclusion; routing at both
   record edges; partial coverage falling to Archive whole; a future window never
   resolving to the station; `source == "station"` echoed end to end through GR2L;
   and a retrospective station case completing in replay with **zero** cache entries
   and zero live calls. → T042, T043, T044
+  Done, 29 tests in `tests/assistant/test_weather_station.py`, all nine clauses
+  covered. Everything runs against the real pinned `data/water.duckdb`: the
+  station *is* that file, and a fixture would pin an aggregation over rows this
+  deployment never serves.
+  **Hand-computed means hand-computed.** `_raw_half_hours()` pulls the raw
+  half-hourly rows with no `GROUP BY` and no `AT TIME ZONE`, buckets them into
+  Berlin days with `zoneinfo`, and `_hand_derive()` restates
+  `weather_tool.md` § Station source in plain Python (`statistics.fmean`, `max`,
+  `min`, `sum`). So the day boundary is checked against an independent
+  implementation of the same rule rather than against a second copy of the
+  query's own SQL — the T035b convention, applied to arithmetic instead of row
+  counts. Agreement is to `rel=1e-12`; the two differ only by float summation
+  order. Four days are checked field by field, chosen to be individually
+  diagnostic: a quiet winter day where a plainly wrong field has nowhere to
+  hide, the two worst sentinel days, and a high-summer day whose `gs` is an
+  order of magnitude above the rest, so a radiation conversion off by 10³ cannot
+  pass as plausible.
+  **The sentinel test found the sign filter's real justification.** 2025-09-25
+  carries six contaminated wind samples and **not one** equal to `−7999`; an
+  equality filter — the value `findings.md` names — leaves all six in and puts
+  that day's mean wind at about −799 km/h. That day is now a test of its own,
+  next to 2025-08-28, where the unfiltered mean is about −10,418 km/h.
+  The straddle test asserts the *migration*, not just the total: 2025-04-20's
+  last four UTC half-hours carry 6.664 mm, and Berlin's 21st equals UTC's 21st
+  plus exactly that. It also pins the consequence the decision record cares
+  about — under UTC grouping the 20th is the wetter day, under Berlin grouping
+  the 21st is, so the peak-day argmax genuinely moves.
+  Routing is asserted from the far side throughout: a `SpyArchive` records the
+  window it was handed, so "fell to Archive **whole**" is checked as one call
+  for the entire span rather than inferred. Both record edges are inclusive
+  (2025-01-02 and 2026-04-26 serve); one day either side falls through; so does
+  a window containing 2026-03-29, the spring-forward Sunday inside the `as_of`
+  band. `test_coverage_is_tested_through_the_as_of_view_not_the_record` is the
+  mechanism test the packet brief asks for: at `as_of` 2026-03-15 11:00 both
+  windows lie inside the *record* and only the earlier lies inside the *view*,
+  so a coverage test written against the record's true end would serve both from
+  the station and leak post-`as_of` observation into the second. The future
+  window then needs no special case at all — past the cut the view is simply
+  empty.
+  The replay test asserts all three clauses (`status == success`,
+  `source == station`, and `list(cache_dir.iterdir()) == []`) with
+  `fetch_daily_weather` monkeypatched to raise, so "zero live calls" is proved
+  rather than assumed. Its companion moves the same window one day past the
+  record and asserts `CacheMissError` — without which the first test could pass
+  against a client that simply never calls out.
+  **`GreenRoofBalanceResult` gained `weather_source`**, which is what "echoed end
+  to end through GR2L" requires: the run had no way to report its own forcing
+  before. The test asserts the rows `run_gr2l` received are the station's own
+  rows, so the field is the forcing rather than a label. Same `schemas.py`
+  caveat as T043's, and for the same reason — T046 is still P2b's.
+  **Verified by mutation, not just by passing.** Eight mutants of the
+  implementation, each caught by at least three tests: grouping in UTC; the
+  sentinel filtered by equality; `tn` as `min(Tmean)`; serving partial days;
+  wind left in m/s; radiation left unconverted; partial coverage served by the
+  station; and the station never serving at all.
+  `uv run ruff check .` and `uv run pytest` clean — 171 passed, same 15
+  pre-existing findings; `just pins` unmoved at 8 pinned, 8 unpinned, 0 moved.
 
 **Exit:** every §3.3 and §3.4 outcome is reachable and tested, and no wrapper
 reads a wall clock.

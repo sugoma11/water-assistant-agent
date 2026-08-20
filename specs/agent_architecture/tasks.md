@@ -1672,7 +1672,7 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   the deficit to capacity through the same `OUTFLOW_EPSILON_MM`.
   `uv run ruff check .` and `uv run pytest` clean — 359 passed, same 15
   pre-existing findings.
-- [ ] T064 **Faithfulness before correctness**: a golden-series test asserting the
+- [x] T064 **Faithfulness before correctness**: a golden-series test asserting the
   port reproduces the deployed controller — `smart_irrigation.py`,
   `findings.md § External sources on this machine` — element for element *in its
   original unit regime*, landing **before** the unit fix, so every later
@@ -1680,6 +1680,43 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   generated series as a fixture: the controller lives outside any repository, so a
   test that reads it at run time is a test that stops running the day that file
   moves. → T063
+  Done. `scripts/capture_irrigation_golden.py` runs the controller once and
+  commits what it produced; `tests/assistant/test_irrigation_golden.py` replays
+  the numbers and never opens `~/Downloads`. The capture goes through
+  `run_water_balance` and `decide_substrate_roof` — the composition the site
+  actually runs — rather than the private bucket, so what is pinned is the
+  controller's own wiring.
+  **The windows are hourly, and that is the whole of the ladder's half of the
+  claim.** At a one-hour step the horizons in hours and the controller's
+  hard-coded `[:48]` / `[1:168]` are the same slice, so the two window
+  conventions are compared rather than approximated; each window is 168 rows
+  exactly, one refill horizon. The forcing is the pinned record's — Berlin-hour
+  rain and mean air temperature from `wetter`, seeds from each roof's own `swc`
+  sensor under `latest_measured_swc` — with the day's FAO-56 ET0 spread evenly
+  over its 24 hours, the fixture's own convention, stated in the script and used
+  nowhere else. It needs no defending: both implementations receive the identical
+  numbers.
+  **Three windows walk all five rungs, and a test asserts they still do.** Hot
+  and dry (2025-06-28) fires rungs 1 and 5, hot and wet (2025-07-12) rungs 1 and
+  2, and warm over April-wet roofs (2025-04-16) rungs 3 and 4 — the only window
+  of the record's own that reaches the middle of the ladder, found by scanning
+  every 168-hour window in the record for the two rungs the first two missed. Two
+  degenerate cases carry the branches the controller has and the record does not:
+  an empty window, and a `NaN` in the forcing.
+  **Agreement is to 3.6e-15, not to the bit, and the reason is stated rather than
+  tolerated.** The extraction writes the stress coefficient over fractions
+  (`(θ/100 − 0.025)/(0.22 − 0.025)`) and the port writes it over %θ; the algebra
+  is identical and the arithmetic is one bit apart — `ks` 2.2e-16, and over 168
+  steps the store 1.8e-15 and the outflow 3.6e-15, against an asserted 1e-9. The
+  decisions are exact, and the *rung* is checked against the controller's own
+  German string rather than against my labelling of it: two rungs say yes and
+  three say no, so the boolean alone would pass on the right answer for the wrong
+  reason.
+  A second test pins the constants the capture ran with against
+  `rules_constants.py`, so a threshold that moves later fails as "the fixture is
+  no longer evidence" rather than surfacing as a drifted decision.
+  `uv run ruff check .` and `uv run pytest` clean — 382 passed, same 15
+  pre-existing findings.
 - [ ] T065 Carry the balance into millimetres, rescaling each roof's response to
   rain by `100/SH_mm`. The deployed trigger levels are carried verbatim as site
   policy and are **not** re-derived (`decisions.md § No fitted correction between

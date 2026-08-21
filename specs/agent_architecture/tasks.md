@@ -2420,18 +2420,15 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   tool-result component, reading the wrapper-enriched payload, plus a charting
   dependency in `web/package.json`. Unscored side effect; keep it out of the
   evaluation path. → T097
-- [ ] T099 Tests: source resolution per kind; closed-vocabulary rejection of an
+- [x] T099 Tests: source resolution per kind; closed-vocabulary rejection of an
   unknown table or column; mixed-plot daily aggregation; unit and axis derivation;
   gravel and wetland `not_available`; the resolved-spec shape pinned; and **no live
   call in replay** for a `model` + `weather` plot. → T091, T094, T096
-  **The measured half has landed** in `tests/assistant/test_plot_timeseries.py`
-  (40 tests, suite now 708): the closed-vocabulary rejections, the mixed-plot
+  **The measured half landed first** in `tests/assistant/test_plot_timeseries.py`
+  (40 tests, suite then 708): the closed-vocabulary rejections, the mixed-plot
   daily aggregation, and the unit/axis/operator derivation. The four remaining
-  clauses all need T091's two live sources or T096's scope trigger and are left
-  for the packet that adds them — the `model` and `weather` source resolution,
-  the gravel and wetland `not_available`, the full resolved-spec shape (T092
-  adds the modelling arguments and the gap and truncation flags), and the
-  no-live-call replay assertion.
+  clauses all needed T091's two live sources or T096's scope trigger, and were
+  left for the packet that added them.
   **Nothing here stands in for the sources that do not exist yet.** What a mixed
   plot is tested on is the *decision* it forces, which `plot_resolution` makes
   from the source names alone before anything is fetched — so the assertion is
@@ -2447,12 +2444,43 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   earns it: "the fault is decided before any I/O" is a claim about what did
   *not* happen, and only a spy executor that recorded one query for the legal
   series and none for the illegal one can witness it.
+  **The four remaining clauses have landed** (708 → 745 tests), and the file's
+  subject widened with them: source resolution for `weather` and `model`, the
+  gravel and wetland `not_available` over four spellings each, the resolved-spec
+  shape pinned as an exact key set, and the no-live-call replay on a chart that
+  uses all three sources at once.
+  **The exit criterion is asserted on the strongest chart, not the smallest
+  one.** `measured` + `weather` + `model` together, recorded once and replayed
+  against a GR2L double that *raises* — so a replay that reached the service
+  could not have succeeded — with the weather half served by the real composite
+  over the pinned file under `allow_live=False`. That last part is what makes
+  the claim about the whole plot rather than about its model half: the assertion
+  `weather_source == "station"` fails loudly if the window ever stops being one
+  the site's own record covers, which is the day the plot would start calling
+  Open-Meteo.
+  **`test_the_replayed_plot_is_the_cache_and_not_a_service_that_is_never_called`
+  is the other half of that claim**, and without it the first test would be
+  evidence about a service nobody calls rather than about a cache that is hit:
+  the same setup over an uncaptured window has to fail, loudly, as an `upstream`
+  error.
+  **"The same seed rule" is tested as identity, not as agreement.**
+  `test_the_plots_model_run_is_the_standalone_tools_run` records both callers at
+  the one seam GR2L is reached through and compares the rows and the parameters
+  whole. A test that asserted each side's seed separately would pass while the
+  two drifted apart in the same direction; this one cannot.
+  **The no-values claim is asserted by shape.** "No field of a series is a list
+  of anything" survives a future field holding values under a different name,
+  which `"points" not in result` would not — and it has to, because
+  `stats.points` is a legitimate count and would have made the by-name check
+  read as a false alarm.
   **`test_the_reported_outflow_is_the_litres_the_record_holds` is the
   no-area-factor assertion in its executable form.** The vocabulary test checks
   there is no second, normalized entry; this one checks the entry there *is*
   returns the record's own litres under the `mm` label. Multiplying by today's
   1.0 is a no-op no assertion could see, so what this pins is the day someone
   reads the area off a different lysimeter and writes the multiplication in.
+  `uv run ruff check .` and `uv run pytest` clean — 745 passed, same 15
+  pre-existing findings.
 
 ---
 

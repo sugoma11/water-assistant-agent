@@ -450,9 +450,9 @@ class PlotSeries(BaseModel):
     """One series of the **resolved** spec: what the agent asked for, plus what followed.
 
     The first four fields are the agent-supplied half — the surface §7 scores —
-    and the rest is derived in code from the variable. The operator is echoed so
-    a reader can see which one ran, never so a caller can choose one
-    (``agent_architecture.md`` §3.6).
+    and the rest is derived in code from the variable. Unit, axis and
+    aggregation are echoed so a reader can see which operator ran, never so a
+    caller can choose one (``agent_architecture.md`` §3.6).
     """
 
     source: Literal["measured", "weather", "model"]
@@ -471,6 +471,11 @@ class PlotSeries(BaseModel):
     aggregation: Literal["sum", "mean"] = Field(
         description="The operator that aggregates this series — derived from `quantity`, "
         "never chosen by the caller: fluxes sum, states average"
+    )
+    unit: str
+    axis: str = Field(
+        description="Series sharing an axis are drawn against one scale. Two variables in "
+        "the same unit but of different quantities do not share one"
     )
     note: str | None = Field(
         default=None,

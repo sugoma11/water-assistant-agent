@@ -2244,8 +2244,27 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   edges by an hour or two against the daily one's.
   `uv run ruff check .` and `uv run pytest` clean — 668 passed, same 15
   pre-existing findings.
-- [ ] T095 Derive unit, axis assignment and aggregation operator in code from the
+- [x] T095 Derive unit, axis assignment and aggregation operator in code from the
   variable — fluxes sum, states average — never model-chosen. → T092
+  **The derivation is the vocabulary row, not a function beside it.** Unit and
+  axis are columns of `MeasuredVariable` and the operator is a property over
+  `quantity`, so there is no path that produces a series without them and none
+  that lets a caller supply one: the tool signature carries no `agg`, no
+  `aggregation`, no `unit` and no `resolution`, which is asserted rather than
+  merely intended.
+  **Axis is a grouping decision, so it is its own column rather than the unit
+  restated.** Rain and lysimeter outflow share `water_depth_mm` across two
+  tables; relative humidity and soil moisture are both percentages and do
+  **not** share one, or a humidity of 70 % would set the scale an 18 %θ soil
+  moisture is read against. Surface temperature in kelvin keeps its own axis
+  away from the air's Celsius. Six identities for twelve variables.
+  **These fields are echoed but not scored** (`decisions.md` § Plotting): they
+  are constant across candidates and discriminate nothing, so scoring them would
+  inflate every candidate equally. They are echoed anyway because a reader has to
+  be able to see which operator ran over which column — which is also what makes
+  the `outflow` row's `mm` legible as a relabel rather than a conversion.
+  `uv run ruff check .` and `uv run pytest` clean — 668 passed, same 15
+  pre-existing findings.
 - [ ] T096 Typed outcomes: a `model` series for the gravel roof or the wetland →
   `not_available`; a `measured` series for either stays valid. → T051
 - [ ] T097 Headless handoff: nothing renders server-side and no plotting library

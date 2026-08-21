@@ -7,8 +7,8 @@ about the data comes back to the model: the series' consumer is the renderer
 (``agent_architecture.md`` §3.6, ``decisions.md`` § Plotting).
 
 **The `measured` vocabulary is a table, and it is closed.** Twelve variables over
-the five as-of tables, each carrying its column and whether it is a flux or a
-state, which is what the operator follows from. A variable that is
+the five as-of tables, each carrying its column, whether it is a flux or a state,
+the operator that follows from that, its unit and its axis. A variable that is
 not in it cannot be drawn — there is no free SQL here, so plotting reaches less
 of the database than the text-to-SQL agent does, which is a disclosed scope limit
 (§8) rather than a gap to widen. Three properties of the table are worth stating
@@ -34,7 +34,7 @@ it would report 48× the day's mean under a unit nobody uses.
 
 *Area-normalized outflow is not in the vocabulary.* Every lysimeter collects 1 m²
 (:data:`roofs.LYSIMETER_AREA_M2`), so a litre of collected runoff is already a
-millimetre of depth: the entry reports millimetres and the values are served
+millimetre of depth: the entry relabels the unit and the values are served
 unscaled. An area factor here would be the bug that constant exists to prevent.
 
 **Two things the vocabulary discloses rather than repairs.** ``radiation`` is
@@ -111,6 +111,18 @@ to source, variable, roof and the resolved range — but still closed, because a
 kind the renderer cannot draw is a plot that never appears.
 """
 
+# Axis identities. Series sharing one are drawn against one scale, so this is a
+# grouping decision rather than a restatement of the unit: rain and runoff share
+# an axis across two tables, while relative humidity and soil moisture — both
+# percentages — do not, and a surface temperature in kelvin does not share the
+# air's Celsius axis.
+AXIS_WATER_DEPTH = "water_depth_mm"
+AXIS_WATER_CONTENT = "water_content_pct"
+AXIS_TEMPERATURE = "temperature_c"
+AXIS_SURFACE_TEMPERATURE = "surface_temperature_k"
+AXIS_IRRADIANCE = "irradiance_w_m2"
+AXIS_HUMIDITY = "relative_humidity_pct"
+
 _OUTFLOW_NOTE = (
     "Lysimeter outflow is recorded in litres and reported in millimetres: every "
     "collection area is 1 m², so a litre is already a depth and no area factor is "
@@ -139,6 +151,8 @@ class MeasuredVariable:
     quantity: Literal["flux", "state"]
     """Whether the sampling interval accumulates this quantity or samples it."""
 
+    unit: str
+    axis: str
     station_column: str | None = None
     """The ``wetter`` column, named here because the station belongs to no roof."""
 
@@ -162,71 +176,93 @@ class MeasuredVariable:
 MEASURED_VOCABULARY: dict[tuple[str, str], MeasuredVariable] = {
     # Per-roof tables: no column here, because `roofs.py` has it.
     ("swc", "soil_moisture"): MeasuredVariable(
-        table="swc", quantity="state"
+        table="swc", quantity="state", unit="%θ", axis=AXIS_WATER_CONTENT
     ),
     ("tsoil", "soil_temperature"): MeasuredVariable(
-        table="tsoil", quantity="state"
+        table="tsoil", quantity="state", unit="°C", axis=AXIS_TEMPERATURE
     ),
     ("outflow", "outflow"): MeasuredVariable(
         table="outflow",
         quantity="flux",
+        unit="mm",
+        axis=AXIS_WATER_DEPTH,
         note=_OUTFLOW_NOTE,
     ),
     # The station: one set of columns for the whole site, so these name theirs.
     ("wetter", "precipitation"): MeasuredVariable(
         table="wetter",
         quantity="flux",
+        unit="mm",
+        axis=AXIS_WATER_DEPTH,
         station_column="Rain",
     ),
     ("wetter", "air_temperature"): MeasuredVariable(
         table="wetter",
         quantity="state",
+        unit="°C",
+        axis=AXIS_TEMPERATURE,
         station_column="Tmean",
     ),
     ("wetter", "relative_humidity"): MeasuredVariable(
         table="wetter",
         quantity="state",
+        unit="%",
+        axis=AXIS_HUMIDITY,
         station_column="RH",
     ),
     ("wetter", "shortwave_radiation"): MeasuredVariable(
         table="wetter",
         quantity="state",
+        unit="W/m²",
+        axis=AXIS_IRRADIANCE,
         station_column="Rad_SW",
     ),
     # The masts: a suffix each, joined to the roof's prefix by `roofs.py`.
     ("radiation", "shortwave_down"): MeasuredVariable(
         table="radiation",
         quantity="state",
+        unit="W/m²",
+        axis=AXIS_IRRADIANCE,
         mast_suffix="SWdown",
         note=_RADIATION_NOTE,
     ),
     ("radiation", "shortwave_up"): MeasuredVariable(
         table="radiation",
         quantity="state",
+        unit="W/m²",
+        axis=AXIS_IRRADIANCE,
         mast_suffix="SWup",
         note=_RADIATION_NOTE,
     ),
     ("radiation", "longwave_down"): MeasuredVariable(
         table="radiation",
         quantity="state",
+        unit="W/m²",
+        axis=AXIS_IRRADIANCE,
         mast_suffix="LWdown",
         note=_RADIATION_NOTE,
     ),
     ("radiation", "longwave_up"): MeasuredVariable(
         table="radiation",
         quantity="state",
+        unit="W/m²",
+        axis=AXIS_IRRADIANCE,
         mast_suffix="LWup",
         note=_RADIATION_NOTE,
     ),
     ("radiation", "surface_temperature"): MeasuredVariable(
         table="radiation",
         quantity="state",
+        unit="K",
+        axis=AXIS_SURFACE_TEMPERATURE,
         mast_suffix="TSFC",
         note=_RADIATION_NOTE,
     ),
     ("radiation", "surface_temperature_corrected"): MeasuredVariable(
         table="radiation",
         quantity="state",
+        unit="K",
+        axis=AXIS_SURFACE_TEMPERATURE,
         mast_suffix="TSFCkorr",
         note=_RADIATION_NOTE,
     ),
@@ -403,10 +439,10 @@ def resolve_measured_series(
 ) -> ResolvedSeries:
     """Fetch one ``measured`` series and echo what the vocabulary made of it.
 
-    Every derived field — the column, the operator, the note — comes from the
+    Every derived field — column, operator, unit, axis, the note — comes from the
     vocabulary rather than from the caller, and the values are served as recorded:
-    the outflow entry reports the record's litres as millimetres and scales
-    nothing (``agent_architecture.md`` §3.6).
+    the outflow entry relabels litres as millimetres and scales nothing
+    (``agent_architecture.md`` §3.6).
 
     Raises:
         PlotVocabularyError: the series is outside the closed vocabulary.
@@ -423,6 +459,8 @@ def resolve_measured_series(
             column=column,
             quantity=entry.quantity,
             aggregation=entry.aggregation,
+            unit=entry.unit,
+            axis=entry.axis,
             note=entry.note,
         ),
         points=[(_stamp(at), float(value)) for at, value in result.rows],
@@ -537,8 +575,8 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
             dict: on success ``status='success'`` with the resolved ``start`` and
             ``end``, the ``resolution`` the series were drawn at, and one entry per
             series carrying what was asked for (source, variable, roof) and what
-            followed from it — the ``column`` read and the ``aggregation`` applied.
-            **The values themselves are not returned** —
+            followed from it (the ``column`` read, the ``aggregation`` applied, the
+            ``unit`` and the ``axis``). **The values themselves are not returned** —
             the chart is the deliverable and the user can already see it, so
             describe what was drawn rather than reciting numbers. A series carrying
             a ``note`` — the radiation masts' one-hour timestamp offset, outflow's

@@ -2736,9 +2736,54 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   scored.
   `uv run ruff check .` and `uv run pytest` clean — 859 passed (804 + 55), same
   15 pre-existing findings.
-- [ ] T103 Oracles for the three pilot templates only: T01 (SQL sum), T07
+- [x] T103 Oracles for the three pilot templates only: T01 (SQL sum), T07
   (importing `irrigation_decision` — local, no HTTP) and T09 (model chain,
   importing `run_gr2l`). → T063, T023, T009
+  **`eval/oracles/`, one module per family plus `base.py` and `pins.py`**, keyed
+  by `template_id` in a registry so T111 looks a template up rather than mapping
+  ids by hand — and a template with no oracle fails at generation instead of
+  emitting a case with no answer.
+  **Each oracle reaches the shared core by the tool's own route, not by the
+  shortest one.** T07 goes through `run_roof`, whose last step *is*
+  `irrigation_decision`, and takes its seed from `_measured_seed` — the wrapper's
+  own private helper — because `latest_measured_swc` would leave the oracle
+  holding a copy of a `round(θ, 2)` the ladder can turn on. T09 goes through
+  `run_roof_model` rather than calling `run_gr2l` directly: `run_gr2l` takes
+  assembled rows and resolved parameters, so an oracle calling it would rebuild
+  the fetch, the seed rule, the mm↔%θ conversion and the preset lookup — four
+  places to come to mean something slightly different while both kept running.
+  Both windows resolve through `resolve_window`, so "the next 72 hours" denotes
+  one window rather than two.
+  **The divergence is tested, not asserted.** T07 and T09 each have a gold
+  trajectory of one deterministic tool, so both are run against that tool over
+  one context — T07 across twelve forcings spanning the ladder, T09 across three
+  thresholds — and the answers must agree. T01 has no such twin, since its
+  counterpart is a model writing SQL; its substitute is a three-row fixture that
+  totals 3.5 L on Berlin days and 6.5 L on UTC ones, so a grouping slip is a
+  failure rather than a rounding. A second T01 test runs the real
+  `data/water.duckdb` through `make_case_context` (46.0 L, July 2025, gravel),
+  because a synthetic table proves the arithmetic and nothing about the schema.
+  **T01 enforces one containment nothing else does.** `assertions.py` intersects
+  every *day* a parameter carries with the cut, but `"2025-07"` carries no day,
+  so a case whose `as_of` falls mid-month would ask for "July's total" and be
+  answered with half of July — an ambiguous oracle, which §1.6 discards. The cut
+  is read from `ctx.as_of` rather than from `inputs["as_of"]`: the context is
+  what the answer was computed through, and two sources for one date is how a
+  check passes against a date the sum did not use.
+  **T07 matches the route T009 settled.** No card is read and none is expected
+  (`Cards: []`): "according to the operations manual" is deleted rather than
+  reworded, and an oracle consulting a card would encode the route §1.6's cue
+  rejects.
+  **Pins are stamped where they were read.** `duckdb_sha256` always — every
+  oracle here reads the pinned DB, if only for a seed — the GR2L canary only on a
+  modelled answer, and `station_derivation` exactly when a window resolved to
+  `station`, because Archive rows never pass through that derivation. A blanket
+  stamp would assert a dependency the answer does not have and would then survive
+  a change that could not have moved it. The canary is *read* from `eval/
+  pins.json` and its absence raises: a case emitted with a null canary would look
+  pinned and compare against nothing.
+  `uv run ruff check` and `uv run pytest` clean — 920 passed (874 + 46), same 15
+  pre-existing findings in `src/experiments/`.
 - [x] T104 Harness assertions: retrospective comparison windows end at or before
   `as_of`; no live call in replay; the roof pool respected per family; every
   template's period parameter intersected with its own `as_of`. → T100

@@ -2826,10 +2826,46 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   opens.
   `uv run ruff check` and `uv run pytest` clean — 863 passed (859 + 4), same 15
   pre-existing findings in `src/experiments/`.
-- [ ] T106 **Before the gate**: add the alias map to the semantic layer — DE/EN
+- [x] T106 **Before the gate**: add the alias map to the semantic layer — DE/EN
   roof aliases bridging `Kies` / `KD` / `Kiesdach` / `QGravel` to the gravel roof
   and the equivalents for the other four — together with the `radiation` hour
   offset and the day boundary. Blocks German paraphrase generation. → T027
+  **The map is a projection of `roofs.py`, like every other roof table here.**
+  `_roof_directory(table)` renders one line per roof instrumented in that table —
+  column, canonical name, EN and DE label, every alias — so a roof that gains a
+  spelling gains it in the prompt too, and there is no second list to forget.
+  It is rendered per table rather than once because the mapping *is* per table:
+  `QGravel`, `TGravel`, `Kies_Efflux` and `KD_*` are four columns for one roof,
+  and the block a question sends the model to is the one that has to answer it.
+  **The aliases are sorted, and that is load-bearing.** `RoofSegment.aliases` is
+  a `frozenset`; iterating it yields strings ordered by their hashes, which
+  `PYTHONHASHSEED` randomizes per process. Rendered as-is, the prompt
+  `agent_architecture.md` §3.1 requires to be byte-stable would have differed run
+  to run with nothing in this repository changing — and no comparison of one
+  process against itself could have caught it.
+  `test_the_rendered_schema_is_identical_under_a_different_hash_seed` renders it
+  in two subprocesses under two seeds and against this process's own render, so
+  a subprocess that printed nothing cannot pass by matching one that printed
+  nothing either.
+  **The day boundary is handed over as `site_day_expr()` itself.** The
+  `timestamp` description carries the expression character for character rather
+  than a retyped cast, in all five tables: `decisions.md` § The day boundary
+  requires the oracle and the candidate to group alike, and two copies of one
+  expression is precisely how that stops being true. The test asserts the count
+  is five, so a table that quietly loses the line fails.
+  **The `radiation` offset is stated on `radiation` and nowhere else.** The other
+  four share the station clock, so a blanket warning would be a false statement
+  about four tables to make a true one about the fifth — `test_only_radiation_
+  claims_the_offset` pins that asymmetry. The warning sits on the `timestamp`
+  column, where a model reading one block meets it, and says the data is served
+  as recorded and must not be "corrected" — the DB is not rebuilt, per
+  `decisions.md`.
+  **Absence is rendered, not omitted.** The semi-intensive roof has no lysimeter
+  and no radiation mast, and those two blocks now name it and say so. A schema
+  that simply left it out invites a query against a column that does not exist;
+  a stated absence is what an abstention can be grounded in.
+  `uv run ruff check` and `uv run pytest` clean — 874 passed (863 + 11), same 15
+  pre-existing findings in `src/experiments/`.
 - [ ] T107 **Pilot run** on T01 / T07 / T09 with the handwritten instruction, three
   repeats, paired — then **freeze the testbed**. Everything after this point may
   change only the optimizable text. → T100, T101, T102, T103, T105, T106

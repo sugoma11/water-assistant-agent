@@ -226,12 +226,14 @@ same three for the reflection model; the candidate prompt names and seed version
 the dependency lockfile hash (adk, litellm, mlflow, gepa, pyyaml, duckdb); and the
 station derivation, which the DB hash does not cover.
 
-**Open in the data model, to close in P4:** `data_freshness` is listed as a
-`rendered` card, but its values are record dates — they come from the pinned
-database, not from `rules_constants.py` or `roofs.py`, which is what `rendered`
-is defined against. Either it becomes `static` with the dates carried by the
-station-derivation pin, or `values_for()` gains a DB-backed source. T041 decides
-it; the drift test is meaningless until it does.
+**Closed by T081:** `data_freshness` was listed as a `rendered` card, but its
+values are record dates — they come from the pinned database, not from
+`rules_constants.py` or `roofs.py`, which is what `rendered` is defined against.
+It is **`static`**: the dates are carried by the database hash and the
+station-derivation pin, `values_for()` keeps exactly two sources, and the
+transcription is checked in the pin check, where the database is already open
+(`decisions.md § Retrieval`). The card store stays a pure function of its
+packaged files.
 
 ---
 
@@ -367,7 +369,11 @@ a model case completes with entries and no live call.
   tests *oracle* ambiguity, not linguistic ambiguity introduced at paraphrase
   time, and the candidate instruction forbids clarifying questions. Mitigation is
   disclosure, plus a spot-check of the German pool before splits are cut.
-- **Q1 — `data_freshness`'s provenance** (§4 above). Blocks its drift test only.
+- ~~**Q1 — `data_freshness`'s provenance.**~~ Settled by T081 as **`static`**
+  (§4 above, `decisions.md § Retrieval`): the values are record dates, and
+  rendering them would have put a database read inside a card store specified as
+  a pure function of packaged files, to re-check what the database hash already
+  pins. It has no drift test; the pin check verifies the dates instead.
 - ~~**Q2 — must-nots grounded in candidate-owned text.**~~ Settled by T005 as an
   accepted risk under `decisions.md § Trajectory scoring and routing probes`: the
   disclosure stays in the candidate-owned docstring, because moving it would take

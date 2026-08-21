@@ -214,8 +214,14 @@ async def lookup_reference(
 - **Prose carries no numerals; `values:` is test-bound to the constants.**
   `provenance: rendered` means the `values:` block equals what `rules_constants.py`
   and `roofs.py` produce, asserted by a test — not that the file is machine-written.
-  The `provenance: static` cards (`roof_directory`, `sensor_reference`,
-  `et0_method`) have no constants behind them and are exempt.
+  Those two modules are the whole of what `rendered` is defined against. The
+  `provenance: static` cards (`roof_directory`, `sensor_reference`, `et0_method`,
+  `data_freshness`) have no constants behind them there and carry no drift test.
+  `data_freshness` is the one whose values are pinned elsewhere rather than
+  unpinned — its record dates come from the database hash and the
+  station-derivation pin, and the pin check verifies them, because a card store
+  that read the database would stop being the offline function this section's
+  last bullet promises (`decisions.md § Retrieval`).
 - **The enum lives in the signature; only the docstring is candidate-owned.** ADK
   renders `Literal[...]` into the function declaration as a schema `enum`, so the
   vocabulary reaches the model regardless of the docstring. A test pins

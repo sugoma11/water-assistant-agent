@@ -1824,7 +1824,7 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   each `provenance: rendered` card's `values:` / `applies_to:` / `not_applicable:`
   blocks, plus the drift test asserting the committed card equals it and a
   `just cards-check` that prints the correct block on failure. A test, not a
-  writer — hand prose and generated values share one file. → T062, T060
+  writer — hand prose and generated values share one file. → T081, T062, T060
 - [ ] T069 [P] Derive the `roof_reference_ranges` values (normal / low / high per
   roof segment) from the `swc` record under the same drift discipline. → T068
 - [x] T070 Tests: the ladder's reason codes in priority order; the stated-value
@@ -1908,7 +1908,7 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
 
 ## Phase 4 — Reference cards
 
-- [ ] T081 **Runs first in P4, before T068.** Decide `data_freshness`'s
+- [x] T081 **Runs first in P4, before T068.** Decide `data_freshness`'s
   provenance (plan §8 Q1): either `static`, with the record dates carried by the
   station-derivation pin, or `rendered`, with `values_for()` gaining a pinned-DB
   source — `rendered` is defined against `rules_constants.py` and `roofs.py`, and
@@ -1916,11 +1916,40 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   is meaningless until this is settled, and both T068's source list and T080's
   provenance field follow from it. Record the decision in `decisions.md § Retrieval`
   and close plan §8's Q1.
+  Decided **`static`**, and the reason is §3.2's own last bullet: the card store
+  is specified as a pure function of the files §5 hashes — no network, no cache
+  entry, no `upstream` class — and a pinned-DB source inside `values_for()` is a
+  database read in the middle of that promise. Letting only the *test* open the
+  database is worse, not better: the card's guarantee would then rest on a file
+  the store itself may not read.
+  **What it buys is thin, and that is the argument.** A drift test compares a
+  committed card against a source; here the source is a frozen database whose
+  sha256 is already a pin, so the test re-checks what `just pins` checks, and
+  fails in the same batch for the same reason.
+  **What `static` costs is a mis-transcription**, which no pin catches — a wrong
+  date authored on day one stays wrong. So the check moves rather than
+  disappearing: the pin check already opens the database and already carries the
+  station derivation, so it verifies the card's dates against the tables there.
+  That obligation belongs to T082's pins half; it is written into `check_pins.py`
+  with the card-store sha256, not into `knowledge/`.
+  **The consequence T068 was waiting for:** `values_for()` has exactly two
+  sources and no third shape to carry. The consequence for T080: the ten other
+  cards keep their listed provenance and `data_freshness` joins `roof_directory`,
+  `sensor_reference` and `et0_method` as the fourth `static` card — with the
+  distinction that it is pinned *elsewhere* rather than unpinned, which its entry
+  states.
+  Landed in `decisions.md § Retrieval` (a rejected alternative and a validity
+  condition fixing `rendered` at two sources), plan §4 and §8's Q1 both closed,
+  and `agent_architecture.md` §3.2's static list corrected from three cards to
+  four — that last one outside the task's letter, because leaving §3.2 naming
+  three static cards would have made the decision a contradiction the moment it
+  was recorded.
 - [ ] T080 Author `assistant/knowledge/cards/*.yaml` — **11 cards**, one file each,
   matching the §3.2 enum exactly: `irrigation_rule`, `irrigation_threshold`,
   `substrate_hydraulics`, `irrigation_dose`, `heatwave_definition`,
   `retention_target`, `roof_reference_ranges` (rendered); `roof_directory`,
-  `sensor_reference`, `et0_method` (static); `data_freshness` as **T081 decides**.
+  `sensor_reference`, `et0_method`, and `data_freshness` — **`static`**, per
+  T081 — the four that carry no drift test.
   Hand-authored `text:` carrying **no numerals**; no card named after a single
   constant. `irrigation_rule` and `irrigation_threshold` must together answer T16a
   without the calculator, and `irrigation_threshold.not_applicable` must state the

@@ -544,6 +544,19 @@ its card whole, including the block stating what the card does not cover.
   collapses the scope-exclusion template into the already-tested "relay a typed
   `not_available`" behaviour and costs the catalog its strongest hallucination
   probe.
+- *A database-backed source inside `values_for()`, so `data_freshness` could be
+  rendered.* That card states where each table's record ends, so its values come
+  from the pinned database and not from the two constants modules `rendered` is
+  defined against. Rendering it would have put a database read inside the one
+  tool specified as a pure function of packaged files — no network, no cache
+  entry, no `upstream` class — and bought a drift test that only re-checks a
+  file the pin set already hashes. So `data_freshness` is **static**: its dates
+  are authored once and held by the database hash and the station-derivation
+  pin, and the transcription is verified where the database is already open, in
+  the pin check, rather than in the knowledge layer. The alternative reading —
+  keep it `rendered` and let the *test* open the database — was rejected for the
+  same reason with an extra one: it makes the card's guarantee depend on a file
+  the card store itself is forbidden to read.
 
 **Validity conditions:**
 
@@ -564,6 +577,13 @@ its card whole, including the block stating what the card does not cover.
   German question maps to an enum value through the LLM rather than through
   lexical overlap with an English corpus, and is measured as routing accuracy
   on German paraphrases instead of as a retriever scope limit.
+- **`rendered` names exactly two sources**, `rules_constants.py` and `roofs.py`,
+  and a rendered card's drift test asserts equality against them. A third source
+  with its own pinning would turn the label from a checkable equality into a
+  claim about provenance in general, and a reader could no longer tell which of
+  a card's numbers a test is holding. `static` is therefore not "unpinned" — it
+  is pinned somewhere other than those two modules, and every static card says
+  where in its own entry.
 
 ---
 

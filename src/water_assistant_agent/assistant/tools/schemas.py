@@ -563,11 +563,17 @@ class PlotResult(BaseModel):
 
     The series' consumer is the renderer, not the LLM
     (``agent_architecture.md`` §3.6): what comes back here is what the agent
-    asked for, resolved, so it can say what was drawn without transcribing it.
+    asked for, resolved, plus per-series summary statistics, so it can say what
+    was drawn without transcribing it. ``artifact_ref`` names the payload the
+    renderer was handed; it is a handle, not data.
     """
 
     status: Literal["success"] = "success"
     kind: Literal["line", "bar", "model_overlay", "diff"]
+    artifact_ref: str = Field(
+        description="Handle for the drawn chart — the payload the renderer received. "
+        "Derived from the resolved spec, so the same plot always has the same handle"
+    )
     start: str = Field(description="First day drawn, resolved to an absolute date")
     end: str = Field(description="Last day drawn, resolved to an absolute date")
     resolution: Literal["half_hourly", "daily"] = Field(

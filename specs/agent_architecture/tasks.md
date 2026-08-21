@@ -2289,8 +2289,23 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   assertion about the fields a test happens to name would catch.
   `uv run ruff check .` and `uv run pytest` clean — 708 passed, same 15
   pre-existing findings.
-- [ ] T093 Return **no series to the model** — spec, summary statistics and
+- [x] T093 Return **no series to the model** — spec, summary statistics and
   `artifact_ref` only. → T092
+  **The handle is content-addressed, not minted.** `plot_<sha256(resolved
+  spec)[:16]>`, so the same chart over the same window always has the same
+  handle and a chart over changed data has a different one. A UUID would have
+  been the obvious choice and is the wrong one twice over: it puts a value in
+  the model's context that differs between two replays of one case, which is
+  precisely what §5 exists to prevent, and it would make
+  `replayed == recorded` — the assertion the packet's exit criterion is
+  written as — impossible to state.
+  **"No series" is asserted by shape rather than by name.** The test checks that
+  **no field of a series is a list of anything**, which a future field holding
+  values cannot evade by being called something other than `points`. The one
+  list in the payload is the list of series itself; `stats.points` is a count,
+  and is the only place the word survives.
+  `uv run ruff check .` and `uv run pytest` clean — 708 passed, same 15
+  pre-existing findings.
 - [x] T094 Force daily resolution on mixed plots: any plot combining a `model` or
   `weather` series with a `measured` one aggregates the measured series to
   Europe/Berlin calendar days with that variable's derived operator, and reports

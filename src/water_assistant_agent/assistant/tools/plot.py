@@ -76,6 +76,7 @@ not — both read the cache the case committed.
 
 import asyncio
 import dataclasses
+import hashlib
 import json
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import date, datetime, timedelta
@@ -898,6 +899,21 @@ def _parse_specs(series: Any) -> list[SeriesSpec]:
     return specs
 
 
+def artifact_ref(spec: dict[str, Any]) -> str:
+    """The handle naming the payload the renderer was handed.
+
+    Content-addressed over the resolved spec rather than minted per call, and
+    that is deliberate: a rollout has to be reproducible, and a random handle
+    would make two identical plots two different results and put a value in the
+    model's context that changes between replays of one case (§5). The same chart
+    over the same window therefore always has the same handle, and a chart over
+    changed data has a different one — which is what a handle to a payload should
+    mean.
+    """
+    canonical = json.dumps(spec, sort_keys=True, separators=(",", ":"), default=str)
+    return f"plot_{hashlib.sha256(canonical.encode('utf-8')).hexdigest()[:16]}"
+
+
 class _PlotSources:
     """One plot's live fetches, each done once.
 
@@ -1055,14 +1071,15 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
 
         Returns:
             dict: on success ``status='success'`` with the resolved ``start`` and
-            ``end``, the ``resolution`` the series were drawn at, and one entry
-            per series carrying what was asked for (source, variable, roof, any modelling arguments)
+            ``end``, the ``resolution`` the series were drawn at, an
+            ``artifact_ref`` naming the chart, and one entry per series carrying
+            what was asked for (source, variable, roof, any modelling arguments)
             and what followed from it (the ``column`` read, the ``aggregation``
             applied, the ``unit`` and the ``axis``, and ``stats`` — how many points
             were drawn, over what span, and their min, max, mean and total).
             **The values themselves are not returned** — the chart is the
             deliverable and the user can already see it, so describe what was drawn
-            rather than reciting numbers.
+            and answer from ``stats`` rather than reciting numbers.
 
             Four things in a series are caveats to pass on rather than details to
             drop: a ``note`` (the radiation masts' one-hour timestamp offset,
@@ -1170,8 +1187,17 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
         )
         # The points stay out of the payload: the model gets the spec and the
         # statistics, and the renderer gets the series through the state handoff.
+        spec_payload: dict[str, Any] = {
+            "kind": kind,
+            "start": start,
+            "end": end,
+            "resolution": resolution,
+            "series": [item.spec.model_dump() for item in resolved],
+        }
+        reference = artifact_ref(spec_payload)
         return PlotResult(
             kind=kind,
+            artifact_ref=reference,
             start=start,
             end=end,
             resolution=resolution,

@@ -1,0 +1,60 @@
+id: irrigation_threshold
+title: Soil-moisture trigger levels, per roof segment
+provenance: rendered
+text: |
+  Every substrate segment carries two trigger levels, and they are what the
+  irrigation ladder compares the soil-water store against.
+
+  The wilting point is the floor. A store that reaches it or drops below it
+  inside the decision horizon has the segment watered whatever the weather is
+  doing, because at that level the planting is losing water it cannot get back.
+  The dry threshold is the gate on cooling. A store above it means the
+  substrate holds enough water, and the segment is left alone even on a hot
+  day; a store at or below it, with heat forecast and no refill coming, is what
+  the ladder waters for.
+
+  Both levels are stated twice, once as a volumetric water content and once as
+  a depth of water, and neither is a conversion a reader should perform. The
+  site authors its thresholds in the unit its probes read, the water balance
+  runs in depth, and the conversion between them goes through the segment's own
+  substrate height, which is not the same on every segment. Converting one into
+  the other against the wrong depth is not a hypothetical mistake here; it is a
+  known fault of the deployed controller.
+
+  Because the levels differ per segment, a threshold means nothing detached
+  from the segment it belongs to, and the level from one segment is not a
+  usable stand-in for another's. Field capacity is deliberately absent: it is a
+  property of the store rather than a level the ladder acts on, and it sits on
+  the substrate card beside the substrate depths.
+
+  A segment listed as not applicable below has no soil-moisture irrigation
+  threshold at all. That is an absence rather than a gap in this card. Such a
+  segment holds no substrate water store for a threshold to be measured
+  against, so there is no level to quote, none to be inferred from the
+  segments above, and no watering decision here that reads soil moisture on it.
+
+values:
+  irrigated_extensive:
+    wilting_pct: 5.0
+    wilting_mm: 3.5
+    dry_pct: 10.0
+    dry_mm: 7.0
+  non_irrigated_extensive:
+    wilting_pct: 4.0
+    wilting_mm: 2.8
+    dry_pct: 10.0
+    dry_mm: 7.0
+  semi_intensive:
+    wilting_pct: 10.0
+    wilting_mm: 15.0
+    dry_pct: 16.0
+    dry_mm: 24.0
+applies_to:
+- irrigated_extensive
+- non_irrigated_extensive
+- semi_intensive
+not_applicable:
+  gravel: a bare drainage layer with no substrate, so there is no soil-water store
+    to read
+  wetland: a ponded fleece mat rather than a substrate; the deployed controller decides
+    it from a lysimeter mass, a branch this system does not carry

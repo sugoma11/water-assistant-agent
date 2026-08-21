@@ -1,0 +1,42 @@
+id: retention_target
+title: How rainfall retention is measured, and the target it is judged against
+provenance: rendered
+text: |
+  Retention over a rain event is the share of the rain that did not leave the
+  roof: rainfall minus measured outflow, divided by rainfall. Both terms are
+  depths of water, and the result is a fraction of the rain that fell.
+
+  No area conversion enters that calculation, and the lysimeter collection area
+  in the values block is carried to say why. Each lysimeter collects the area
+  recorded there, and at that area a litre caught in the tipping bucket is
+  already a millimetre of depth over the collecting surface. The outflow column
+  can therefore be read as a depth directly. Multiplying by a roof area, or by
+  the collection area again, is the mistake this entry exists to prevent.
+
+  The target is the fraction of rainfall an event is expected to retain, and it
+  is marked in the evaluation policy list because the deployed system has no
+  such target. No retention goal is written into the site's controller or its
+  operations manual. The value below is the figure a green-roof manual
+  conventionally states, adopted here so that questions about whether an event
+  met a target have something to be scored against, and it should not be
+  attributed to the site.
+
+  Retention can only be computed where outflow is actually measured. The
+  segment listed as not applicable has no lysimeter, so its outflow is not
+  recorded at all and its retention is not measurable, unknown rather than
+  poor. That is an instrumentation gap and has nothing to do with the substrate
+  exclusions carried on the irrigation cards; the segments excluded there are
+  not the segment excluded here.
+
+values:
+  retention_fraction: 0.5
+  lysimeter_area_m2: 1.0
+  eval_policy:
+  - retention_fraction
+applies_to:
+- gravel
+- irrigated_extensive
+- non_irrigated_extensive
+- wetland
+not_applicable:
+  semi_intensive: no lysimeter on this segment, so its outflow is not measured

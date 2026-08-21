@@ -1,0 +1,37 @@
+id: roof_directory
+title: The roof segments on this building, and what tells them apart
+provenance: static
+text: |
+  One building carries five roof segments, and every question about a roof is a
+  question about one of them. Their canonical names are listed below, and those
+  are the spellings the tools take.
+
+  Two segments are extensive green roofs on a shallow mineral substrate,
+  differing in one respect that matters for almost every question:
+  irrigated_extensive is watered by the deployed controller, and
+  non_irrigated_extensive is not, so the second one is the closest thing the
+  site has to a control. semi_intensive is planted on a substantially deeper
+  substrate of the same kind. gravel is a bare drainage layer with no substrate
+  and no planting. wetland is a ponded fleece mat, kept wet, and behaves like
+  open water rather than like a soil.
+
+  Those differences decide which questions each segment can answer, and the
+  answer is not the same everywhere. The irrigation rule covers the three
+  substrate segments only; gravel and the wetland have no soil-water store for
+  it to read. Outflow is measured on every segment except semi_intensive, which
+  has neither a lysimeter nor a radiation mast, so retention and radiation
+  questions cannot be asked about it at all. Soil moisture and soil temperature
+  are recorded on all five. The individual cards state their own scope, and
+  those statements are the authority rather than this summary.
+
+  Each segment also goes by several other names: a German name, the site's own
+  identifier for the segments its controller addresses, and a column name in
+  each table that measures it. Tools accept any of these and resolve them to
+  the canonical name, so a question phrased in German or quoting a column name
+  reaches the same segment.
+applies_to:
+- gravel
+- irrigated_extensive
+- non_irrigated_extensive
+- semi_intensive
+- wetland

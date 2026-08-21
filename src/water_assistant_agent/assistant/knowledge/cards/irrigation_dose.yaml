@@ -1,0 +1,41 @@
+id: irrigation_dose
+title: What a decision to irrigate actually applies
+provenance: rendered
+text: |
+  When the rule decides to water a segment, what the site applies is a valve
+  opening time. That is the dose this system can state, and the values below
+  give it per segment.
+
+  A depth of water is what a reader usually wants instead, and this card does
+  not have one. The site has not supplied the per-segment dose as a depth, so
+  no such figure is recorded here for any segment. This is an absence in the
+  site's own records rather than a value withheld or rounded away, and it is
+  deliberately left empty rather than filled with an estimate: a plausible
+  depth invented here would be indistinguishable from the site's own once it
+  had been quoted back in an answer, and the dose is policy the site sets, not
+  a quantity to be derived from the substrate or the weather. A valve time
+  cannot be converted into a depth from anything in this system either, because
+  the flow rate through the valves is not recorded here.
+
+  Deciding is also as far as this system goes. It does not open valves, does
+  not schedule watering and holds no record of what was actually applied on any
+  past day; the valve times below describe what the deployed controller does
+  when it decides to water, and are carried so that a decision can be reported
+  together with its consequence.
+
+values:
+  irrigated_extensive:
+    valve_minutes: 30
+  non_irrigated_extensive:
+    valve_minutes: 30
+  semi_intensive:
+    valve_minutes: 31
+applies_to:
+- irrigated_extensive
+- non_irrigated_extensive
+- semi_intensive
+not_applicable:
+  gravel: a bare drainage layer with no substrate, so there is no soil-water store
+    to read
+  wetland: a ponded fleece mat rather than a substrate; the deployed controller decides
+    it from a lysimeter mass, a branch this system does not carry

@@ -1,0 +1,76 @@
+id: roof_reference_ranges
+title: Reading a soil-moisture measurement against its segment
+provenance: rendered
+text: |
+  A soil-moisture reading means different things on different segments, and
+  this card gives each one three contiguous bands to read a measurement
+  against: low, normal and high, all as volumetric water content.
+
+  The band edges are not new numbers. The outer edges are the limits a reading
+  from that segment's probe is trusted between, derived from the healthy range
+  of its own column over the pinned record: below the floor the probe is
+  presumed to have failed rather than the substrate to be extraordinarily dry,
+  and the ceiling is the substrate's physical saturation. The interior cuts are
+  the levels the site acts on, taken from the irrigation cards: the boundary
+  between low and normal is that segment's dry threshold, and the boundary
+  between normal and high is field capacity. So a reading in the low band is
+  one the irrigation rule would consider dry, and a reading in the high band is
+  above what the substrate is held to retain.
+
+  Neighbouring bands share their endpoint, and that is deliberate rather than
+  sloppy. Which side of a cut a reading exactly on it falls is the irrigation
+  rule's comparison to make, and the rule's comparisons at those two levels are
+  not symmetric. A range is not the place to settle it.
+
+  These bands are the site's operating policy, not a summary of what the record
+  contains. On the deepest segment in particular, a large share of the record's
+  days sit above the upper cut, because field capacity there is the deployed
+  controller's flat value rather than a value fitted to that segment. Reading
+  those days as high is what the site's own policy says about them; it is a
+  disclosure about the policy and not a fault in the measurements.
+
+  A segment listed as not applicable has a moisture probe and a reading a
+  person can ask about, but no dry threshold and no field capacity to cut bands
+  at, so no band structure exists for it. Its readings are still measurements;
+  there is simply no low, normal or high to place them in.
+
+values:
+  irrigated_extensive:
+    low_pct:
+      from: 1.0
+      to: 10.0
+    normal_pct:
+      from: 10.0
+      to: 22.0
+    high_pct:
+      from: 22.0
+      to: 60.0
+  non_irrigated_extensive:
+    low_pct:
+      from: 0.5
+      to: 10.0
+    normal_pct:
+      from: 10.0
+      to: 22.0
+    high_pct:
+      from: 22.0
+      to: 60.0
+  semi_intensive:
+    low_pct:
+      from: 1.0
+      to: 16.0
+    normal_pct:
+      from: 16.0
+      to: 22.0
+    high_pct:
+      from: 22.0
+      to: 60.0
+applies_to:
+- irrigated_extensive
+- non_irrigated_extensive
+- semi_intensive
+not_applicable:
+  gravel: a bare drainage layer with no substrate, so there is no soil-water store
+    to read
+  wetland: a ponded fleece mat rather than a substrate; the deployed controller decides
+    it from a lysimeter mass, a branch this system does not carry

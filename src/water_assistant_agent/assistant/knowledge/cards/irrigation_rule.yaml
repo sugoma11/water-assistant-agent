@@ -1,0 +1,50 @@
+id: irrigation_rule
+title: How the irrigation decision is made, rung by rung
+provenance: rendered
+text: |
+  The rule is a fixed ladder with no weights and no model behind it. Its rungs
+  are walked in one order, the first rung that matches decides, and the rungs
+  below it are never consulted.
+
+  The lowest rung is the wilting point. If the soil-water store falls to or
+  below the segment's wilting point at any point inside the decision horizon,
+  the segment is irrigated whatever else is true. Otherwise, if the forecast
+  maximum air temperature stays below the heat threshold across that same
+  horizon, nothing is watered: irrigation here exists to cool the roof, and
+  there is no heat to cool. If heat is forecast but the store stays above the
+  segment's dry threshold, the substrate is wet enough and the segment is left
+  alone. If heat is forecast and the segment is dry, but the modelled water
+  balance says rain will refill it to field capacity within the refill horizon,
+  the rain is allowed to do the watering instead. A segment that survives every
+  rung above is irrigated for the cooling.
+
+  The ladder reads three quantities and no others: the soil-water store and the
+  maximum air temperature, both over the decision horizon, and the modelled
+  outflow that marks a refill, over the longer refill horizon. Wind, humidity,
+  radiation, season, time of day and the hours since the last watering are not
+  conditions in this rule. Some of them enter the weather forecast that drives
+  the store, but the ladder itself never tests them and carries no cutoff on
+  any of them.
+
+  A horizon with no rows in it, or with a gap anywhere inside it, is never
+  irrigated. A gap is not a dry roof, so the decision reports that it had
+  nothing to read rather than filling the hole with a guess.
+
+  The rule is walked per roof segment, and the levels it compares the store
+  against differ per segment. The threshold card carries them; this card
+  carries only the order the comparisons happen in.
+
+values:
+  heat_threshold_c: 24.0
+  decision_horizon_hours: 48
+  refill_horizon_hours: 168
+  refill_outflow_epsilon_mm: 0.01
+applies_to:
+- irrigated_extensive
+- non_irrigated_extensive
+- semi_intensive
+not_applicable:
+  gravel: a bare drainage layer with no substrate, so there is no soil-water store
+    to read
+  wetland: a ponded fleece mat rather than a substrate; the deployed controller decides
+    it from a lysimeter mass, a branch this system does not carry

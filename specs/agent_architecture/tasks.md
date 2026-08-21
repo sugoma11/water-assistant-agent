@@ -2000,7 +2000,7 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   four — that last one outside the task's letter, because leaving §3.2 naming
   three static cards would have made the decision a contradiction the moment it
   was recorded.
-- [ ] T080 Author `assistant/knowledge/cards/*.yaml` — **11 cards**, one file each,
+- [x] T080 Author `assistant/knowledge/cards/*.yaml` — **11 cards**, one file each,
   matching the §3.2 enum exactly: `irrigation_rule`, `irrigation_threshold`,
   `substrate_hydraulics`, `irrigation_dose`, `heatwave_definition`,
   `retention_target`, `roof_reference_ranges` (rendered); `roof_directory`,
@@ -2010,6 +2010,35 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   constant. `irrigation_rule` and `irrigation_threshold` must together answer T16a
   without the calculator, and `irrigation_threshold.not_applicable` must state the
   wetland's exclusion or T17b is silently answerable. → T081, T068, T069
+  All eleven landed; T082's twelve failures are green and `just cards-check`
+  reports seven of seven current. **Not one `values:` block was typed.** Each
+  rendered card was assembled as hand-written head plus `values_for(id).as_yaml()`
+  appended verbatim, so a card could not start out drifted and the first run of
+  the drift test had nothing to catch — which is also the honest reading of that
+  run: it confirms the paste, and only a later edit makes it a real check.
+  **T17b's mechanism ended up split across the two authorships, and it had to
+  be.** `not_applicable`'s wetland reason is generated, so the words "no
+  soil-moisture threshold exists" could not be authored into the block; what the
+  block states is *why* there is no substrate store. The prose therefore names
+  the block and draws the conclusion from it — "a segment listed as not
+  applicable below has no soil-moisture irrigation threshold at all… none to be
+  inferred from the segments above". Stating the absence only in the block would
+  have required editing `_NO_SOIL_STORE` in T068's `rendered.py`, which changes
+  what six other cards say to change what one of them needed.
+  **The no-numerals rule bit twice in places worth recording**, both resolved by
+  naming the constant instead of quoting it: `et0_method` cannot write "FAO-56"
+  and says "the published standard", and `sensor_reference` cannot write the wind
+  sentinel and says "a large negative sentinel value". Neither loses anything a
+  reader needs, which is evidence for the rule rather than against it.
+  **`roof_directory.applies_to` is the one hand-typed roof list in the store.**
+  Static, so no drift test holds it to `ROOFS`, and a sixth segment would leave
+  it stale in silence. Accepted rather than fixed here: a projection for it means
+  adding to `RENDERED_TOPICS`, which T081 fixed at seven.
+  `data_freshness`'s ten dates were **read out of the pinned database and checked
+  against the card**, not transcribed from `findings.md` — the mis-transcription
+  T081 named as `static`'s only cost, closed on day one. The standing obligation
+  is unchanged and still T082's: the pin check must re-verify them, because
+  nothing in `knowledge/` will notice if the database is re-pinned.
 - [ ] T082 `assistant/knowledge/store.py`: pydantic `Card` model, loader over the
   packaged YAML, `enum == card keys` test, the T068 drift test wired in, and the
   card-store sha256 into `eval/pins.json`. Pure, ADK-free, no I/O beyond the

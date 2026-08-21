@@ -1,0 +1,47 @@
+id: data_freshness
+title: How far the measured record reaches, table by table
+provenance: static
+text: |
+  The measurements behind every answer come from a frozen record, not from a
+  live feed. Nothing is being appended while a question is being answered, and
+  the first and last day of each table are fixed and listed below.
+
+  The tables do not all cover the same period, and the differences are large
+  enough to change what can be asked. Soil moisture and soil temperature reach
+  back furthest. The weather station begins later than they do but runs on
+  slightly further at the end, so it is the only table covering the last few
+  days of the record. Outflow begins later still, which bounds how far back any
+  retention question can go. Radiation is the outlier: it covers a single
+  growing season in the middle of the record and stops well before everything
+  else, so radiation questions outside that period have no data behind them
+  regardless of how recent the date is.
+
+  Within the covered period, coverage is not continuous. The soil and outflow
+  tables share two outages during which no rows exist at all, one of them
+  spanning several weeks, and the missing days are concentrated rather than
+  scattered. A window that looks well inside the record can still be partly or
+  wholly empty, and an empty window is reported as such rather than filled in.
+
+  A question is answered as of a particular date, which is treated as the
+  present for the whole of that conversation. Days after that date are in the
+  future no matter how much record exists past them, and forecasts are what
+  covers them. The end dates below are properties of the stored record, not of
+  what is knowable: a date after the record ends can still be asked about
+  through a forecast, while a date before the record begins cannot be recovered
+  at all.
+values:
+  swc:
+    first_day: '2024-07-23'
+    last_day: '2026-04-24'
+  tsoil:
+    first_day: '2024-07-23'
+    last_day: '2026-04-24'
+  outflow:
+    first_day: '2025-04-15'
+    last_day: '2026-04-24'
+  radiation:
+    first_day: '2025-03-01'
+    last_day: '2025-10-01'
+  wetter:
+    first_day: '2025-01-01'
+    last_day: '2026-04-27'

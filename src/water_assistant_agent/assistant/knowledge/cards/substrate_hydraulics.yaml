@@ -1,0 +1,63 @@
+id: substrate_hydraulics
+title: The substrate store, and the two ends of its water content
+provenance: rendered
+text: |
+  This card describes the store the irrigation rule reads: how deep the
+  substrate is on each segment, and the two water contents that bound what it
+  can hold.
+
+  Substrate height is the scale factor between the two units everything here is
+  stated in. A volumetric water content is a fraction of the substrate's volume,
+  so turning it into a depth of water means multiplying by the depth of the
+  substrate, and that depth is not the same on every segment. It is also the
+  depth the water-balance model is given for the segment.
+
+  Field capacity is the upper end: the water content above which the substrate
+  cannot hold more and the surplus drains away. It is what a refill is judged
+  against, and it is not a level the irrigation ladder waters at. The residual
+  content is the lower end, and it is a different quantity from the wilting
+  point on the threshold card. The wilting point is a trigger the ladder acts
+  on; the residual content is where the stress coefficient bottoms out, the
+  point at which the substrate is treated as holding no water the planting can
+  use. The stress coefficient rises from zero at the residual content to its
+  full value at field capacity.
+
+  One warning about field capacity here. The value below is the deployed
+  controller's, and it is the same on every substrate segment. The rainfall
+  runoff model used elsewhere in this system does not agree with it: that model
+  carries its own substrate storage, fitted per segment, and on the deepest
+  segment the two disagree by a substantial depth of water. The disagreement is
+  carried deliberately rather than reconciled, because this system's job is to
+  reproduce the site's decisions rather than to improve them. So the number
+  below is the controller's, it is the one the irrigation rule uses, and it
+  should not be quoted as the modelled storage or compared with one as though
+  they were the same quantity.
+
+values:
+  irrigated_extensive:
+    substrate_height_cm: 7
+    capacity_pct: 22.0
+    capacity_mm: 15.4
+    residual_pct: 2.5
+    residual_mm: 1.75
+  non_irrigated_extensive:
+    substrate_height_cm: 7
+    capacity_pct: 22.0
+    capacity_mm: 15.4
+    residual_pct: 2.5
+    residual_mm: 1.75
+  semi_intensive:
+    substrate_height_cm: 15
+    capacity_pct: 22.0
+    capacity_mm: 33.0
+    residual_pct: 2.5
+    residual_mm: 3.75
+applies_to:
+- irrigated_extensive
+- non_irrigated_extensive
+- semi_intensive
+not_applicable:
+  gravel: a bare drainage layer with no substrate, so there is no soil-water store
+    to read
+  wetland: a ponded fleece mat rather than a substrate; the deployed controller decides
+    it from a lysimeter mass, a branch this system does not carry

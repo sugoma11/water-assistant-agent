@@ -1,0 +1,29 @@
+id: heatwave_definition
+title: What counts as a heatwave, and whose definition that is
+provenance: rendered
+text: |
+  A heatwave here is a run of consecutive days whose daily maximum air
+  temperature reaches or exceeds the heat threshold, lasting at least the
+  minimum number of days below. Both quantities are in the values block: the
+  temperature and the duration.
+
+  The definition is a property of the weather over the site, not of any one
+  segment, so it applies to the building as a whole and no roof scoping is
+  meaningful.
+
+  The two halves do not have the same authority, and the values block marks
+  which is which. The temperature threshold is the deployed controller's own,
+  the same one the irrigation rule tests against. The duration is not: the
+  deployed system defines no heatwave length at all, and the value below is a
+  convention adopted for this evaluation so that questions about heatwaves have
+  a definition to be scored against. It was chosen against what the pinned
+  record can support and then held fixed. Any key named in the evaluation
+  policy list is one of these, and an answer that quoted such a value as the
+  site's own policy or as its operations manual's would be reporting this
+  testbed's convention as the site's.
+
+values:
+  heat_threshold_c: 24.0
+  min_consecutive_days: 3
+  eval_policy:
+  - min_consecutive_days

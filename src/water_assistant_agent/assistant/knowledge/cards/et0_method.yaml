@@ -1,0 +1,45 @@
+id: et0_method
+title: How reference evapotranspiration is computed here
+provenance: static
+text: |
+  Reference evapotranspiration is the atmospheric demand for water, expressed
+  as the depth a reference crop would lose over a day under the observed
+  weather. It is what drives the substrate water balance: the store falls by
+  the demand, moderated by a stress coefficient that shrinks it as the
+  substrate dries, and rises with rain and irrigation.
+
+  It is computed here by the Penman-Monteith method, from the station's daily
+  temperature, humidity, wind and radiation. The routine is a port of the
+  site's own model code, transcribed term for term, and that is a deliberate
+  choice over implementing the published standard directly. The site runs that
+  model as well, and an answer produced here has to be readable against a run
+  produced there; two implementations that are each defensible and disagree
+  would make any difference in a decision unattributable, since it could then
+  be the model, the units, or this quantity.
+
+  The consequence is that these values follow the site's convention rather than
+  the published standard, and not by a negligible margin. The ported routine
+  departs from the standard in several places: atmospheric pressure is held
+  fixed instead of being derived from the site's elevation, a constant is
+  omitted from the extraterrestrial radiation term so that the cloudiness
+  correction sits near its limit instead of tracking cloud cover, one of the
+  vapour-pressure expressions uses a different coefficient from the one that
+  computes its own slope, and the net longwave term averages temperatures in
+  degrees rather than in kelvin. The result runs consistently above what a
+  textbook computation would return for the same day.
+
+  These departures are carried on purpose and are not defects to be corrected
+  here. The site's irrigation thresholds were set against decisions made with
+  this convention, so replacing it with a textbook computation would quietly
+  retune the controller while appearing to fix an error.
+
+  One difference from the site's code is deliberate. Reference evapotranspiration
+  is by definition the reference crop's, so the reference crop's albedo is used
+  rather than the roof albedo hard-coded in the site's routine; adjusting for
+  what a particular roof does with sunlight is the stress coefficient's job and
+  not the forcing's. The site's value can still be requested explicitly, which
+  reproduces its output exactly.
+
+  Figures reported by this system as evapotranspiration are this quantity, and
+  should be read as the demand the weather placed on a reference surface rather
+  than as water actually lost by any segment.

@@ -2573,10 +2573,49 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   errors are not scanned. **`predict_fn` calls this same function**, or the search
   and the measurement run diverge on the one path that must be identical. → T030,
   T052
-- [ ] T101 Answer-contract parsing plus the **evaluation-only** candidate
+- [x] T101 Answer-contract parsing plus the **evaluation-only** candidate
   instruction carrying it, including the explicit no-clarification clause; the
   production instruction is untouched. A final message parsing to neither status is
   recorded as a `parse_failure` diagnostic, never as a wrong answer. → T100
+  **Committed before T100, against the arrow.** The dependency the arrow records
+  is a design one — the contract is what `run_case`'s result shape is *of* — but
+  the import edge runs the other way, and a T100 that landed first would have
+  needed a stub parser for T101 to delete. Two commits over the same lines for
+  one behaviour is worse than one inverted order, recorded here.
+  **`harness/contract.py`, outside the service package** (`plan.md` §3). It holds
+  both halves of one mechanism: the text that asks for the contract and the
+  reader that takes it back. `pyproject.toml` gains `pythonpath = ["."]` — the
+  editable install puts `src/` on the path and nothing else, and `harness/` is
+  deliberately not in the wheel.
+  **The evaluation instruction is authored, not derived.** It is not production's
+  text with a section swapped: it is the search's starting point and is
+  byte-stable after T107's freeze, so an edit to production prose must not move
+  it. `test_the_two_instructions_are_authored_apart` pins that neither is a
+  substring of the other. The routing content *is* the same, because the tools
+  are, and that is the only thing shared.
+  **The no-clarification clause is prose, not an implication of the JSON shape.**
+  "Answer the question you were asked, and never ask one back. There is nobody to
+  answer it: this conversation has exactly one user turn and your reply ends it."
+  A clarifying question has no contract representation, so without the clause it
+  scores as a wrong answer — the outcome `decisions.md` § The answer contract
+  accepts only because the generation filter discards ambiguous parameters.
+  **Status is the whole of what decides a parse failure.** Everything else is
+  read permissively and carried as written: a unit outside the vocabulary, an
+  answer of the wrong type, a missing `explanation`. That line is what keeps the
+  diagnostic meaning what §7 says it means — a candidate degrading the *format*.
+  A parser that also rejected `"unit": "liters"` would file a reasoning error
+  under format degradation and make the one metric that isolates format the
+  noisiest number in the report. `needs_clarification` is tested explicitly: the
+  status the contract was decided not to have is a parse failure, not a third
+  branch.
+  **The reader is tolerant about placement and strict about content**, because
+  the two failure modes are not the same failure. A bare object, a ```json
+  fence, an object trailed by a sentence — all parse; the scan is string-aware,
+  so an explanation may quote `{status, answer, unit, explanation}` without
+  closing the object early, and where a message carries several objects the last
+  one wins, since a model that restates its answer has stated the later one.
+  `uv run ruff check .` and `uv run pytest` clean — 764 passed (745 + 19), same
+  15 pre-existing findings.
 - [ ] T102 `harness/scoring.py`: per-case metric functions plus an aggregation
   layer. Answer (exact or tolerance, after unit normalization, **skipped with
   coverage reported** where the contract answer is `null`); trajectory (**binary**:

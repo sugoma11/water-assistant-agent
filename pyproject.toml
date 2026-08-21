@@ -57,6 +57,11 @@ dev = [
 testpaths = ["tests"]
 addopts = "-q"
 filterwarnings = ["ignore"]
+# `harness/` is a top-level package outside the installed distribution on
+# purpose (plan.md 3): nothing production ships imports it, so it is not in
+# `[tool.hatch.build.targets.wheel]` and the editable install does not put the
+# repository root on `sys.path`. Its tests need it importable all the same.
+pythonpath = ["."]
 
 [tool.uv.sources]
 

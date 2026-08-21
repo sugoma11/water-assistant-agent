@@ -2280,6 +2280,35 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   unknown table or column; mixed-plot daily aggregation; unit and axis derivation;
   gravel and wetland `not_available`; the resolved-spec shape pinned; and **no live
   call in replay** for a `model` + `weather` plot. → T091, T094, T096
+  **The measured half has landed** in `tests/assistant/test_plot_timeseries.py`
+  (40 tests, suite now 708): the closed-vocabulary rejections, the mixed-plot
+  daily aggregation, and the unit/axis/operator derivation. The four remaining
+  clauses all need T091's two live sources or T096's scope trigger and are left
+  for the packet that adds them — the `model` and `weather` source resolution,
+  the gravel and wetland `not_available`, the full resolved-spec shape (T092
+  adds the modelling arguments and the gap and truncation flags), and the
+  no-live-call replay assertion.
+  **Nothing here stands in for the sources that do not exist yet.** What a mixed
+  plot is tested on is the *decision* it forces, which `plot_resolution` makes
+  from the source names alone before anything is fetched — so the assertion is
+  real today and does not have to be rewritten when the fetch behind it arrives.
+  A double returning fake daily rows would have tested the double.
+  **Every expected number is hand-computed from the raw rows**, `zoneinfo` for
+  the boundary and `statistics` for the mean, never by running a second copy of
+  the implementation's query — which would let the day boundary drift in both
+  places at once and still pass. `test_utc_days_would_have_answered_differently`
+  is the check that the boundary is load-bearing on the window the other tests
+  use: group the same week in UTC and two of the seven daily rain totals move.
+  **`test_a_rejected_series_costs_no_query` is the one white-box test**, and it
+  earns it: "the fault is decided before any I/O" is a claim about what did
+  *not* happen, and only a spy executor that recorded one query for the legal
+  series and none for the illegal one can witness it.
+  **`test_the_reported_outflow_is_the_litres_the_record_holds` is the
+  no-area-factor assertion in its executable form.** The vocabulary test checks
+  there is no second, normalized entry; this one checks the entry there *is*
+  returns the record's own litres under the `mm` label. Multiplying by today's
+  1.0 is a no-op no assertion could see, so what this pins is the day someone
+  reads the area off a different lysimeter and writes the multiplication in.
 
 ---
 

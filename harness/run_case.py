@@ -40,6 +40,7 @@ from google.adk.runners import Runner
 from google.adk.sessions.in_memory_session_service import InMemorySessionService
 from google.genai import types
 
+from harness.assertions import assert_inputs, assert_no_live_call
 from harness.contract import EVALUATION_ROOT_INSTRUCTION, AnswerContract, parse_contract
 from water_assistant_agent.assistant.agents.root_agent.agent import (
     build_root_agent,
@@ -83,6 +84,13 @@ class ReplayCache(ResponseCache):
     convert to an ``upstream`` error — which is exactly what ``decisions.md``
     § Tool errors and harness exclusion says a replay cache miss should be: a
     harness error, excluded, not a wrong answer.
+    """
+
+    refuses_live = True
+    """Declared so :func:`~harness.assertions.assert_no_live_call` can check it.
+
+    A flag rather than an ``isinstance`` because the assertion is about the
+    behaviour — this cache will not fill a miss live — and not about this class.
     """
 
     async def fetch(
@@ -197,6 +205,7 @@ async def run_case_async(
     db_path: Path | str = PINNED_DB,
     cache_dir: Path | str = EVAL_CACHE_DIR,
     allow_live: bool = False,
+    roof_pool: str | None = None,
 ) -> CaseResult:
     """Run one case and report what happened.
 
@@ -212,6 +221,17 @@ async def run_case_async(
         db_path: The pinned database.
         cache_dir: The committed response cache.
         allow_live: ``False`` (default) replays; ``True`` records a miss.
+        roof_pool: The template's sampling pool, when it has one. Passed through
+            to T104's preflight, which is the only thing that reads it — the
+            pool is a property of the family and the envelope has no channel for
+            it, so a caller that knows the template hands it over here.
+
+    Raises:
+        CaseAssertionError: the case broke one of T104's invariants, or the
+            replay pass is bound to a cache that could call out. Raised rather
+            than scored: a case that asks about days it cannot see is a testbed
+            defect, and a number computed over it would be a number about
+            nothing.
 
     Returns:
         A :class:`CaseResult`. Nothing in it is compared against the case's
@@ -222,6 +242,7 @@ async def run_case_async(
     construction path is then the same one in a test, in the search and on the
     measurement run, and cannot silently diverge between them.
     """
+    assert_inputs(inputs, roof_pool=roof_pool)
     as_of = _as_instant(inputs["as_of"])
     case_id = str(inputs.get("case_id", ""))
     question = inputs["question"]
@@ -229,6 +250,8 @@ async def run_case_async(
     ctx = make_case_context(
         as_of, db_path=db_path, cache_dir=cache_dir, allow_live=allow_live
     )
+    if not allow_live:
+        assert_no_live_call(ctx)
     agent = build_root_agent(
         ctx,
         instruction=EVALUATION_ROOT_INSTRUCTION if instruction is None else instruction,

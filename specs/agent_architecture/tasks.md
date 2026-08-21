@@ -2688,9 +2688,60 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
 - [ ] T103 Oracles for the three pilot templates only: T01 (SQL sum), T07
   (importing `irrigation_decision` — local, no HTTP) and T09 (model chain,
   importing `run_gr2l`). → T063, T023, T009
-- [ ] T104 Harness assertions: retrospective comparison windows end at or before
+- [x] T104 Harness assertions: retrospective comparison windows end at or before
   `as_of`; no live call in replay; the roof pool respected per family; every
   template's period parameter intersected with its own `as_of`. → T100
+  **`harness/assertions.py`, and the preflight runs on the rollout's own path.**
+  `run_case_async` calls `assert_inputs` before it builds anything and
+  `assert_no_live_call` on the context it just built, so a case that breaks an
+  invariant never reaches a model — `test_a_rollout_preflights_its_own_case`
+  proves it with a scripted model that would raise on being asked for a turn.
+  **A violation raises; it is not scored.** These are conditions under which a
+  case's answer means anything at all, so a case that asks about days it cannot
+  see is a testbed defect and a number computed over it would be a number about
+  nothing. That is the opposite of the run-time taxonomy, where a candidate's
+  fumble is deliberately kept in the denominator — which is why `check_calls` is
+  documented as running over a case's **gold** trajectory and never over a
+  rollout's. An agent that asks to compare against a record that stops earlier
+  has fumbled, and a fumble is scored.
+  **The window check goes through `resolve_window`,** layer 1's own resolver, so
+  a relative window and the dates it denotes resolve identically here and inside
+  the tool — the property the case schema's `resolve: "window"` flag names.
+  Re-deriving the arithmetic would let the two drift and still pass. It also
+  makes `past_days=7` (ends yesterday, clean) and `forecast_days=3` (runs from
+  the cut into days no sensor has recorded) fall out rather than being
+  special-cased, and a half-given window is reported as its own violation
+  instead of raising out of a check.
+  **The pools are projections of `roofs.py`, not a fifth list.** P1 is
+  `roofs_with_column("swc")`, P1f `roofs_with_column("outflow")`, P2 the modelled
+  roofs minus what both water-balance tools decline, `non_modellable` those two.
+  A roof that gains or loses a column moves its pool with it. The check runs over
+  **every** parameter that resolves to a roof, not only one named `roof`: a
+  comparison template names two, and a pool broken under `roof_b` — or under the
+  German alias `Kiesdach` — is the same defect.
+  **Periods are read off the values, not off the parameter names.** The name is
+  the template author's (`event`, `window`, `days`) and the invariant is not, so
+  any `YYYY-MM-DD` a value carries counts — bare, as one end of `start..end`, or
+  nested in a list or an object — and anything that is not a day is passed over.
+  The cut is the **site's** calendar day: `test_the_cut_is_the_sites_own_day`
+  writes one instant twice, `00:30+02:00` and the same moment as `22:30+00:00`,
+  and both must accept a period ending on the Berlin day. Read as UTC the second
+  is the previous day and the case would be rejected.
+  **No live call in replay is checked at the cache, not at the clients.**
+  `ArchiveWeatherClient` threads `allow_live` into `ResponseCache.fetch` and
+  `run_gr2l` passes no flag at all, so a rule each client had to remember would
+  already have had a hole in it. `ReplayCache` declares `refuses_live` and the
+  assertion reads that — a flag rather than an `isinstance`, because the claim is
+  about the behaviour. Witnessed on a rollout as well as on a type: a window
+  nothing captured comes back as an `upstream` error naming the window, which is
+  a harness exclusion and not a fetch.
+  **`roof_pool` is an argument to `run_case`.** The pool is a property of the
+  family, the case envelope has only `inputs` and `expectations` (§6.1), and
+  there is no third place to put it — so a caller that has loaded the template
+  hands it over. Omitted, the roof check does not run, which is correct for a
+  template that names no roof.
+  `uv run ruff check .` and `uv run pytest` clean — 804 passed (777 + 27), same
+  15 pre-existing findings.
 - [ ] T105 **Before the gate**: state the lysimeter collection area's *value*
   (1 m²) in the frozen sub-agent's semantic layer, which today names the area
   without it. Unblocks T12 and every L↔mm answer. The text is byte-stable after the

@@ -1859,8 +1859,30 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   paste-ready block), missing, and — until T069 — no-projection, so one
   unfinished projection cannot hide the other six.
   `uv run ruff check .` clean; the suite is red by construction, see T082.
-- [ ] T069 [P] Derive the `roof_reference_ranges` values (normal / low / high per
+- [x] T069 [P] Derive the `roof_reference_ranges` values (normal / low / high per
   roof segment) from the `swc` record under the same drift discipline. → T068
+  Done — three contiguous bands in %θ per roof, and **all four edges are
+  imported**: the floor and ceiling are the roof's `swc` plausibility bounds
+  (`roofs.py`, derived from the column's healthy range over the record) and the
+  two interior cuts are the rule's dry threshold and field capacity. Nothing here
+  is a new number, which is what keeps a reference range from becoming a fifth
+  statement of the site's policy.
+  **A roof needs both sources to have a band**, so the projection intersects them
+  rather than assuming the rule's roofs are instrumented. Gravel and the wetland
+  have an `swc` column — they are measurable and can be asked about — and no dry
+  threshold to cut at, so they carry the exclusion instead of an empty band.
+  **The bands are the site's policy, not the record's distribution, and the
+  semi-intensive roof is where that shows.** Classified over the whole record it
+  splits 211 low / 89 normal / 302 high of 602 site-days: half its days sit above
+  a field-capacity edge that is the deployed flat 22 %θ where GR2L measures 30.4
+  for that roof. Bands fitted to the record would have hidden the flat-capacity
+  convention; these disclose it. Measured into `findings.md § Where the flat
+  field capacity puts the semi-intensive roof`.
+  **The record test asserts non-degeneracy, not agreement** — every band carries
+  days of the actual record on every roof, so a `normal` band nothing falls in
+  could not ship, while the record stays free to sit lopsidedly inside edges the
+  site chose.
+  `uv run ruff check .` clean; the suite is red by construction, see T082.
 - [x] T070 Tests: the ladder's reason codes in priority order; the stated-value
   path issuing no I/O at all; `not_available` for both non-modellable roofs; unit
   conversion round-trips; and an irrigation case completing in replay with zero

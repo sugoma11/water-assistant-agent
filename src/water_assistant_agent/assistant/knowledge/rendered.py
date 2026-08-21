@@ -288,6 +288,53 @@ def _retention_target() -> RenderedBlocks:
     )
 
 
+def _roof_reference_ranges() -> RenderedBlocks:
+    """What a soil-moisture reading means on a roof: three contiguous bands in %θ.
+
+    **The outer edges come from the ``swc`` record, the interior cuts from the
+    rule.** ``roofs.py`` carries each roof's ``swc`` plausibility bounds, derived
+    from the column's healthy range over the pinned record
+    (``findings.md`` § Per-column healthy ranges); ``rules_constants.py`` carries
+    the dry threshold and field capacity. So the band edges are a floor and a
+    ceiling the sensor is trusted between, cut twice by the levels the site
+    actually acts on — nothing here is a new number.
+
+    **The bands are the site's policy, not the record's distribution.** Field
+    capacity is the deployed controller's flat value on all three roofs, which is
+    not what GR2L measures per roof, and that disagreement is carried on purpose
+    (``decisions.md`` § No fitted correction between the instrument and the
+    oracle). On the semi-intensive roof it shows plainly: half the record's days
+    sit above the ``high`` edge (``findings.md`` § Where the flat field capacity
+    puts the semi-intensive roof). A card whose bands were fitted to the record
+    would hide exactly that, and it is a disclosure rather than a defect.
+
+    **A roof needs both sources to have a band**, so this intersects them rather
+    than assuming the rule's roofs are instrumented: gravel and the wetland have
+    an ``swc`` column and a reading a person can ask about, but no dry threshold
+    and no field capacity to cut a band at, so they carry the exclusion instead.
+
+    Bands share their endpoints, and deliberately: which side a reading exactly
+    on a cut falls is the rule's comparison to make (``<=`` at the wilting point,
+    ``>`` at the dry threshold), not a fact about the range it lies in.
+    """
+    banded = [roof for roof in roofs_with_column("swc") if roof in ROOF_RULES]
+    return RenderedBlocks(
+        values={
+            roof: {
+                "low_pct": {"from": ROOFS[roof].bounds["swc"].low, "to": rules.dry_pct},
+                "normal_pct": {"from": rules.dry_pct, "to": rules.capacity_pct},
+                "high_pct": {
+                    "from": rules.capacity_pct,
+                    "to": ROOFS[roof].bounds["swc"].high,
+                },
+            }
+            for roof, rules in ((name, ROOF_RULES[name]) for name in banded)
+        },
+        applies_to=banded,
+        not_applicable=_outside_the_rule(),
+    )
+
+
 _PROJECTIONS = {
     "irrigation_rule": _irrigation_rule,
     "irrigation_threshold": _irrigation_threshold,
@@ -295,6 +342,7 @@ _PROJECTIONS = {
     "irrigation_dose": _irrigation_dose,
     "heatwave_definition": _heatwave_definition,
     "retention_target": _retention_target,
+    "roof_reference_ranges": _roof_reference_ranges,
 }
 
 

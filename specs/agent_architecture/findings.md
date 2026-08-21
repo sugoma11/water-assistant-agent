@@ -459,6 +459,24 @@ ranges.
 means of the same columns re-checked against the committed bounds by
 `tests/assistant/test_roofs.py`. *Date:* 2026-08-20.
 
+**Where the flat field capacity puts the semi-intensive roof.** The
+`roof_reference_ranges` card cuts each roof's plausible `swc` envelope at the
+rule's dry threshold and field capacity (T069). Classifying site-day means over
+the whole record by those bands: the irrigated extensive roof splits 106 low /
+282 normal / 214 high of 602 days, the non-irrigated one 262 / 330 / 10, and the
+semi-intensive roof **211 / 89 / 302** — it spends half the record above the
+band edge. That edge is the deployed controller's flat 22 %θ capacity on all
+three roofs, where GR2L measures 30.4 %θ for this one, so the lopsidedness is
+the flat-capacity convention showing in the data rather than an unusually wet
+roof. Bands fitted to the record would have hidden it; the card states the
+site's policy and discloses this instead
+(`decisions.md § No fitted correction between the instrument and the oracle`).
+No day on any of the three roofs falls outside the committed plausibility
+bounds.
+*Verified:* site-day means per `swc` column over `data/water.duckdb`, classified
+against the rendered band edges; asserted as non-degeneracy per band in
+`tests/assistant/test_knowledge_rendered.py`. *Date:* 2026-08-21.
+
 **Rejecting constant-valued days would delete the balance classes.** Per-day
 `max = min` rejection over the band removes 217 of 289 `Kies_Efflux` days, 241
 `Extensiv1_Efflux`, 245 `Extensiv2_Efflux`, 272 `Sumpf2_Efflux` and 162 of 328

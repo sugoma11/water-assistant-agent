@@ -2118,12 +2118,50 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   §3 tool but the plotter exists.
   `uv run ruff check .` and `uv run pytest` clean — 532 passed, same 15
   pre-existing findings.
-- [ ] T084 Tests: card round-trip and schema validation; `enum == card keys`;
+- [x] T084 Tests: card round-trip and schema validation; `enum == card keys`;
   every rendered card's `values:` equal to `values_for(card_id)`; no numerals in
   any `text:`; the wetland exclusion surviving `roof="wetland"` on
   `irrigation_threshold` (T17b's mechanism); unknown topic naming the valid
   topics; and a lookup case completing in replay with zero cache entries and zero
   live calls. → T083
+  **Four of the seven clauses were already covered and are not repeated.** Card
+  round-trip, schema validation and `enum == card keys` are T082's in
+  `test_knowledge_store.py`; the no-numerals rule is there too, pulled forward by
+  the same packet; the rendered-card drift assertion is T068's in
+  `test_knowledge_rendered.py`, beside the projection it asserts against. Giving
+  any of them a second home would have let one copy rot while the other stayed
+  green. The three that had no home landed in `tests/assistant/test_lookup_reference.py`
+  — 136 tests, suite now 668.
+  **The row's `enum == card keys` had an open first link, and closing it is what
+  this file adds beyond the three clauses.** T082 compares `CARD_TOPICS` against
+  the files; nothing compared it against the `Literal` the model actually reads.
+  The chain is now `signature literal == CARD_TOPICS == card files`, and the
+  first link is asserted through ADK's declaration rather than by reading the
+  annotation back — the validity condition is a claim about what *the framework*
+  renders, so reading the annotation would only have proved Python stored it. The
+  candidate-rewrite case is asserted from the attacking side: a `__doc__` that
+  says "valid topics: none, ask the database" moves `description` and leaves
+  `parameters_json_schema` untouched.
+  **Green on the first run means nothing until the tests are made to fail**, the
+  same reading T080 gave its own first green run. Nine mutations, each caught by
+  the test that names it: `not_applicable` filtered by roof; `values` narrowed
+  even where the roof is excluded; an unresolvable roof passing silently; a topic
+  dropped from the signature literal (three tests); the factory growing a `ctx`;
+  the build-time store check removed; the unknown-topic error no longer echoing
+  the list; a live HTTP call; and a warehouse read through a leaked context. The
+  last two fail the replay test by name — "lookup_reference made a live HTTP
+  call" — rather than as a timeout.
+  **One asymmetry worth recording.** The dedicated T17b test does *not* catch a
+  `not_applicable` filtered down to the asked roof, because the wetland's own
+  reason survives that filter; it is `test_a_scoped_lookup_never_narrows_the_scope_blocks`
+  over the whole roof × card product that catches it. The dedicated test is right
+  to assert only what T17b needs, and the general rule needed its own test — but
+  the probe would have been the weaker of the two had it been the only one.
+  `data_freshness` earns its own test for the mirror-image reason: its `values:`
+  is keyed by *table*, so it is the card that would be mis-filtered first if the
+  roof-keyed check ever weakened from "every key is a roof" to "any key is".
+  `uv run ruff check .` and `uv run pytest` clean — 668 passed, same 15
+  pre-existing findings.
 
 ---
 

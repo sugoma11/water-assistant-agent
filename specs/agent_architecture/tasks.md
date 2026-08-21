@@ -2379,11 +2379,43 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   keeping the roof a plain string rather than an enum).
   `uv run ruff check .` and `uv run pytest` clean — 708 passed, same 15
   pre-existing findings.
-- [ ] T097 Headless handoff: nothing renders server-side and no plotting library
+- [x] T097 Headless handoff: nothing renders server-side and no plotting library
   enters the Python dependency set. The tool stashes the series under a
   session-state key and the wrapper merges it into the tool-result event, while the
   model-visible result stays spec, statistics and `artifact_ref`. Evaluation never
   reads the state key. → T090
+  **The `QUERY_RESULT_STATE_KEY` pattern with the merge pointed somewhere else,
+  and that difference is the design.** `TextToSqlAgentTool` merges its capture
+  into the value it *returns*, and that is right there: FR15's capped rows are
+  allowed to reach the model. §3.6 forbids a plot's series in the model-visible
+  result, and in ADK the returned dict *is* the function-response event — one
+  channel, both consumers. So `PlotTimeseriesTool.run_async` returns the result
+  untouched and writes the join to `PLOT_PAYLOAD_STATE_KEY`, which reaches the
+  frontend through the run's state snapshot without passing through the model.
+  Merging into the returned dict would have been the literal reading of "merges
+  it into the tool-result event" and would have put every drawn point in the
+  model's context — the one thing this tool exists not to do.
+  **The wrapper does a real join, not a copy.** The points are in state and the
+  spec is in the return value, and only the wrapper holds both; it pairs them on
+  `artifact_ref` rather than on "the last thing stashed", so a stale stash — an
+  earlier plot in the same session, or a result that came back an error — cannot
+  be rendered under this call's spec. The per-series pairing is checked too, and
+  a mismatch renders nothing rather than labelling one roof's values with
+  another's.
+  **Three consumers, and the third touches neither key.** A harness rollout calls
+  the tool function directly with no `ToolContext`, so an evaluation writes no
+  state, reads no state, and scores the returned spec alone — which is what keeps
+  rendering the unscored side effect §3.6 says it is, and what T098 has to stay
+  out of.
+  **The tool joins `build_toolset` here**, because a wrapper nothing builds is
+  dead code and P5's phase exit needs the tool reachable from the chat. Appended
+  as `TOOL_NAMES`' sixth entry, never inserted: declaration order is prompt text.
+  That makes `lookup_reference` the fifth of six rather than the last, so its
+  own "appended rather than inserted" test now asserts what it actually
+  protects — that *this* tool never moves — instead of that nothing follows it.
+  A tool arriving after it is the anticipated event, not the regression.
+  `uv run ruff check .` and `uv run pytest` clean — 708 passed, same 15
+  pre-existing findings.
 - [ ] T098 [P] Frontend render for `plot_timeseries` mirroring the existing
   tool-result component, reading the wrapper-enriched payload, plus a charting
   dependency in `web/package.json`. Unscored side effect; keep it out of the

@@ -72,6 +72,12 @@ standalone tools run under, because they are the same functions. That is what
 its own, no HTTP client of its own, three sources and one context. A plot in
 replay therefore issues no live call for exactly the reason a modelled case does
 not — both read the cache the case committed.
+
+**Nothing about the data comes back to the model.** The result is the resolved
+spec, per-series summary statistics and an ``artifact_ref``; the points are
+stashed under :data:`PLOT_SERIES_STATE_KEY` for the chat's wrapper to merge, and
+evaluation — which calls this function with no ``tool_context`` — never writes
+that key at all.
 """
 
 import asyncio
@@ -139,6 +145,22 @@ PLOT_KINDS: tuple[str, ...] = ("line", "bar", "model_overlay", "diff")
 """The chart shapes the renderer knows. Unscored — §7 fixes the scored surface
 to source, variable, roof and the resolved range — but still closed, because a
 kind the renderer cannot draw is a plot that never appears.
+"""
+
+PLOT_SERIES_STATE_KEY = "plot_timeseries_series"
+"""Session-state key the drawn points are stashed under, for the chat's wrapper.
+
+The ``QUERY_RESULT_STATE_KEY`` pattern (``warehouse.py``), with one difference
+that is the whole point of this tool: the text-to-SQL wrapper merges its capture
+into the value it *returns*, because §3.1's capped rows are allowed to reach the
+model, while §3.6 forbids a plot's series there. The wrapper
+(``root_agent/plot_tool.py``) therefore merges this stash with the tool's result
+into the payload the chat reads and leaves the returned dict — the model's copy —
+carrying spec, statistics and ``artifact_ref`` and nothing else.
+
+Written only when ADK supplies a ``tool_context``. A harness rollout calls the
+tool directly, so an evaluation neither writes this key nor reads it, and the
+render path stays the unscored side effect §3.6 says it is.
 """
 
 # Axis identities. Series sharing one are drawn against one scale, so this is a
@@ -1223,6 +1245,19 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
             "series": [item.spec.model_dump() for item in resolved],
         }
         reference = artifact_ref(spec_payload)
+        if tool_context is not None:
+            tool_context.state[PLOT_SERIES_STATE_KEY] = {
+                "artifact_ref": reference,
+                "series": [
+                    {
+                        "source": item.spec.source,
+                        "variable": item.spec.variable,
+                        "roof": item.spec.roof,
+                        "points": [[at, value] for at, value in item.points],
+                    }
+                    for item in resolved
+                ],
+            }
         return PlotResult(
             kind=kind,
             artifact_ref=reference,

@@ -17,8 +17,8 @@ being ignored: a silently dropped component is scored as if it had been applied,
 which is the failure ``decisions.md`` § The optimizer entry point and the
 candidate surface exists to prevent.
 
-Five tools today. The plot tool joins this list in P5, and the names below are
-what the catalog's trajectory expectations key on.
+Six tools, the plot tool last. The names below are what the catalog's trajectory
+expectations key on.
 
 **One tool's optimizable surface is smaller than its docstring**, and that is
 deliberate: ``lookup_reference``'s topic vocabulary lives in its *signature*, so
@@ -32,6 +32,9 @@ from typing import Any
 
 import structlog
 
+from water_assistant_agent.assistant.agents.root_agent.plot_tool import (
+    PlotTimeseriesTool,
+)
 from water_assistant_agent.assistant.agents.root_agent.text_to_sql_tool import (
     TextToSqlAgentTool,
 )
@@ -41,6 +44,7 @@ from water_assistant_agent.assistant.agents.text_to_sql.agent import (
 from water_assistant_agent.assistant.context import ScenarioContext
 from water_assistant_agent.assistant.tools.gr2l import make_green_roof_balance_tool
 from water_assistant_agent.assistant.tools.irrigation import make_irrigation_tool
+from water_assistant_agent.assistant.tools.plot import make_plot_timeseries_tool
 from water_assistant_agent.assistant.tools.reference import make_lookup_reference_tool
 from water_assistant_agent.assistant.tools.site import site_now
 from water_assistant_agent.assistant.tools.warehouse import SETTINGS_EXECUTOR
@@ -54,6 +58,7 @@ GREEN_ROOF_TOOL = "predict_green_roof_water_balance_tool"
 WEATHER_TOOL = "get_weather_forecast_tool"
 IRRIGATION_TOOL = "calc_irrigation"
 LOOKUP_TOOL = "lookup_reference"
+PLOT_TOOL = "plot_timeseries"
 
 TOOL_NAMES: tuple[str, ...] = (
     TEXT_TO_SQL_TOOL,
@@ -61,6 +66,7 @@ TOOL_NAMES: tuple[str, ...] = (
     WEATHER_TOOL,
     IRRIGATION_TOOL,
     LOOKUP_TOOL,
+    PLOT_TOOL,
 )
 """The addressable tools, in the order the root agent declares them.
 
@@ -114,12 +120,14 @@ def build_toolset(
     # No `ctx`: the card store is a pure function of packaged files, so this tool
     # has no clock, no executor and no cache to bind (§3.2, §5).
     lookup_tool = make_lookup_reference_tool()
+    plot_tool = make_plot_timeseries_tool(ctx)
 
     for name, tool in (
         (GREEN_ROOF_TOOL, green_roof_tool),
         (WEATHER_TOOL, weather_tool),
         (IRRIGATION_TOOL, irrigation_tool),
         (LOOKUP_TOOL, lookup_tool),
+        (PLOT_TOOL, plot_tool),
     ):
         text = texts.get(name)
         if text is not None:
@@ -128,12 +136,19 @@ def build_toolset(
             tool.__doc__ = text
 
     logger.debug("Built toolset", tools=TOOL_NAMES, overridden=sorted(texts))
+    # Two of the six are wrapped, and for the same reason in opposite directions:
+    # each has a payload the plain wrapper would drop. The sub-agent's executed
+    # query is merged into the result the chat *and* the model read (FR15); the
+    # plot's series is merged into session state only, because §3.6 forbids it in
+    # the model's copy. The candidate's docstring is applied above, to the
+    # callable, so wrapping changes no declaration text.
     return [
         TextToSqlAgentTool(sub_agent),
         green_roof_tool,
         weather_tool,
         irrigation_tool,
         lookup_tool,
+        PlotTimeseriesTool(plot_tool),
     ]
 
 

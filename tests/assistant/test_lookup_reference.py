@@ -153,10 +153,16 @@ def test_a_candidate_docstring_cannot_move_the_vocabulary() -> None:
     assert topic_enum(lookup) == list(CARD_TOPICS)
 
 
-def test_the_tool_is_the_toolset_s_last_entry() -> None:
-    """Appended rather than inserted: declaration order is prompt text."""
-    assert TOOL_NAMES[-1] == LOOKUP_TOOL
+def test_the_tool_was_appended_and_never_moved() -> None:
+    """Appended rather than inserted: declaration order is prompt text.
+
+    It was the last entry when this packet landed and is now the fifth of six —
+    which is the same claim, stated so that the *next* tool appended cannot
+    quietly reorder the four that came before it. What must never happen is this
+    tool moving; a tool arriving after it is the anticipated event.
+    """
     assert TOOL_NAMES.count(LOOKUP_TOOL) == 1
+    assert TOOL_NAMES.index(LOOKUP_TOOL) == 4
 
 
 # --- A known topic returns the card whole -------------------------------------

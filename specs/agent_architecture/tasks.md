@@ -2416,10 +2416,87 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   A tool arriving after it is the anticipated event, not the regression.
   `uv run ruff check .` and `uv run pytest` clean — 708 passed, same 15
   pre-existing findings.
-- [ ] T098 [P] Frontend render for `plot_timeseries` mirroring the existing
+- [x] T098 [P] Frontend render for `plot_timeseries` mirroring the existing
   tool-result component, reading the wrapper-enriched payload, plus a charting
   dependency in `web/package.json`. Unscored side effect; keep it out of the
   evaluation path. → T097
+  **The card mirrors `TextToSqlResult`; the channel cannot, and that is T097's
+  design arriving on this side.** The SQL card reads its rows out of the tool
+  result because §3.1's capped rows may reach the model; a plot's series may
+  not, so `PlotTimeseriesResult` is handed the model's copy — spec, statistics,
+  `artifact_ref` — as its `result` and takes the values from the other channel.
+  The route was verified end to end rather than assumed, because it crosses four
+  libraries and a silent break in any of them renders an empty card: ADK turns a
+  `tool_context.state` write into `EventActions.state_delta`, `ag_ui_adk` emits
+  it as a `StateDeltaEvent` (`event_translator.py:449-454`), `@ag-ui/client`
+  applies the RFC-6902 patch to `agent.state` through `fast-json-patch`, and
+  CopilotKit 1.62's `useCoAgent({name})` is a thin wrapper returning exactly that
+  object (`react-core/dist/index.mjs:1267-1358`). Registration is
+  `useCopilotAction({available: "disabled"})`, the SQL card's own render-only
+  form — the frontend never offers a backend tool to the model.
+  **The join is on `artifact_ref`, and the payloads are kept.**
+  `PLOT_PAYLOAD_STATE_KEY` is one slot overwritten per plot, so a second chart
+  in a conversation would take the first one's values away and leave its turn
+  bare. `usePlotPayloads` accumulates them by handle as they pass; because the
+  handle is content-addressed over the resolved spec, a ref already held is the
+  same chart and is never replaced, and a payload under a *different* handle
+  cannot be drawn under this call's spec — the same rule the backend wrapper
+  applies, enforced again where the two halves finally meet.
+  **A missing payload degrades to the spec, not to nothing.** History restore
+  replays tool calls and results (`adk_events_to_messages`) but not the session
+  state that carried the points, so a reloaded conversation has the chart's
+  description and not its values. The card then renders the series list and the
+  statistics — precisely what the model itself was given, and still enough to
+  say what was drawn. Returning `null` there, as the SQL card does, would have
+  been the literal mirror and would have made a restored plot turn look like a
+  turn where nothing happened.
+  **recharts 3.10.1**, and no plotting library on the Python side (plan §10):
+  the renderer is the frontend's. It is the one choice that maps onto the
+  resolved spec without a translation layer — `axis` becomes `yAxisId`, so the
+  backend's grouping decision *is* the chart's scales, and a `ComposedChart`
+  draws bars and lines against them in one frame.
+  **Nothing about the drawing is decided here either.** `kind` picks the shape,
+  `quantity` picks bar-or-line inside a `bar` plot (a day's rain accumulated
+  into that day; a soil moisture beside it is a level), `model_overlay` dashes
+  the modelled half so a prediction is never read as a measurement, and `diff`
+  draws a difference only when two series share one scale and otherwise falls
+  back to lines. Unit, axis and operator are read off the spec, never recomputed
+  — the derivation is `plot.py`'s and there is no second copy of it.
+  **Two details that would silently corrupt a chart if got wrong.** Stamps are
+  parsed *and* formatted as UTC: `plot.py::_stamp` writes the site's own wall
+  clock with no offset, so reading it as local time would redraw the chart
+  differently per reader and move a point off the day its daily total was
+  accumulated under. And a gap is an **absent key** in the transposed row rather
+  than a zero, so the line breaks over the days `gaps` counted instead of
+  interpolating across an outage.
+  **Verified in a DOM, not only by types.** A scratch harness (jsdom + a
+  ResizeObserver stub, not committed — `web/` carries no test runner and T098 is
+  named as an unscored side effect) mounts the component and asserts on the
+  painted SVG: four bars for the flux and a line for the state beside it, the
+  line's path broken into two segments over the missing day, one y-axis per axis
+  identity labelled `mm` and `%θ`, x ticks reading as the site's own days, and
+  the station and gap disclosures rendered under the chart. A second pass over
+  `renderToStaticMarkup` covers the branches a DOM adds nothing to: the join by
+  handle, a foreign payload falling back to the spec, and `not_available`,
+  `error` and unparsable results all rendering nothing. Two of the first
+  failures were the harness's own stubs — a legend measured at the full chart
+  height, and tick labels measured 640 px wide — which a control chart isolated
+  before anything in the component was touched.
+  **What is not verified**: the chat running against the live backend. `next
+  build` needs Node ≥ 20 and this machine has 18, so the browser-side proof
+  stops at a jsdom mount. `npx tsc --noEmit` and `npm run lint` are clean (the
+  React compiler rules reject both `setState` in an effect and a ref written
+  during render, so the accumulator uses React's documented adjust-state-while-
+  rendering form), and `uv run ruff check .` / `uv run pytest` are unchanged —
+  745 passed, same 15 pre-existing findings. Nothing Python moved: an evaluation
+  rollout calls the tool with no `ToolContext`, writes no state key, and never
+  reaches this file.
+  **One observation for a later packet, not repaired here.** Both state keys
+  ride the delta — `plot_timeseries` stashes the raw points and the wrapper
+  writes the merged payload beside them — so a chart's values cross the wire
+  twice and, because AG-UI sends `state` back up with the next run, climb back
+  to the server on the following message. It is invisible for a daily chart and
+  is tens of kilobytes for a half-hourly month.
 - [x] T099 Tests: source resolution per kind; closed-vocabulary rejection of an
   unknown table or column; mixed-plot daily aggregation; unit and axis derivation;
   gravel and wetland `not_available`; the resolved-spec shape pinned; and **no live

@@ -28,18 +28,48 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   OnStopGeneration,
+  useCoAgent,
   useCopilotAction,
   useCopilotChatInternal,
 } from "@copilotkit/react-core";
 import { CopilotChat } from "@copilotkit/react-ui";
 import { UnauthorizedError, appendPartial, fetchHistory } from "@/lib/api";
+import { AGENT_NAME } from "@/lib/constants";
+import { PLOT_PAYLOAD_STATE_KEY, PlotPayload } from "@/lib/plot";
 import { AssistantMessage } from "@/components/AssistantMessage";
+import { PlotTimeseriesResult } from "@/components/PlotTimeseriesResult";
 import { TextToSqlResult } from "@/components/TextToSqlResult";
 
 type ChatViewProps = {
   conversationId: string;
   onClearError?: () => void;
 };
+
+/**
+ * Every chart payload this conversation has produced, keyed by `artifact_ref`.
+ *
+ * The agent's shared state holds one slot, the newest chart, so a conversation
+ * with two plots would lose the first the moment the second is drawn and the
+ * earlier turn would fall back to its bare spec. Holding the payloads as they
+ * pass keeps each chart in the turn it belongs to. `artifact_ref` is
+ * content-addressed over the resolved spec, so a ref already held names the
+ * same chart and is never replaced — which is also what keeps the map from
+ * growing on a re-render that carries no new plot.
+ */
+function usePlotPayloads(latest: PlotPayload | undefined): Record<string, PlotPayload> {
+  const [held, setHeld] = useState<Record<string, PlotPayload>>({});
+  const [seen, setSeen] = useState<string | undefined>(undefined);
+  const ref = latest?.artifact_ref;
+  // React's own "adjusting state while rendering" pattern rather than an
+  // effect: the payload arrives as a *render input* — a new agent state — so
+  // recording it in an effect would paint the turn once without its chart and
+  // then again with it.
+  if (latest !== undefined && ref !== undefined && ref !== seen) {
+    setSeen(ref);
+    setHeld((prev) => (prev[ref] ? prev : { ...prev, [ref]: latest }));
+  }
+  return held;
+}
 
 export function ChatView({ conversationId, onClearError }: ChatViewProps) {
   const { setMessages, isAvailable } = useCopilotChatInternal();
@@ -67,6 +97,31 @@ export function ChatView({ conversationId, onClearError }: ChatViewProps) {
       <TextToSqlResult status={status} result={result} />
     ),
   });
+
+  // Chart payloads (T098, §3.6). `plot_timeseries` deliberately returns no
+  // values: the model's copy of the result is the resolved spec, and the drawn
+  // points travel through the agent's shared state, which the backend wrapper
+  // writes under PLOT_PAYLOAD_STATE_KEY and AG-UI delivers here as a state
+  // delta — the one channel that reaches the renderer without passing through
+  // the model.
+  const { state: agentState } = useCoAgent<Record<string, unknown>>({ name: AGENT_NAME });
+  const plotPayloads = usePlotPayloads(
+    agentState?.[PLOT_PAYLOAD_STATE_KEY] as PlotPayload | undefined,
+  );
+
+  useCopilotAction(
+    {
+      name: "plot_timeseries",
+      available: "disabled",
+      render: ({ status, result }) => (
+        <PlotTimeseriesResult status={status} result={result} payloads={plotPayloads} />
+      ),
+    },
+    // Without this the registered render would close over the map as it was at
+    // mount, and a chart whose points arrive after its own tool result would
+    // stay a spec forever.
+    [plotPayloads],
+  );
 
   useEffect(() => {
     // Restore once per mount, but only after the real agent has connected —

@@ -282,9 +282,14 @@ def test_a_candidate_description_reaches_the_sub_agent() -> None:
 
 
 def test_an_unknown_docstring_key_raises() -> None:
-    """A silently dropped component would be scored as though it had been applied."""
-    with pytest.raises(ValueError, match="lookup_reference"):
-        build_toolset(_context(EARLY_AS_OF), {"lookup_reference": "not a tool yet"})
+    """A silently dropped component would be scored as though it had been applied.
+
+    The key is a plausible *misspelling* of a real tool rather than an invented
+    name, which is the realistic failure now that every §3 tool but the plotter
+    exists: a registry entry keyed ``reference_lookup`` looks applied and is not.
+    """
+    with pytest.raises(ValueError, match="reference_lookup"):
+        build_toolset(_context(EARLY_AS_OF), {"reference_lookup": "not a tool"})
 
 
 def test_build_root_agent_refuses_docstrings_and_tools_together() -> None:

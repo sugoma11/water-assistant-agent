@@ -2058,11 +2058,66 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   `extra="forbid"` earns its place on the T17b path: `not_applicible` would
   otherwise load as a card with no exclusions, and the probe would go silently
   answerable rather than erroring.
-- [ ] T083 `lookup_reference` ADK tool and factory: `topic: Literal[…]` in the
+- [x] T083 `lookup_reference` ADK tool and factory: `topic: Literal[…]` in the
   **signature** so the vocabulary survives any docstring rewrite, `roof` filtering
   but never suppressing `not_applicable:`, the card returned **whole**, no
   roof-scoped `not_available`, and an unknown topic returning `invalid_argument`
   echoing the valid list. → T082, T029, T052
+  Landed as `tools/reference.py` with `ReferenceCardResult` in `schemas.py`, and
+  the tool is `TOOL_NAMES`' fifth entry — **appended, never inserted**, because
+  declaration order is prompt text and reordering the four the service has run
+  with would move every candidate's prompt for nothing a result could be
+  attributed to.
+  **The eleven names are written out in the signature rather than built from
+  `CARD_TOPICS`.** T082 called that tuple "the twin, not the original"; a literal
+  generated from it would leave the test that holds the two equal asserting a
+  tautology, and the tuple would have become the original after all. Checked
+  against ADK rather than assumed: the declaration carries the vocabulary at
+  `parameters_json_schema.properties.topic.enum`, and a candidate `__doc__` moves
+  `description` while leaving that schema untouched — which is the validity
+  condition's actual mechanism and now a test rather than a claim.
+  **The factory takes no `ctx`, and the absence is the guarantee.** Every other
+  factory closes over a `ScenarioContext` because it reads a clock, an executor
+  or a weather client; this one reads packaged files, so a `ctx` it never touched
+  would be an invitation to reach for `ctx.db` later. Purity is structural
+  instead of promised, which is exactly what the packet's exit criterion tests.
+  **What `roof` filters had to be decided, because §3.2 says both "filter" and
+  "returns the card whole".** It narrows `values:` to the named segment, and only
+  where the block is roof-keyed *and* has an entry for it — four cards are, the
+  rest are keyed by quantity or, in `data_freshness`'s case, by table.
+  `applies_to:` and `not_applicable:` are never narrowed. That is not a
+  convenience: T17b asks for the wetland's soil-moisture threshold, and narrowing
+  to nothing would leave the exclusion with no rule beside it, deleting half of
+  the probe. So a segment the card excludes gets the block whole, and
+  `values_scoped_to_roof: false` says the filter found nothing rather than
+  leaving the agent to infer it.
+  **An unresolvable `roof` is `invalid_argument`, which is one clause past the
+  row's text and is the reading that survives.** "A known topic returns the card
+  whole" rules out a roof-scoped `not_available` — a *scope* answer — and an
+  unparseable spelling is not one; ignoring it would serve every segment's
+  numbers to a question that named one, with nothing in the result to say the
+  filter never ran. `resolve_roof` already takes the German names, the site ids
+  and the column names, so what reaches the error is a spelling nothing on the
+  building answers to, and the error names the five.
+  **A missing card is checked in the factory, not in the tool body.** §3.2 gives
+  this tool no `upstream` class, so there is no honest error to return mid-call;
+  the build-time check is where `store.py` already says a broken store belongs —
+  at startup, never in a trajectory — and it is the runtime counterpart of
+  `enum == card keys`.
+  **One edit outside the row, in `ROOT_INSTRUCTION`**, on T053's precedent: a
+  routing bullet for the reference route. Without it the instruction's "Otherwise,
+  respond yourself" sends every documentary question to the model's own prior,
+  which T16a scores as a failure by construction — the tool would be reachable in
+  the declaration and unreachable in practice. The bullet also carries the
+  read-the-exclusion instruction, since the abstention on T17a/T17b is the agent
+  reading a card rather than relaying a typed status, and §2's point 5 covers only
+  the latter.
+  `test_an_unknown_docstring_key_raises` lost `lookup_reference` as its
+  not-a-tool key and took `reference_lookup` instead — a plausible *misspelling*
+  of a real tool, which is the realistic version of that failure now that every
+  §3 tool but the plotter exists.
+  `uv run ruff check .` and `uv run pytest` clean — 532 passed, same 15
+  pre-existing findings.
 - [ ] T084 Tests: card round-trip and schema validation; `enum == card keys`;
   every rendered card's `values:` equal to `values_for(card_id)`; no numerals in
   any `text:`; the wetland exclusion surviving `roof="wetland"` on

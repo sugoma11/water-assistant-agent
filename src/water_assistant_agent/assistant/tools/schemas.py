@@ -9,9 +9,11 @@ unambiguous. Every top-level model carries a ``status`` literal so the agent can
 branch on success/error without guessing.
 """
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+from water_assistant_agent.assistant.knowledge.store import Provenance
 
 
 ErrorType = Literal["invalid_argument", "upstream"]
@@ -51,6 +53,59 @@ class NotAvailableResult(BaseModel):
 
     status: Literal["not_available"] = "not_available"
     reason: str
+
+
+class ReferenceCardResult(BaseModel):
+    """One reference card, as :func:`lookup_reference` hands it to the agent.
+
+    The card's own field names, deliberately: a person reading the YAML in
+    ``knowledge/cards/`` and a model reading this payload see the same four
+    blocks under the same four names, so a card's prose about "the values block"
+    means something at both ends. ``id`` becomes ``topic`` — the one rename —
+    because that is the argument the agent named to get here, and card recall is
+    scored over exactly those names (``agent_architecture.md`` §7).
+
+    There is no ``not_available`` counterpart. A known topic returns its card
+    whole and a card states its own limits inside ``not_applicable``; typing that
+    abstention at the tool level would collapse it into the already-tested
+    "relay a typed ``not_available``" behaviour and cost the catalog its
+    strongest hallucination probe (``decisions.md`` § Retrieval).
+    """
+
+    status: Literal["success"] = "success"
+    topic: str = Field(description="The card that was read — the card's own `id`")
+    title: str
+    provenance: Provenance = Field(
+        description="`rendered` means a test holds this card's numbers equal to the "
+        "deployed controller's own constants; `static` means they are pinned "
+        "elsewhere — the database hash, or the roof table"
+    )
+    text: str = Field(description="The card's hand-written prose, carrying no numerals")
+    values: dict[str, Any] = Field(
+        default_factory=dict, description="The numbers the card states, keyed by name"
+    )
+    applies_to: list[str] = Field(
+        default_factory=list,
+        description="Roof segments this card's values hold for; empty where the card "
+        "is a property of the site or the weather rather than of a segment",
+    )
+    not_applicable: dict[str, str] = Field(
+        default_factory=dict,
+        description="Roof segment → why this card does not cover it. Returned with "
+        "the card whatever `roof` was asked for, and never filtered: a segment "
+        "listed here has no such value to be inferred from the segments that do",
+    )
+    roof: str | None = Field(
+        default=None,
+        description="The canonical segment the call was scoped to, resolved from "
+        "whatever spelling was passed; null when the card was read unscoped",
+    )
+    values_scoped_to_roof: bool = Field(
+        default=False,
+        description="Whether `values` was narrowed to `roof`. False with a `roof` "
+        "given means the card keeps no separate numbers for that segment — either "
+        "it states one set for the site, or the segment is in `not_applicable`",
+    )
 
 
 class DailyWeatherRow(BaseModel):

@@ -2257,9 +2257,38 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   forecast or modelled one would be a chart of weather that does not exist.
   `uv run ruff check .` and `uv run pytest` clean — 708 passed, same 15
   pre-existing findings.
-- [ ] T092 Echo the **resolved spec** in full: source and variable per series, the
+- [x] T092 Echo the **resolved spec** in full: source and variable per series, the
   resolved absolute range, the derived aggregation and resolution, unit and axis
   per series, gap and truncation flags, and any modelling arguments. → T091
+  **Gaps and truncation are two flags because they are two facts**, and a reader
+  needs them separately. `gaps` counts days of the requested window the series
+  has no point for — a sensor outage, a table whose cover starts later, the seed
+  day a modelled flux is not computed on — and is the hole a chart would
+  otherwise be read straight across. `truncated` says the series *stops* before
+  the window does, which is the record running out or the case's as-of cut, and
+  is the one a "the last week of June" question can be silently wrong about.
+  Both are read off the days the points actually have, so they mean the same
+  thing at either resolution and from all three sources: a half-hourly stamp and
+  a daily one begin with the same ten characters.
+  **`stats` exists because the model is given no values at all.** A tool that
+  returns a series can leave the summarizing to the reader; this one cannot, so
+  what a caveat or a sanity check has to be built from is here — the count, the
+  span, and min/max/mean. `total` follows the same accumulate-or-sample rule the
+  operator does and is **absent on a state**: a window's rain has a total, a
+  window's soil moisture does not, and reporting one would name a sum of
+  half-hourly water contents a quantity.
+  **These fields are echoed and not scored**, like unit and axis before them
+  (`decisions.md` § Plotting): they are properties of the data, identical across
+  candidates for one case, so scoring them would inflate every candidate
+  equally. What they are for is the *answer* — `truncated` and a stale `seed` are
+  exactly the disclosures §2's caveat rule already makes the agent responsible
+  for passing on.
+  **The shape is pinned as an exact key set**, not spot-checked. "In full" is the
+  requirement, and a field silently dropped from the echo is a field the scorer's
+  argument checks and the answer's caveats lose at the same moment, in a way no
+  assertion about the fields a test happens to name would catch.
+  `uv run ruff check .` and `uv run pytest` clean — 708 passed, same 15
+  pre-existing findings.
 - [ ] T093 Return **no series to the model** — spec, summary statistics and
   `artifact_ref` only. → T092
 - [x] T094 Force daily resolution on mixed plots: any plot combining a `model` or

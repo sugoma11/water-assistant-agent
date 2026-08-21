@@ -460,6 +460,28 @@ class SeriesSpec(BaseModel):
     )
 
 
+class PlotSeriesStats(BaseModel):
+    """What a series amounts to, for a model that will never see the series.
+
+    The plot returns no values (``agent_architecture.md`` §3.6), so this is the
+    whole of what an answer can say about the numbers themselves: how many
+    points were drawn, over what span, and where they ran. ``total`` is present
+    for a flux and absent for a state, on the same accumulate-or-sample
+    distinction that picks the operator — a sum of half-hourly water contents is
+    not a quantity.
+    """
+
+    points: int = Field(description="How many points the chart holds for this series")
+    first: str | None = Field(default=None, description="Timestamp of the first point drawn")
+    last: str | None = Field(default=None, description="Timestamp of the last point drawn")
+    min: float | None = Field(default=None, description="Smallest value drawn")
+    max: float | None = Field(default=None, description="Largest value drawn")
+    mean: float | None = Field(default=None, description="Mean of the values drawn")
+    total: float | None = Field(
+        default=None, description="Sum over the window — fluxes only, null for a state"
+    )
+
+
 class PlotSeries(BaseModel):
     """One series of the **resolved** spec: what the agent asked for, plus what followed.
 
@@ -520,6 +542,21 @@ class PlotSeries(BaseModel):
         description="What day 1 of a `model` series started from, and whether that "
         "reading was stale — say so in the answer if it was",
     )
+    gaps: int = Field(
+        default=0,
+        description="Days of the requested window this series has no point for at all — "
+        "a hole in the record, a sensor outage, or a day the model does not report",
+    )
+    truncated: bool = Field(
+        default=False,
+        description="The series stops before the window does, because the record it "
+        "comes from ends there. What is drawn is shorter than what was asked for",
+    )
+    stats: PlotSeriesStats = Field(
+        description="What the drawn values amount to — the whole of what the answer can "
+        "say about numbers it is not given"
+    )
+
 
 class PlotResult(BaseModel):
     """Result of :func:`plot_timeseries` — the resolved spec, and no series.

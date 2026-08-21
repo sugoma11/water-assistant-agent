@@ -107,6 +107,7 @@ from water_assistant_agent.assistant.tools.schemas import (
     NotAvailableResult,
     PlotResult,
     PlotSeries,
+    PlotSeriesStats,
     SeriesSpec,
     WeatherResult,
 )
@@ -676,6 +677,56 @@ def _measured_query(
     )
 
 
+def _window_days(start: str, end: str) -> list[str]:
+    """Every calendar day of ``[start, end]``, inclusive, as ISO strings."""
+    first, last = date.fromisoformat(start), date.fromisoformat(end)
+    return [
+        (first + timedelta(days=offset)).isoformat()
+        for offset in range((last - first).days + 1)
+    ]
+
+
+def _summarize(points: list[tuple[str, float]], quantity: str) -> PlotSeriesStats:
+    """What the drawn values amount to — the only numbers the model is given.
+
+    ``total`` follows the same accumulate-or-sample distinction the operator
+    does: a window's rain and runoff have a total, a water content and a
+    temperature do not, and reporting one would name a sum of states a quantity.
+    """
+    values = [value for _, value in points]
+    if not values:
+        return PlotSeriesStats(points=0)
+    return PlotSeriesStats(
+        points=len(values),
+        first=points[0][0],
+        last=points[-1][0],
+        min=round(min(values), 3),
+        max=round(max(values), 3),
+        mean=round(sum(values) / len(values), 3),
+        total=round(sum(values), 3) if quantity == "flux" else None,
+    )
+
+
+def _coverage(points: list[tuple[str, float]], start: str, end: str) -> tuple[int, bool]:
+    """``(gaps, truncated)`` for a series drawn over ``[start, end]``.
+
+    Both are read off the days the series actually has, which is why the flags
+    mean the same thing at either resolution and from any of the three sources: a
+    half-hourly stamp and a daily one begin with the same ten characters, and a
+    day with no point is a day with no point whether the sensor was down, the
+    record had not started, or the model does not report that quantity on its
+    seed day.
+
+    They say different things and both are needed. *Gaps* is a hole a reader
+    would otherwise interpolate across; *truncated* is the series ending before
+    the window does — the record running out, or a case's as-of cut — which is
+    the one a "the last week of June" question can be silently wrong about.
+    """
+    covered = {at[:10] for at, _ in points}
+    gaps = sum(1 for day in _window_days(start, end) if day not in covered)
+    return gaps, not covered or max(covered) < end
+
+
 def _resolved_series(
     prepared: PreparedSeries,
     points: list[tuple[str, float]],
@@ -686,12 +737,14 @@ def _resolved_series(
     """Pair *points* with the resolved spec that describes them.
 
     One builder for all three sources, because the derived half of the spec is
-    one derivation: the operator, the unit, the axis and the note all come off the
-    vocabulary row (``agent_architecture.md`` §3.6). Only *echoed* differs per
-    source — the column a ``measured`` series read, the modelling arguments a
-    ``model`` series was given.
+    one derivation: the operator, the unit, the axis and the note come off the
+    vocabulary row, and the coverage flags and the statistics come off the points
+    (``agent_architecture.md`` §3.6). Only *echoed* differs per source — the
+    column a ``measured`` series read, the modelling arguments a ``model`` series
+    was given.
     """
     entry = prepared.variable
+    gaps, truncated = _coverage(points, start, end)
     return ResolvedSeries(
         spec=PlotSeries(
             source=prepared.spec.source,
@@ -702,6 +755,9 @@ def _resolved_series(
             unit=entry.unit,
             axis=entry.axis,
             note=entry.note,
+            gaps=gaps,
+            truncated=truncated,
+            stats=_summarize(points, entry.quantity),
             **echoed,
         ),
         points=points,
@@ -1002,15 +1058,18 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
             ``end``, the ``resolution`` the series were drawn at, and one entry
             per series carrying what was asked for (source, variable, roof, any modelling arguments)
             and what followed from it (the ``column`` read, the ``aggregation``
-            applied, the ``unit`` and the ``axis``).
+            applied, the ``unit`` and the ``axis``, and ``stats`` — how many points
+            were drawn, over what span, and their min, max, mean and total).
             **The values themselves are not returned** — the chart is the
             deliverable and the user can already see it, so describe what was drawn
             rather than reciting numbers.
 
-            Two things in a series are caveats to pass on rather than details to
+            Four things in a series are caveats to pass on rather than details to
             drop: a ``note`` (the radiation masts' one-hour timestamp offset,
             outflow's litres-are-millimetres relabel, the modelled seed day that
-            computes no runoff) and a ``seed`` whose ``is_stale`` is true (the
+            computes no runoff), ``gaps`` above zero (days the series has no point
+            for), ``truncated`` (the series stops before the window does, because
+            the record ends there), and a ``seed`` whose ``is_stale`` is true (the
             modelled run started from an old sensor reading). ``weather_source``
             of ``'station'`` means the site's own instruments — say so.
 

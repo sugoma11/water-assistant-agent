@@ -66,8 +66,8 @@ this same layer-1 resolver instead (``decisions.md`` § Plotting).
 
 import asyncio
 import dataclasses
-from collections.abc import Awaitable, Callable
-from datetime import date
+from collections.abc import Awaitable, Callable, Sequence
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 import structlog
@@ -89,7 +89,7 @@ from water_assistant_agent.assistant.tools.schemas import (
     PlotSeries,
     SeriesSpec,
 )
-from water_assistant_agent.assistant.tools.site import site_day_expr
+from water_assistant_agent.assistant.tools.site import site_day_expr, site_timestamp_expr
 from water_assistant_agent.assistant.tools.weather_client import (
     InvalidWindowError,
     resolve_window,
@@ -102,6 +102,8 @@ logger = structlog.get_logger(__name__)
 
 PlotTimeseriesTool = Callable[..., Awaitable[dict[str, Any]]]
 """What :func:`make_plot_timeseries_tool` returns: the ADK-facing plot tool."""
+
+Resolution = Literal["half_hourly", "daily"]
 
 PLOT_KINDS: tuple[str, ...] = ("line", "bar", "model_overlay", "diff")
 """The chart shapes the renderer knows. Unscored — §7 fixes the scored surface
@@ -329,6 +331,23 @@ def measured_column(entry: MeasuredVariable, roof: str | None) -> tuple[str, Roo
     return segment.columns[entry.table], segment
 
 
+def plot_resolution(sources: Sequence[str]) -> Resolution:
+    """The resolution every series in a plot with these *sources* is drawn at.
+
+    Half-hourly is the record's own sampling and is kept while the plot is
+    ``measured`` throughout. The moment a ``weather`` or ``model`` series joins
+    it, the plot is mixed — those two are daily, ``swc`` and ``wetter`` are
+    half-hourly — and the measured half is aggregated to Europe/Berlin calendar
+    days by its variable's own operator, because two series cannot share an
+    x-axis at two resolutions (``agent_architecture.md`` §3.6). A plot with no
+    measured series at all is daily because both live sources are.
+
+    Decided over the whole plot, before any series is fetched: the operator is a
+    property of the variable, but the resolution is a property of the chart.
+    """
+    return "half_hourly" if set(sources) == {"measured"} else "daily"
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class ResolvedSeries:
     """One fetched series: the spec the agent gets back, and the points it does not.
@@ -340,10 +359,17 @@ class ResolvedSeries:
 
     spec: PlotSeries
     points: list[tuple[str, float]]
-    """``(day, value)``, ascending — one point per Europe/Berlin calendar day."""
+    """``(timestamp, value)``, ascending. Stamped in the site's own timezone, so a
+    point's label and the day it is counted under agree."""
 
 
-def _measured_query(entry: MeasuredVariable, column: str, start: str, end: str) -> str:
+def _measured_query(
+    entry: MeasuredVariable,
+    column: str,
+    start: str,
+    end: str,
+    resolution: Resolution,
+) -> str:
     """The fixed query, in one place, with the vocabulary supplying the identifiers.
 
     No LLM SQL reaches this module: the table comes from :data:`MEASURED_TABLES`,
@@ -354,10 +380,17 @@ def _measured_query(entry: MeasuredVariable, column: str, start: str, end: str) 
     """
     day = site_day_expr()
     window = f"{day} BETWEEN DATE '{start}' AND DATE '{end}'"
+    conditions = f'"{column}" IS NOT NULL AND {window}'
+    if resolution == "daily":
+        return (
+            f'SELECT {day} AS at, {entry.aggregation}("{column}") AS value '  # noqa: S608 - identifiers from the vocabulary
+            f"FROM {entry.table} WHERE {conditions} GROUP BY 1 ORDER BY 1"
+        )
+    # The window is still bounded by the site's day, so a half-hourly series and
+    # the daily one it may be redrawn as cover exactly the same span.
     return (
-        f'SELECT {day} AS at, {entry.aggregation}("{column}") AS value '  # noqa: S608 - identifiers from the vocabulary
-        f'FROM {entry.table} WHERE "{column}" IS NOT NULL AND {window} '
-        f"GROUP BY 1 ORDER BY 1"
+        f'SELECT {site_timestamp_expr()} AS at, "{column}" AS value '  # noqa: S608 - identifiers from the vocabulary
+        f"FROM {entry.table} WHERE {conditions} ORDER BY 1"
     )
 
 
@@ -366,6 +399,7 @@ def resolve_measured_series(
     spec: SeriesSpec,
     start: str,
     end: str,
+    resolution: Resolution,
 ) -> ResolvedSeries:
     """Fetch one ``measured`` series and echo what the vocabulary made of it.
 
@@ -379,7 +413,7 @@ def resolve_measured_series(
     """
     entry = measured_variable(spec.table, spec.variable)
     column, segment = measured_column(entry, spec.roof)
-    result = executor.execute_query(_measured_query(entry, column, start, end))
+    result = executor.execute_query(_measured_query(entry, column, start, end, resolution))
     return ResolvedSeries(
         spec=PlotSeries(
             source="measured",
@@ -395,9 +429,15 @@ def resolve_measured_series(
     )
 
 
-def _stamp(at: date) -> str:
-    """One point's label — the Europe/Berlin calendar day its value belongs to."""
-    return at.isoformat()
+def _stamp(at: date | datetime) -> str:
+    """One point's label: an ISO day when the plot is daily, an instant otherwise.
+
+    The daily branch groups to a ``DATE`` and the half-hourly branch selects the
+    site's wall clock, so the two arrive as different types and are written as
+    the different things they are — a day a total belongs to, or the moment a
+    sample was taken.
+    """
+    return at.isoformat(sep=" ") if isinstance(at, datetime) else at.isoformat()
 
 
 def _parse_specs(series: Any) -> list[SeriesSpec]:
@@ -473,7 +513,9 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
 
         How the series is aggregated is **not** a choice: rain and runoff sum over
         a day, water contents and temperatures average, and the result says which
-        operator ran. Days are the site's own calendar days (Europe/Berlin).
+        operator ran. Half-hourly detail is kept for an all-measured plot and
+        aggregated to calendar days (Europe/Berlin) as soon as a daily series
+        shares the chart.
 
         Args:
             series: The series to draw, as a list of declarations. Each takes
@@ -493,9 +535,10 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
 
         Returns:
             dict: on success ``status='success'`` with the resolved ``start`` and
-            ``end`` and one entry per series carrying what was asked for (source,
-            variable, roof) and what followed from it — the ``column`` read and the
-            ``aggregation`` applied. **The values themselves are not returned** —
+            ``end``, the ``resolution`` the series were drawn at, and one entry per
+            series carrying what was asked for (source, variable, roof) and what
+            followed from it — the ``column`` read and the ``aggregation`` applied.
+            **The values themselves are not returned** —
             the chart is the deliverable and the user can already see it, so
             describe what was drawn rather than reciting numbers. A series carrying
             a ``note`` — the radiation masts' one-hour timestamp offset, outflow's
@@ -525,6 +568,10 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
             logger.info("Rejected a plot window", error=str(exc))
             return ErrorResult(error_type="invalid_argument", error_details=str(exc)).model_dump()
 
+        # Decided over the whole plot before any series is fetched (T094): a
+        # measured series sharing a chart with a daily one is aggregated to days.
+        resolution = plot_resolution([spec.source for spec in specs])
+
         resolved: list[ResolvedSeries] = []
         for spec in specs:
             if spec.source != "measured":
@@ -540,7 +587,7 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
             try:
                 resolved.append(
                     await asyncio.to_thread(
-                        resolve_measured_series, ctx.db, spec, start, end
+                        resolve_measured_series, ctx.db, spec, start, end, resolution
                     )
                 )
             except PlotVocabularyError as exc:
@@ -561,6 +608,7 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
         logger.debug(
             "Resolved a plot",
             window=(start, end),
+            resolution=resolution,
             series=[item.spec.variable for item in resolved],
             points=[len(item.points) for item in resolved],
         )
@@ -570,6 +618,7 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
             kind=kind,
             start=start,
             end=end,
+            resolution=resolution,
             series=[item.spec for item in resolved],
         ).model_dump()
 

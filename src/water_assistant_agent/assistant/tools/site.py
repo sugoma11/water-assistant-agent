@@ -39,6 +39,17 @@ def site_now() -> datetime:
     return datetime.now(ZoneInfo(SITE_TIMEZONE))
 
 
+def site_timestamp_expr(column: str = "timestamp") -> str:
+    """SQL reading a **naive UTC** timestamp *column* as the site's wall clock.
+
+    The conversion :func:`site_day_expr` takes the date of, on its own: a
+    half-hourly series drawn on a chart is stamped in the same timezone the days
+    it falls into are counted in, or a sample at 23:30 Berlin sits under the
+    previous day's label and a reader takes the offset for physics.
+    """
+    return f"(({column}) AT TIME ZONE 'UTC' AT TIME ZONE '{SITE_TIMEZONE}')"
+
+
 def site_day_expr(column: str = "timestamp") -> str:
     """SQL turning a **naive UTC** timestamp *column* into the site's calendar day.
 
@@ -51,4 +62,4 @@ def site_day_expr(column: str = "timestamp") -> str:
     between days by one to two hours' worth, which is enough to move a peak-day
     argmax.
     """
-    return f"(({column}) AT TIME ZONE 'UTC' AT TIME ZONE '{SITE_TIMEZONE}')::DATE"
+    return f"{site_timestamp_expr(column)}::DATE"

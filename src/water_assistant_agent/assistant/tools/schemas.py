@@ -492,6 +492,11 @@ class PlotResult(BaseModel):
     kind: Literal["line", "bar", "model_overlay", "diff"]
     start: str = Field(description="First day drawn, resolved to an absolute date")
     end: str = Field(description="Last day drawn, resolved to an absolute date")
+    resolution: Literal["half_hourly", "daily"] = Field(
+        description="The record's own half-hourly sampling, or calendar days at the "
+        "site's timezone. Daily is forced whenever a `measured` series shares the plot "
+        "with a daily source, since the two cannot be drawn against one x-axis otherwise"
+    )
     series: list[PlotSeries]
 
 

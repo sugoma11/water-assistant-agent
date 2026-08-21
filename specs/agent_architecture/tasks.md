@@ -2216,10 +2216,34 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   per series, gap and truncation flags, and any modelling arguments. → T091
 - [ ] T093 Return **no series to the model** — spec, summary statistics and
   `artifact_ref` only. → T092
-- [ ] T094 Force daily resolution on mixed plots: any plot combining a `model` or
+- [x] T094 Force daily resolution on mixed plots: any plot combining a `model` or
   `weather` series with a `measured` one aggregates the measured series to
   Europe/Berlin calendar days with that variable's derived operator, and reports
   the resolution in the spec. → T090
+  **Resolution is a property of the chart; the operator is a property of the
+  variable.** So `plot_resolution` reads the *set of sources* once, before any
+  series is fetched, and every measured series in that plot is then read at the
+  resolution it returns — while each still aggregates by its own `sum` or `mean`.
+  A per-series resolution would let one series be drawn at 48 points a day
+  against another's one, which is not a chart.
+  **The rule is stated as "all-measured keeps half-hourly", not as "a model or
+  weather series forces days".** The two agree on today's three sources and
+  disagree on a fourth: a source added later is daily until someone says
+  otherwise, which is the safe direction — a half-hourly series drawn against a
+  daily one is the failure, not the reverse. It also makes the `weather`+`model`
+  plot with no measured series at all daily without a third branch.
+  **`site_timestamp_expr` is new, and `site_day_expr` is now its `::DATE`.** The
+  half-hourly branch has to stamp its points in Berlin too — a sample at 23:30
+  local is stored as 21:30 or 22:30 UTC, and a chart labelling it with the
+  previous day while the daily view counts it in the next is the misalignment
+  §8 makes a reader responsible for noticing. One expression, two callers, per
+  `decisions.md` § The day boundary's own reason for the first one.
+  **Both branches bound the window by the site's day**, so a half-hourly series
+  and the daily series it would be redrawn as cover exactly the same span; a
+  half-hourly query bounded on the raw UTC column would have shifted its own
+  edges by an hour or two against the daily one's.
+  `uv run ruff check .` and `uv run pytest` clean — 668 passed, same 15
+  pre-existing findings.
 - [ ] T095 Derive unit, axis assignment and aggregation operator in code from the
   variable — fluxes sum, states average — never model-chosen. → T092
 - [ ] T096 Typed outcomes: a `model` series for the gravel roof or the wetland →

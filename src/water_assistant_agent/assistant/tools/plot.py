@@ -62,12 +62,23 @@ relative forms so the arguments were always comparable as written was considered
 and rejected — it reverses a decision already taken for the weather tool and
 splits one vocabulary in two — and the scorer resolves the *argument* through
 this same layer-1 resolver instead (``decisions.md`` § Plotting).
+
+**The two live sources are the other tools' own seams, reached through ``ctx``.**
+A ``weather`` series is ``ctx.weather``'s daily row and a ``model`` series is
+:func:`gr2l.run_roof_model` — the same composite, the same response cache, the
+same window resolution and the same ``min(window_start, as_of)`` seed rule the
+standalone tools run under, because they are the same functions. That is what
+§3.6 makes this tool's self-containment conditional on: no DuckDB connection of
+its own, no HTTP client of its own, three sources and one context. A plot in
+replay therefore issues no live call for exactly the reason a modelled case does
+not — both read the cache the case committed.
 """
 
 import asyncio
 import dataclasses
+import json
 from collections.abc import Awaitable, Callable, Sequence
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
 
 import structlog
@@ -76,6 +87,14 @@ from pydantic import ValidationError
 
 from water_assistant_agent.assistant.context import AS_OF_TABLES
 from water_assistant_agent.assistant.ports import ReadOnlyWarehouseQuery
+from water_assistant_agent.assistant.tools.gr2l import (
+    ForcingError,
+    ModelRun,
+    ModelWeatherError,
+    normalize_forcings,
+    run_roof_model,
+)
+from water_assistant_agent.assistant.tools.gr2l_client import Gr2lConfigError
 from water_assistant_agent.assistant.tools.roofs import (
     ROOFS,
     RoofSegment,
@@ -85,13 +104,19 @@ from water_assistant_agent.assistant.tools.roofs import (
 )
 from water_assistant_agent.assistant.tools.schemas import (
     ErrorResult,
+    NotAvailableResult,
     PlotResult,
     PlotSeries,
     SeriesSpec,
+    WeatherResult,
 )
 from water_assistant_agent.assistant.tools.site import site_day_expr, site_timestamp_expr
+from water_assistant_agent.assistant.tools.swc import SwcUnavailableError
 from water_assistant_agent.assistant.tools.weather_client import (
+    FORECAST_HORIZON_DAYS,
     InvalidWindowError,
+    WeatherFetchError,
+    beyond_horizon,
     resolve_window,
 )
 
@@ -122,6 +147,24 @@ AXIS_TEMPERATURE = "temperature_c"
 AXIS_SURFACE_TEMPERATURE = "surface_temperature_k"
 AXIS_IRRADIANCE = "irradiance_w_m2"
 AXIS_HUMIDITY = "relative_humidity_pct"
+AXIS_WIND = "wind_speed_km_h"
+AXIS_RADIATION_SUM = "radiation_j_cm2_day"
+"""A day's total radiation, which is not the irradiance axis restated.
+
+``wetter``'s ``Rad_SW`` is a W/m² reading at an instant and the weather row's
+``gs`` is J/cm² accumulated over a day: same physics, different quantity, three
+orders of magnitude apart. Drawn against one scale the instantaneous series
+would be a flat line along the axis.
+"""
+
+AXIS_WATER_STORAGE = "water_storage_mm"
+"""What the roof is holding, as against what moved through it.
+
+Both are millimetres, so this is the rain/humidity rule again one layer up: a
+substrate storage of 30 mm and a day's 3 mm of runoff share a unit and not a
+scale, and putting the state on the flux's axis would flatten every day of
+runoff the chart exists to show.
+"""
 
 _OUTFLOW_NOTE = (
     "Lysimeter outflow is recorded in litres and reported in millimetres: every "
@@ -135,6 +178,23 @@ _RADIATION_NOTE = (
     "two half-hourly rows — say so rather than reading the offset as physics. The "
     "table also covers only 2025-03-01 to 2025-10-01."
 )
+
+
+_SEED_DAY_NOTE = (
+    "Day 1 of a modelled run only seeds the stores, so this quantity is not computed "
+    "for it and the series opens on day 2 — the same reason a window's retention "
+    "excludes its first day's runoff."
+)
+
+
+def aggregation_for(quantity: str) -> Literal["sum", "mean"]:
+    """The operator a quantity is aggregated by: fluxes sum, states average.
+
+    The rule of §3.6, written once and shared by all three vocabularies, so a
+    ``model`` series' runoff and a ``measured`` series' runoff cannot end up
+    aggregated differently because two tables each spelled the rule out.
+    """
+    return "sum" if quantity == "flux" else "mean"
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -165,7 +225,7 @@ class MeasuredVariable:
     @property
     def aggregation(self) -> Literal["sum", "mean"]:
         """The operator this variable is aggregated by. Derived, never chosen."""
-        return "sum" if self.quantity == "flux" else "mean"
+        return aggregation_for(self.quantity)
 
     @property
     def per_roof(self) -> bool:
@@ -286,6 +346,78 @@ past a case's cut.
 """
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class DailyVariable:
+    """One row of the ``weather`` or ``model`` vocabulary — a daily row's field.
+
+    The same four columns :class:`MeasuredVariable` carries, minus the three that
+    exist only to resolve a database column: a daily series is a field of a row
+    the other tools already return, so its name *is* its selector. The identity
+    it adds is the one a chart needs — the quantity, and with it the operator, the
+    unit and the axis.
+    """
+
+    quantity: Literal["flux", "state"]
+    """Whether the day accumulates this quantity or reports it as a state."""
+
+    unit: str
+    axis: str
+    note: str | None = None
+    """What a reader of this series has to be told — carried out with the spec."""
+
+    @property
+    def aggregation(self) -> Literal["sum", "mean"]:
+        """The operator this variable is aggregated by. Derived, never chosen."""
+        return aggregation_for(self.quantity)
+
+
+WEATHER_VOCABULARY: dict[str, DailyVariable] = {
+    "precip": DailyVariable(quantity="flux", unit="mm", axis=AXIS_WATER_DEPTH),
+    "tm": DailyVariable(quantity="state", unit="°C", axis=AXIS_TEMPERATURE),
+    "tx": DailyVariable(quantity="state", unit="°C", axis=AXIS_TEMPERATURE),
+    "tn": DailyVariable(quantity="state", unit="°C", axis=AXIS_TEMPERATURE),
+    "rf": DailyVariable(quantity="state", unit="%", axis=AXIS_HUMIDITY),
+    "w": DailyVariable(quantity="state", unit="km/h", axis=AXIS_WIND),
+    "gs": DailyVariable(quantity="flux", unit="J/cm²/day", axis=AXIS_RADIATION_SUM),
+}
+"""What a ``weather`` series may draw: every field of ``DailyWeatherRow`` but ``Date``.
+
+Keyed by the row's **own** field names rather than by prettier ones, so a plot
+declares ``tx`` where a forcing forces ``tx`` and the weather tool reports
+``tx`` — one vocabulary across the three, which is the rule ``forcings`` is
+built on too (``decisions.md`` § GR2L argument surface). The daily maximum and
+the day's wind are here, and deliberately absent from the ``measured``
+vocabulary: both need a derivation the station half already owns, and serving
+them twice would be the second place for it to drift.
+"""
+
+MODEL_VOCABULARY: dict[str, DailyVariable] = {
+    "swc_pct": DailyVariable(quantity="state", unit="%θ", axis=AXIS_WATER_CONTENT),
+    "Ssub": DailyVariable(quantity="state", unit="mm", axis=AXIS_WATER_STORAGE),
+    "Sret": DailyVariable(quantity="state", unit="mm", axis=AXIS_WATER_STORAGE),
+    "OUT": DailyVariable(
+        quantity="flux", unit="mm", axis=AXIS_WATER_DEPTH, note=_SEED_DAY_NOTE
+    ),
+    "ET": DailyVariable(quantity="flux", unit="mm", axis=AXIS_WATER_DEPTH),
+    "ET_PM": DailyVariable(quantity="flux", unit="mm", axis=AXIS_WATER_DEPTH),
+    "Qdown": DailyVariable(
+        quantity="flux", unit="mm", axis=AXIS_WATER_DEPTH, note=_SEED_DAY_NOTE
+    ),
+    "Qup": DailyVariable(
+        quantity="flux", unit="mm", axis=AXIS_WATER_DEPTH, note=_SEED_DAY_NOTE
+    ),
+}
+"""What a ``model`` series may draw: every field of ``GreenRoofDay`` but ``Date``.
+
+``swc_pct`` shares :data:`AXIS_WATER_CONTENT` with the ``swc`` sensor and ``OUT``
+shares :data:`AXIS_WATER_DEPTH` with the lysimeter, which is what makes a
+``model_overlay`` a comparison rather than two charts in one frame: the modelled
+and the measured quantity are the same quantity, in the same unit, against the
+same scale. The three that open on day 2 carry that as a note rather than as a
+silent hole — the seed day computes no flux (``gr2l_tool.md``).
+"""
+
+
 class PlotVocabularyError(ValueError):
     """A series that the closed vocabulary cannot draw — an argument fault, pre-I/O.
 
@@ -367,6 +499,120 @@ def measured_column(entry: MeasuredVariable, roof: str | None) -> tuple[str, Roo
     return segment.columns[entry.table], segment
 
 
+def daily_variable(source: str, variable: str) -> DailyVariable:
+    """The vocabulary entry for *variable* on the ``weather`` or ``model`` source.
+
+    Raises:
+        PlotVocabularyError: that source has no such field. The message lists
+            the ones it has, under the names the other tools already report them
+            by — the agent asks for ``tx``, not for "maximum temperature".
+    """
+    vocabulary = WEATHER_VOCABULARY if source == "weather" else MODEL_VOCABULARY
+    entry = vocabulary.get(variable)
+    if entry is None:
+        raise PlotVocabularyError(
+            f"Unknown variable {variable!r} for a {source!r} series. "
+            f"Valid variables there: {', '.join(vocabulary)}."
+        )
+    return entry
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class PreparedSeries:
+    """One series proved drawable, with everything the fetch needs already resolved.
+
+    The whole of the argument check happens here and the whole of the I/O happens
+    after it, which is what lets a plot that cannot be drawn cost nothing: no
+    query, and — the reason it matters — no GR2L request, so a declined plot
+    never records a cache entry for a run nobody will read.
+    """
+
+    spec: SeriesSpec
+    variable: MeasuredVariable | DailyVariable
+    column: str | None = None
+    """The database column a ``measured`` series reads; ``None`` for a daily source."""
+
+    roof: RoofSegment | None = None
+    """The canonical segment, resolved from whatever alias the agent used."""
+
+    forcings: dict[str, dict[str, float]] | None = None
+    """A ``model`` series' counterfactual, already checked against the window.
+
+    Normalized here rather than inside the run so a forcing naming a day outside
+    the chart is caught with the other argument faults — before the first fetch,
+    not after some other series has already been drawn.
+    """
+
+
+def _reject_foreign_selectors(spec: SeriesSpec) -> None:
+    """Refuse a selector that belongs to a different source.
+
+    ``extra="forbid"`` catches a field no series has; this catches a field some
+    series has and *this* one does not — an albedo on a rain gauge, a table on a
+    modelled roof. Both are the same fault to the agent, and neither is worth a
+    silent drop that would change which series is drawn.
+    """
+    modelling = {
+        "initial_soil_moisture_pct": spec.initial_soil_moisture_pct,
+        "albedo": spec.albedo,
+        "forcings": spec.forcings,
+    }
+    named = sorted(field for field, value in modelling.items() if value is not None)
+    if spec.source != "model" and named:
+        raise PlotVocabularyError(
+            f"{', '.join(named)} belong{'s' if len(named) == 1 else ''} to a 'model' "
+            f"series, and this one is {spec.source!r}. A measured or weather series is "
+            "the record as it stands; there is nothing to assume about it."
+        )
+    if spec.source != "measured" and spec.table is not None:
+        raise PlotVocabularyError(
+            f"Only a 'measured' series names a table; a {spec.source!r} series got "
+            f"table={spec.table!r}."
+        )
+
+
+def prepare_series(spec: SeriesSpec, start: str, end: str) -> PreparedSeries:
+    """Resolve *spec* against the vocabularies, or say why it cannot be drawn.
+
+    Raises:
+        PlotVocabularyError: the series is outside the closed vocabulary, or
+            carries a selector its source does not take.
+        ForcingError: a counterfactual that names a day outside ``start..end``.
+    """
+    _reject_foreign_selectors(spec)
+
+    if spec.source == "measured":
+        entry = measured_variable(spec.table, spec.variable)
+        column, segment = measured_column(entry, spec.roof)
+        return PreparedSeries(spec=spec, variable=entry, column=column, roof=segment)
+
+    daily = daily_variable(spec.source, spec.variable)
+    if spec.source == "weather":
+        if spec.roof is not None:
+            raise PlotVocabularyError(
+                "The weather is the site's, not a roof's, so a 'weather' series takes no "
+                f"roof; got {spec.roof!r}. For one roof's own record, draw a 'measured' "
+                "series."
+            )
+        return PreparedSeries(spec=spec, variable=daily)
+
+    if spec.roof is None:
+        raise PlotVocabularyError(
+            "A 'model' series simulates one roof, so it needs a roof. "
+            f"Valid roofs: {', '.join(ROOFS)}."
+        )
+    segment = resolve_roof(spec.roof)
+    if segment is None:
+        raise PlotVocabularyError(
+            f"Unknown roof {spec.roof!r}. Valid roofs: {', '.join(ROOFS)}."
+        )
+    # The window's own check, run by the water-balance tool's own validator: a
+    # forcing is addressed by day, and a day the chart does not cover is an
+    # override that would silently do nothing (`decisions.md` § GR2L argument surface).
+    forcings = normalize_forcings(spec.forcings, start, end) if spec.forcings else None
+    return PreparedSeries(spec=spec, variable=daily, roof=segment, forcings=forcings)
+
+
 def plot_resolution(sources: Sequence[str]) -> Resolution:
     """The resolution every series in a plot with these *sources* is drawn at.
 
@@ -430,6 +676,66 @@ def _measured_query(
     )
 
 
+def _resolved_series(
+    prepared: PreparedSeries,
+    points: list[tuple[str, float]],
+    start: str,
+    end: str,
+    **echoed: Any,
+) -> ResolvedSeries:
+    """Pair *points* with the resolved spec that describes them.
+
+    One builder for all three sources, because the derived half of the spec is
+    one derivation: the operator, the unit, the axis and the note all come off the
+    vocabulary row (``agent_architecture.md`` §3.6). Only *echoed* differs per
+    source — the column a ``measured`` series read, the modelling arguments a
+    ``model`` series was given.
+    """
+    entry = prepared.variable
+    return ResolvedSeries(
+        spec=PlotSeries(
+            source=prepared.spec.source,
+            variable=prepared.spec.variable,
+            roof=prepared.roof.name if prepared.roof is not None else None,
+            quantity=entry.quantity,
+            aggregation=entry.aggregation,
+            unit=entry.unit,
+            axis=entry.axis,
+            note=entry.note,
+            **echoed,
+        ),
+        points=points,
+    )
+
+
+def fetch_measured_series(
+    executor: ReadOnlyWarehouseQuery,
+    prepared: PreparedSeries,
+    start: str,
+    end: str,
+    resolution: Resolution,
+) -> ResolvedSeries:
+    """Read one ``measured`` series and echo what the vocabulary made of it.
+
+    Every derived field — column, operator, unit, axis, the note — comes from the
+    vocabulary rather than from the caller, and the values are served as recorded:
+    the outflow entry relabels litres as millimetres and scales nothing
+    (``agent_architecture.md`` §3.6).
+    """
+    entry = prepared.variable
+    assert isinstance(entry, MeasuredVariable)  # noqa: S101 - `prepare_series` decides this
+    column = str(prepared.column)
+    result = executor.execute_query(_measured_query(entry, column, start, end, resolution))
+    return _resolved_series(
+        prepared,
+        [(_stamp(at), float(value)) for at, value in result.rows],
+        start,
+        end,
+        table=entry.table,
+        column=column,
+    )
+
+
 def resolve_measured_series(
     executor: ReadOnlyWarehouseQuery,
     spec: SeriesSpec,
@@ -437,33 +743,65 @@ def resolve_measured_series(
     end: str,
     resolution: Resolution,
 ) -> ResolvedSeries:
-    """Fetch one ``measured`` series and echo what the vocabulary made of it.
-
-    Every derived field — column, operator, unit, axis, the note — comes from the
-    vocabulary rather than from the caller, and the values are served as recorded:
-    the outflow entry relabels litres as millimetres and scales nothing
-    (``agent_architecture.md`` §3.6).
+    """Prepare and read one ``measured`` series, for a caller holding a bare spec.
 
     Raises:
         PlotVocabularyError: the series is outside the closed vocabulary.
     """
-    entry = measured_variable(spec.table, spec.variable)
-    column, segment = measured_column(entry, spec.roof)
-    result = executor.execute_query(_measured_query(entry, column, start, end, resolution))
-    return ResolvedSeries(
-        spec=PlotSeries(
-            source="measured",
-            variable=spec.variable,
-            table=entry.table,
-            roof=segment.name if segment is not None else None,
-            column=column,
-            quantity=entry.quantity,
-            aggregation=entry.aggregation,
-            unit=entry.unit,
-            axis=entry.axis,
-            note=entry.note,
-        ),
-        points=[(_stamp(at), float(value)) for at, value in result.rows],
+    return fetch_measured_series(
+        executor, prepare_series(spec, start, end), start, end, resolution
+    )
+
+
+def weather_series(
+    weather: WeatherResult, prepared: PreparedSeries, start: str, end: str
+) -> ResolvedSeries:
+    """One ``weather`` series off the rows ``ctx.weather`` returned.
+
+    Already daily and already unit-converted, so nothing is aggregated here: the
+    row *is* the point, under the field name the agent named and the other two
+    tools report. Which source served is echoed rather than chosen — an answer
+    drawn from the site's own instruments says so (§3.3).
+    """
+    field = prepared.spec.variable
+    return _resolved_series(
+        prepared,
+        [
+            (row.Date, float(value))
+            for row in weather.data
+            if (value := getattr(row, field, None)) is not None
+        ],
+        start,
+        end,
+        weather_source=weather.source,
+    )
+
+
+def model_series(
+    run: ModelRun, prepared: PreparedSeries, start: str, end: str
+) -> ResolvedSeries:
+    """One ``model`` series off a GR2L run, with the run's disclosures beside it.
+
+    A null value is dropped rather than drawn as a zero — the seed day computes
+    no runoff — and reappears in ``gaps``, which is what the day the chart is
+    missing should look like from the model's side too.
+    """
+    field = prepared.spec.variable
+    spec = prepared.spec
+    return _resolved_series(
+        prepared,
+        [
+            (day.Date, float(value))
+            for day in run.days
+            if (value := getattr(day, field, None)) is not None
+        ],
+        start,
+        end,
+        weather_source=run.weather_source,
+        seed=run.seed,
+        initial_soil_moisture_pct=spec.initial_soil_moisture_pct,
+        albedo=spec.albedo,
+        forcings=run.forcings,
     )
 
 
@@ -504,15 +842,82 @@ def _parse_specs(series: Any) -> list[SeriesSpec]:
     return specs
 
 
+class _PlotSources:
+    """One plot's live fetches, each done once.
+
+    A chart draws the same window from at most one weather fetch and one run per
+    roof-and-counterfactual: two model series over one roof — its soil moisture
+    against its runoff — are one simulation, not two, and asking GR2L twice for
+    the same request would double a case's captures for no second answer.
+    Re-fetching *across* calls stays cheap for the reason §3.6 gives (both live
+    sources replay from the response cache); this is only about within one chart.
+    """
+
+    def __init__(self, ctx: "ScenarioContext", start: str, end: str) -> None:
+        self._ctx = ctx
+        self._start = start
+        self._end = end
+        self._weather: WeatherResult | None = None
+        self._runs: dict[str, ModelRun] = {}
+
+    async def weather(self) -> WeatherResult:
+        """The window's daily weather, from whichever source covers it."""
+        if self._weather is None:
+            self._weather = await self._ctx.weather.fetch(
+                start_date=self._start, end_date=self._end
+            )
+        return self._weather
+
+    async def model(self, prepared: PreparedSeries) -> ModelRun:
+        """The GR2L run this series reads, keyed by everything that could change it."""
+        spec = prepared.spec
+        key = json.dumps(
+            [
+                prepared.roof.name if prepared.roof is not None else None,
+                spec.initial_soil_moisture_pct,
+                spec.albedo,
+                prepared.forcings,
+            ],
+            sort_keys=True,
+        )
+        if key not in self._runs:
+            self._runs[key] = await run_roof_model(
+                self._ctx,
+                str(prepared.roof.name) if prepared.roof is not None else "",
+                self._start,
+                self._end,
+                initial_soil_moisture_pct=spec.initial_soil_moisture_pct,
+                albedo=spec.albedo,
+                forcings=prepared.forcings,
+            )
+        return self._runs[key]
+
+    async def fetch(self, prepared: PreparedSeries, resolution: Resolution) -> ResolvedSeries:
+        """Draw one prepared series from whichever source it declared."""
+        if prepared.spec.source == "measured":
+            return await asyncio.to_thread(
+                fetch_measured_series,
+                self._ctx.db,
+                prepared,
+                self._start,
+                self._end,
+                resolution,
+            )
+        if prepared.spec.source == "weather":
+            return weather_series(await self.weather(), prepared, self._start, self._end)
+        return model_series(await self.model(prepared), prepared, self._start, self._end)
+
+
 def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
     """Build ``plot_timeseries`` bound to *ctx*.
 
-    Two bindings today, both read per call: ``ctx.as_of`` resolves the window and
-    ``ctx.db`` — the case's as-of executor — serves every ``measured`` series. The
-    two live sources bind ``ctx.weather`` and ``run_gr2l`` when they land (T091),
-    which is why this tool opens no DuckDB connection and no HTTP client of its
-    own: three sources, one context, no second fetch path
-    (``agent_architecture.md`` §3.6, §4).
+    Four bindings, all read per call: ``ctx.as_of`` resolves the window, ``ctx.db``
+    — the case's as-of executor — serves every ``measured`` series, ``ctx.weather``
+    serves the ``weather`` ones, and ``ctx.cache`` is what
+    :func:`~.gr2l.run_roof_model` routes GR2L through for the ``model`` ones. That
+    is the whole of the fetch surface: this tool opens no DuckDB connection and no
+    HTTP client of its own, which is the condition §3.6 makes its
+    self-containment conditional on (``agent_architecture.md`` §3.6, §4).
     """
 
     async def plot_timeseries(
@@ -531,8 +936,11 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
         *variable*, and the tool reads it. Use it when the user asks to see, show,
         plot or chart how something developed over a period.
 
-        Measured series are the site's own record, through a fixed vocabulary of
-        variables per table:
+        A series is drawn from one of three sources, and they can share a chart:
+
+        **``measured``** — the site's own record, through a fixed vocabulary of
+        variables per table. Give ``table`` and ``variable``, plus ``roof`` where
+        the table is per roof:
 
         - ``swc`` — ``soil_moisture`` (%θ), per roof
         - ``tsoil`` — ``soil_temperature`` (°C), per roof
@@ -544,10 +952,21 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
           ``shortwave_up``, ``longwave_down``, ``longwave_up`` (W/m²),
           ``surface_temperature``, ``surface_temperature_corrected`` (K)
 
-        Nothing else can be drawn: a variable outside this list comes back as an
+        **``weather``** — the daily weather for the facility, the same rows the
+        weather tool reports and under the same short names, no roof and no
+        table: ``precip`` (mm), ``tm`` / ``tx`` / ``tn`` (°C), ``rf`` (%), ``w``
+        (km/h, not m/s), ``gs`` (J/cm²/day, not W/m²).
+
+        **``model``** — a GR2L simulation of one ``roof``: ``swc_pct`` (%θ),
+        ``Ssub`` / ``Sret`` (mm of stored water), ``OUT`` (mm of runoff), ``ET`` /
+        ``ET_PM`` (mm of actual / potential evapotranspiration), ``Qdown`` /
+        ``Qup`` (mm). The tool fetches the weather and reads the roof's own
+        starting soil moisture itself — do not call another tool first.
+
+        Nothing else can be drawn: a variable outside these lists comes back as an
         ``invalid_argument`` naming what was valid, and there is no way to plot a
-        computed column. For a quantity this list does not carry, query the
-        database instead and answer from the numbers.
+        computed column. For a quantity they do not carry, query the database
+        instead and answer from the numbers.
 
         How the series is aggregated is **not** a choice: rain and runoff sum over
         a day, water contents and temperatures average, and the result says which
@@ -557,11 +976,18 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
 
         Args:
             series: The series to draw, as a list of declarations. Each takes
-                ``source`` (``"measured"``), ``variable`` and, on a per-roof
-                table, ``roof`` in whatever spelling the user used — ``"Kiesdach"``
-                and ``"gravel"`` both resolve. A ``measured`` series also takes
-                ``table``. Two roofs compared over one quantity are two series
-                with the same ``variable`` and different ``roof``.
+                ``source`` (``"measured"``, ``"weather"`` or ``"model"``),
+                ``variable``, and — for a ``measured`` series over a per-roof
+                table or for any ``model`` series — ``roof``, in whatever spelling
+                the user used: ``"Kiesdach"`` and ``"gravel"`` both resolve. A
+                ``measured`` series also takes ``table``. Two roofs compared over
+                one quantity are two series with the same ``variable`` and
+                different ``roof``; a measurement against its prediction is a
+                ``measured`` and a ``model`` series side by side. A ``model``
+                series may also carry ``initial_soil_moisture_pct`` (%θ),
+                ``albedo`` (0.0-1.0) and ``forcings`` (what-if weather,
+                ``{"precip": {"2026-07-22": 50.0}}``) — omit all three in normal
+                use, and say in the answer whenever one was set.
             start_date: Window start, ``YYYY-MM-DD`` (give ``end_date`` with it).
             end_date: Window end, ``YYYY-MM-DD``. Required whenever ``start_date``
                 is given.
@@ -573,18 +999,29 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
 
         Returns:
             dict: on success ``status='success'`` with the resolved ``start`` and
-            ``end``, the ``resolution`` the series were drawn at, and one entry per
-            series carrying what was asked for (source, variable, roof) and what
-            followed from it (the ``column`` read, the ``aggregation`` applied, the
-            ``unit`` and the ``axis``). **The values themselves are not returned** —
-            the chart is the deliverable and the user can already see it, so
-            describe what was drawn rather than reciting numbers. A series carrying
-            a ``note`` — the radiation masts' one-hour timestamp offset, outflow's
-            litres-are-millimetres relabel — is a series whose caveat belongs in the
-            answer. On failure ``status='error'`` with ``error_details`` and an
-            ``error_type``: ``'invalid_argument'`` means the call itself was wrong
-            and can be corrected and retried, ``'upstream'`` means something the
-            tool depends on failed.
+            ``end``, the ``resolution`` the series were drawn at, and one entry
+            per series carrying what was asked for (source, variable, roof, any modelling arguments)
+            and what followed from it (the ``column`` read, the ``aggregation``
+            applied, the ``unit`` and the ``axis``).
+            **The values themselves are not returned** — the chart is the
+            deliverable and the user can already see it, so describe what was drawn
+            rather than reciting numbers.
+
+            Two things in a series are caveats to pass on rather than details to
+            drop: a ``note`` (the radiation masts' one-hour timestamp offset,
+            outflow's litres-are-millimetres relabel, the modelled seed day that
+            computes no runoff) and a ``seed`` whose ``is_stale`` is true (the
+            modelled run started from an old sensor reading). ``weather_source``
+            of ``'station'`` means the site's own instruments — say so.
+
+            When the window reaches past the forecast horizon,
+            ``status='not_available'`` with a ``reason`` to pass on: that is a
+            scope limit, not a malfunction, and the measured record can still be
+            drawn. On failure
+            ``status='error'`` with ``error_details`` and an ``error_type``:
+            ``'invalid_argument'`` means the call itself was wrong and can be
+            corrected and retried, ``'upstream'`` means something the tool depends
+            on failed.
         """
         if kind not in PLOT_KINDS:
             return ErrorResult(
@@ -610,36 +1047,58 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
         # measured series sharing a chart with a daily one is aggregated to days.
         resolution = plot_resolution([spec.source for spec in specs])
 
+        # Every argument fault and the one scope limit are settled here, before
+        # the first fetch: a plot that cannot be drawn issues no query, no weather
+        # fetch and — the reason it matters — no GR2L request, so a declined chart
+        # never records a cache entry for a run nobody will read.
+        try:
+            prepared = [prepare_series(spec, start, end) for spec in specs]
+        except (PlotVocabularyError, ForcingError) as exc:
+            logger.info("Rejected a plot series", error=str(exc))
+            return ErrorResult(
+                error_type="invalid_argument", error_details=str(exc)
+            ).model_dump()
+
+        # The horizon is the live sources' limit, so it binds exactly the plots
+        # that have one: an all-measured chart of a future window is simply empty,
+        # while a modelled or forecast one would be a chart of weather that does
+        # not exist (§3.3, §3.4 — the same check, on the same resolved window).
+        today = ctx.as_of.date()
+        if any(item.spec.source != "measured" for item in prepared) and beyond_horizon(
+            end, today
+        ):
+            logger.info("A plot's live sources reach past the forecast horizon", window=(start, end))
+            return NotAvailableResult(
+                reason=(
+                    f"Weather and modelled series are only available up to "
+                    f"{FORECAST_HORIZON_DAYS} days ahead (through "
+                    f"{today + timedelta(days=FORECAST_HORIZON_DAYS):%Y-%m-%d}), and the "
+                    f"window asked for ends {end}. The measured record can still be drawn."
+                )
+            ).model_dump()
+
+        sources = _PlotSources(ctx, start, end)
         resolved: list[ResolvedSeries] = []
-        for spec in specs:
-            if spec.source != "measured":
-                # `weather` and `model` resolve through `ctx.weather` and `run_gr2l`
-                # — the same clients, cache, window resolution and seed rule the
-                # standalone tools use — and that wiring is T091's. Until it lands
-                # this tool is not in `build_toolset`, so no agent can reach here;
-                # what may never happen is a second fetch path growing in the
-                # meantime to make the branch work.
-                raise NotImplementedError(
-                    f"A {spec.source!r} series resolves through the shared clients (T091)."
-                )
+        for item in prepared:
             try:
-                resolved.append(
-                    await asyncio.to_thread(
-                        resolve_measured_series, ctx.db, spec, start, end, resolution
-                    )
-                )
-            except PlotVocabularyError as exc:
-                logger.info("Rejected a plot series", error=str(exc))
-                return ErrorResult(
-                    error_type="invalid_argument", error_details=str(exc)
-                ).model_dump()
+                resolved.append(await sources.fetch(item, resolution))
+            except SwcUnavailableError as exc:
+                # No trustworthy seed is a scope limit, not a fault — the same one
+                # the water-balance tool reports, never a made-up starting state.
+                logger.info("A plot's modelled series has no seed", error=str(exc))
+                return NotAvailableResult(reason=str(exc)).model_dump()
+            except (WeatherFetchError, ModelWeatherError, Gr2lConfigError) as exc:
+                logger.warning("A plot's live source failed", error=str(exc))
+                return ErrorResult(error_type="upstream", error_details=str(exc)).model_dump()
             except Exception:
-                logger.exception("Failed to read a measured series for a plot")
+                logger.exception(
+                    "Failed to read a series for a plot", source=item.spec.source
+                )
                 return ErrorResult(
                     error_type="upstream",
                     error_details=(
-                        f"Failed to read {spec.variable!r} from the database over "
-                        f"{start}..{end}."
+                        f"Failed to read the {item.spec.source} series "
+                        f"{item.spec.variable!r} over {start}..{end}."
                     ),
                 ).model_dump()
 
@@ -650,8 +1109,8 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
             series=[item.spec.variable for item in resolved],
             points=[len(item.points) for item in resolved],
         )
-        # The points stay out of the payload: the model gets the spec, and the
-        # renderer gets the series through the session-state handoff (T097).
+        # The points stay out of the payload: the model gets the spec and the
+        # statistics, and the renderer gets the series through the state handoff.
         return PlotResult(
             kind=kind,
             start=start,

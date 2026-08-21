@@ -32,6 +32,7 @@ its own day and its own forcing, and none is a module-level singleton
 """
 
 import asyncio
+import dataclasses
 from collections.abc import Awaitable, Callable
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -118,7 +119,7 @@ class ForcingError(ValueError):
     """
 
 
-def _normalize_forcings(
+def normalize_forcings(
     forcings: dict[str, dict[str, float]],
     window_start: str,
     window_end: str,
@@ -341,6 +342,131 @@ async def _resolve_seed(
     )
 
 
+class ModelWeatherError(RuntimeError):
+    """The forcing a run needs could not be assembled — an upstream fault.
+
+    Two shapes, one class, because a caller can do nothing different about
+    either: the window came back with no days at all, or a counterfactual named
+    days the source did not return, which would be an override that silently did
+    nothing.
+    """
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ModelRun:
+    """One GR2L run and the disclosures that come with it.
+
+    What :func:`run_roof_model` returns to a caller that is not the standalone
+    tool — today, the plot tool's ``model`` series. Everything an answer has to
+    be able to say about a modelled series is here beside the days: the seed it
+    started from (and whether that reading was stale), the source that forced it,
+    and the counterfactual that was applied.
+    """
+
+    days: list[GreenRoofDay]
+    parameters: RoofParameters
+    seed: SwcSeed
+    weather_source: str
+    """Which source forced the run — ``station`` or ``archive``, never chosen here."""
+
+    forcings: dict[str, dict[str, float]] | None
+    """The overrides actually applied, or ``None`` when the run took the weather as fetched."""
+
+
+async def run_roof_model(
+    ctx: "ScenarioContext",
+    roof_type: str,
+    window_start: str,
+    window_end: str,
+    *,
+    initial_soil_moisture_pct: float | None = None,
+    albedo: float | None = None,
+    forcings: dict[str, dict[str, float]] | None = None,
+) -> ModelRun:
+    """Run GR2L over an **already-resolved** window, through this context's seams.
+
+    The shared entry point for every caller that needs a modelled series without
+    the agent-facing wrapper around it. Each step is the function the standalone
+    tool calls at that step — :func:`normalize_forcings`, ``ctx.weather``,
+    :func:`_apply_forcings`, :func:`_resolve_seed` under ``swc.seed_bound``,
+    :func:`resolve_roof_parameters`, and :func:`run_gr2l` with ``ctx.cache`` — so
+    "the same clients, the same cache, the same seed rule" is true by
+    construction rather than by resemblance, and a plot in replay issues no live
+    call for exactly the reason a modelled case does not
+    (``agent_architecture.md`` §3.6).
+
+    What it deliberately does *not* do is resolve the window or check the roof's
+    scope. Both are the caller's, because both are answered differently at each
+    call site: the plot resolves one window for a whole chart, and an
+    out-of-scope roof is a ``not_available`` the caller phrases
+    (:data:`~.gr2l_client.NON_MODELLABLE_ROOFS`).
+
+    Args:
+        ctx: The rollout's context — its weather client, its as-of executor and
+            its response cache.
+        roof_type: A **normalized, modellable** roof type (:func:`normalize_roof_type`).
+        window_start: First day to simulate, ``YYYY-MM-DD``.
+        window_end: Last day to simulate, ``YYYY-MM-DD``.
+        initial_soil_moisture_pct: Day-1 %θ; omitted, the roof's own sensor seeds it.
+        albedo: Surface albedo override, or the roof's calibrated default.
+        forcings: Counterfactual weather, ``{field: {day: value}}``.
+
+    Raises:
+        ForcingError: the counterfactual is malformed or names a day outside the window.
+        ModelWeatherError: the window came back empty, or a forced day was not returned.
+        SwcUnavailableError: no trustworthy seed — a ``not_available``, never a default.
+        WeatherFetchError: the source rejected the window.
+        Gr2lConfigError: the model service is not configured.
+    """
+    applied_forcings = (
+        normalize_forcings(forcings, window_start, window_end) if forcings else {}
+    )
+
+    weather = await ctx.weather.fetch(start_date=window_start, end_date=window_end)
+    if not weather.data:
+        raise ModelWeatherError(
+            f"No weather days were returned for {window_start}..{window_end}."
+        )
+
+    rows, applied_days = _apply_forcings(weather.data, applied_forcings)
+    requested_days = {day for days in applied_forcings.values() for day in days}
+    if requested_days - applied_days:
+        missing = ", ".join(sorted(requested_days - applied_days))
+        raise ModelWeatherError(
+            f"The weather source returned no rows for {missing}, so the forcings for "
+            f"{'those days' if len(requested_days - applied_days) > 1 else 'that day'} "
+            "could not be applied."
+        )
+
+    # The seed describes the roof going into day 1, so it is read as of the day the
+    # window actually opens — the first day the fetch returned, not the day asked for.
+    seed = await _resolve_seed(
+        ctx.db,
+        roof_type,
+        date.fromisoformat(rows[0].Date),
+        float(ROOF_PRESETS[roof_type]["SH"]),
+        initial_soil_moisture_pct,
+        as_of=ctx.as_of,
+    )
+    parameters = resolve_roof_parameters(
+        roof_type,
+        hoehe_nn=SITE_ELEVATION_M,
+        lat=SITE_LATITUDE,
+        long=SITE_LONGITUDE,
+        theta_01=seed.substrate_storage_mm,
+        albedo=albedo,
+    )
+    result_rows = await run_gr2l(rows, parameters, cache=ctx.cache)
+
+    return ModelRun(
+        days=_to_days(result_rows, parameters),
+        parameters=parameters,
+        seed=seed,
+        weather_source=weather.source,
+        forcings=applied_forcings or None,
+    )
+
+
 def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool:
     """Build ``predict_green_roof_water_balance_tool`` bound to *ctx*.
 
@@ -550,7 +676,7 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
         applied_forcings: dict[str, dict[str, float]] = {}
         if forcings:
             try:
-                applied_forcings = _normalize_forcings(forcings, window_start, window_end)
+                applied_forcings = normalize_forcings(forcings, window_start, window_end)
             except ForcingError as exc:
                 logger.info("Rejected green-roof forcings", error=str(exc))
                 return ErrorResult(

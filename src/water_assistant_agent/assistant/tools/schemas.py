@@ -442,16 +442,31 @@ class SeriesSpec(BaseModel):
     roof: str | None = Field(
         default=None,
         description="The roof segment, in any spelling the site uses. Required for a "
-        "`measured` series over a per-roof table; a station series takes none",
+        "`measured` series over a per-roof table and for every `model` series; a "
+        "station series and a `weather` series take none",
+    )
+    initial_soil_moisture_pct: float | None = Field(
+        default=None,
+        description="Day-1 soil moisture for a `model` series, %θ. Omitted, the roof's "
+        "own sensor seeds the run",
+    )
+    albedo: float | None = Field(
+        default=None, description="Surface albedo override for a `model` series (0.0-1.0)"
+    )
+    forcings: dict[str, dict[str, float]] | None = Field(
+        default=None,
+        description="What-if weather for a `model` series, `{field: {day: value}}` in "
+        "the daily row's own field names",
     )
 
 
 class PlotSeries(BaseModel):
     """One series of the **resolved** spec: what the agent asked for, plus what followed.
 
-    The first four fields are the agent-supplied half — the surface §7 scores —
-    and the rest is derived in code from the variable. Unit, axis and
-    aggregation are echoed so a reader can see which operator ran, never so a
+    The agent-supplied half — source, variable, roof and any modelling
+    arguments — is the surface §7 scores; the rest is derived in code from the
+    variable and from what the fetch returned. Unit, axis and aggregation are
+    echoed so a reader can see which operator ran over which column, never so a
     caller can choose one (``agent_architecture.md`` §3.6).
     """
 
@@ -483,7 +498,28 @@ class PlotSeries(BaseModel):
         "`radiation` table's hour offset, or outflow's litres-are-millimetres relabel. "
         "State it in the answer whenever it is present",
     )
-
+    weather_source: Literal["station", "archive"] | None = Field(
+        default=None,
+        description="Which source served a `weather` series or forced a `model` one — "
+        "`station` means the site's own instruments, and an answer says so. Null on a "
+        "`measured` series, which is the record itself",
+    )
+    initial_soil_moisture_pct: float | None = Field(
+        default=None, description="The day-1 soil moisture the caller stated, echoed as given"
+    )
+    albedo: float | None = Field(
+        default=None, description="The albedo override the caller stated, echoed as given"
+    )
+    forcings: dict[str, dict[str, float]] | None = Field(
+        default=None,
+        description="The what-if weather applied before the model ran, echoed exactly as "
+        "applied. Null when the run was driven by the weather as fetched",
+    )
+    seed: SwcSeed | None = Field(
+        default=None,
+        description="What day 1 of a `model` series started from, and whether that "
+        "reading was stale — say so in the answer if it was",
+    )
 
 class PlotResult(BaseModel):
     """Result of :func:`plot_timeseries` — the resolved spec, and no series.

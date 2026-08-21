@@ -2206,11 +2206,57 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   copy of the five. `test_context.py` follows the rename.
   `uv run ruff check .` and `uv run pytest` clean — 668 passed, same 15
   pre-existing findings.
-- [ ] T091 `weather` and `model` series resolve through `ctx.weather` and
+- [x] T091 `weather` and `model` series resolve through `ctx.weather` and
   `run_gr2l` — the same clients, cache, window resolution and seed rule the
   standalone tools use. A `model` series accepts `initial_soil_moisture_pct`,
   `albedo` and `forcings` and echoes them for argument checking. No new DuckDB
   connection, no new HTTP client. → T022, T023, T040, T047, T048
+  **"The same seed rule" is one function, not two that agree.** `gr2l.run_roof_model`
+  is the shared core the plot's `model` series runs on, and every step of it is
+  the step function the standalone tool already calls: `normalize_forcings`,
+  `ctx.weather`, `_apply_forcings`, `_resolve_seed` under `swc.seed_bound`,
+  `resolve_roof_parameters`, `run_gr2l(cache=ctx.cache)`. It deliberately does
+  **not** resolve the window or check the roof's scope, because both are answered
+  differently at each call site — one chart resolves one window for every series
+  on it.
+  **The standalone tool was not rewritten on top of it, and the equivalence is
+  tested instead.** Its per-step `error_details` are pinned by name in a dozen
+  tests ("Failed to fetch weather for the roof over…"), so folding them into the
+  shared core would have moved the agent-facing text of a tool this packet does
+  not touch. What could still drift is the *request*, so that is what is asserted:
+  `test_the_plots_model_run_is_the_standalone_tools_run` records both callers at
+  the one seam GR2L is reached through and compares the rows and the parameters
+  whole. A seed bound, a forcing overlay or an elevation that moved on one side
+  fails there and nowhere else.
+  **`_normalize_forcings` became `normalize_forcings`** for T090's reason
+  (`_AS_OF_TABLES` → `AS_OF_TABLES`): a second caller means a private name would
+  have become a second copy of the window check, and the forcing has to be
+  validated against the *chart's* window before anything is fetched.
+  **`roof` is one field across the three sources**, not §3.6's table read
+  literally as `roof` for `measured` and `roof_type` for `model`. Those are the
+  two tools' own argument names; inside one `SeriesSpec` with `extra="forbid"`
+  they would be two spellings of one selector, one of which is always an
+  `invalid_argument` — and principle 4 has exactly one roof identity, resolved
+  through `roofs.resolve_roof`, whose canonical names are already
+  `NON_MODELLABLE_ROOFS`' and `ROOF_PRESETS`' keys.
+  **The argument check became a pre-pass over the whole plot**, which is a
+  behaviour change to T090's lazy per-series loop and the reason
+  `test_a_rejected_series_costs_no_query` is now
+  `test_a_rejected_plot_costs_no_query_at_all`. With only `measured` series the
+  difference was one wasted query; with a live source it is a GR2L request and a
+  *recorded cache entry* for a chart that comes back an error and is never read.
+  A plot is one deliverable, so it is one decision.
+  **One chart is one weather fetch and one run per roof-and-counterfactual.**
+  Re-fetching across calls is cheap because both live sources replay from the
+  cache (§3.6); asking GR2L twice for the identical request inside one chart is
+  not re-fetching but a second capture of one answer, so a roof's moisture drawn
+  against its own runoff is one simulation.
+  **The forecast horizon is inherited, and it binds only the plots that have
+  one.** The same `beyond_horizon` check on the same resolved window as §3.3 and
+  §3.4 — an all-measured chart of a future window is simply empty, while a
+  forecast or modelled one would be a chart of weather that does not exist.
+  `uv run ruff check .` and `uv run pytest` clean — 708 passed, same 15
+  pre-existing findings.
 - [ ] T092 Echo the **resolved spec** in full: source and variable per series, the
   resolved absolute range, the derived aggregation and resolution, unit and axis
   per series, gap and truncation flags, and any modelling arguments. → T091

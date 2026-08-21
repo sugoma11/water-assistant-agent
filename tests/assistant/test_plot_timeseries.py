@@ -446,8 +446,16 @@ def test_a_raw_column_name_is_not_a_variable() -> None:
     assert result["error_type"] == "invalid_argument"
 
 
-def test_a_rejected_series_costs_no_query() -> None:
-    """Vocabulary faults are argument faults, decided before any I/O."""
+def test_a_rejected_plot_costs_no_query_at_all() -> None:
+    """Argument faults are decided for the *whole plot* before any of it is fetched.
+
+    Stronger than "the illegal series never reached SQL", and stronger for a
+    reason the live sources introduced: the legal series here is first, so a
+    per-series check would have drawn it before rejecting its neighbour. With a
+    ``model`` series in that position, drawing it means a GR2L request — and a
+    recorded cache entry — for a chart that then comes back an error and is never
+    read. A plot is one deliverable, so it is one decision.
+    """
     spy = SpyExecutor()
     ctx = ScenarioContext.bound(clock=lambda: AFTER_RECORD, db=spy)
     result = _plot(
@@ -458,8 +466,7 @@ def test_a_rejected_series_costs_no_query() -> None:
         ],
     )
     assert result["error_type"] == "invalid_argument"
-    # The first series is legal and was fetched; the second never reached SQL.
-    assert len(spy.queries) == 1
+    assert spy.queries == []
 
 
 @pytest.mark.parametrize(

@@ -45,10 +45,14 @@ as-of views: a factory taking only the cache could not build it
 (``agent_architecture.md`` §4).
 """
 
-# The five tables an as-of connection bounds. Also the allow-list that makes the
-# name safe to interpolate into the view DDL below (`swc.py` uses the same pattern
-# for column names).
-_AS_OF_TABLES: tuple[str, ...] = ("outflow", "radiation", "swc", "tsoil", "wetter")
+AS_OF_TABLES: tuple[str, ...] = ("outflow", "radiation", "swc", "tsoil", "wetter")
+"""The five tables an as-of connection bounds — the whole record a case can read.
+
+Also the allow-list that makes the name safe to interpolate into the view DDL
+below (``swc.py`` uses the same pattern for column names), and the set the plot
+tool's closed vocabulary is held to: a vocabulary entry over a table no as-of
+view covers would read past a case's cut (``agent_architecture.md`` §5).
+"""
 
 
 def _quoted_literal(value: str) -> str:
@@ -77,9 +81,9 @@ def connect_asof(db_path: str, clock: Clock) -> duckdb.DuckDBPyConnection:
 
     connection = duckdb.connect(":memory:")
     connection.execute(f"ATTACH '{_quoted_literal(db_path)}' AS src (READ_ONLY)")
-    for table in _AS_OF_TABLES:
+    for table in AS_OF_TABLES:
         connection.execute(
-            f"CREATE VIEW main.{table} AS SELECT * FROM src.{table} "  # noqa: S608 - table from _AS_OF_TABLES
+            f"CREATE VIEW main.{table} AS SELECT * FROM src.{table} "  # noqa: S608 - table from AS_OF_TABLES
             f"WHERE timestamp <= TIMESTAMP '{as_of_literal}'"
         )
     return connection

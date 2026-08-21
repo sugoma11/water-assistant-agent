@@ -151,7 +151,10 @@ against a document that still contradicts itself.
   matching items in §4. (plan §2.1) → T007
   Re-derived on T007's ledger: `25×4 + 25×5 + 7×8 = 281` (100 / 125 / 56), the
   eight shares at 19.2 / 9.3 / 15.7 / 12.8 / 18.9 / 6.0 / 11.7 / 6.4 %, abstention
-  43/281 = 15.3 % (12.0 / 12.0 / 28.6 per split). §4's abstention and
+  43/281 = 15.3 % (12.0 / 12.0 / 28.6 per split) — **superseded on the abstention
+  line only** by plan §8's Q4, which made T24a's series spec a sampled variant and
+  moved the count to 45/281 = 16.0 % (13.0 / 12.8 / 28.6); the ledger, the eight
+  shares and everything else below stand as recorded. §4's abstention and
   category-share items removed; the retired 7–10 % band and the eight old target
   shares are recorded as retired rather than silently dropped. Two consequences
   outside §1.6/§1.7 were carried so the set stays consistent: §2's legend loses the
@@ -1441,7 +1444,6 @@ process and neither sees the other's data or clock.
   station; and the station never serving at all.
   `uv run ruff check .` and `uv run pytest` clean — 171 passed, same 15
   pre-existing findings; `just pins` unmoved at 8 pinned, 8 unpinned, 0 moved.
-
 - [ ] T056 **Owed by P2a.** Sync `weather_tool.md` to the weather behaviour that
   landed: drop "(planned)" from the station-source heading and the banner, state
   the **two** sources and that resolution is code's and never the agent's, the
@@ -1917,7 +1919,6 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   distinction in `irrigation_tool.md` rather than leaving it to be rediscovered.
   `uv run ruff check .` and `uv run pytest` clean — 440 passed, same 15
   pre-existing findings.
-
 - [x] T071 Sync `irrigation_tool.md` to what P3 lands: the millimetre balance and
   what the `100/SH_mm` rescaling moves, the decision-diff list as the disclosure
   it is, the reason-code ladder as implemented, and the R endpoint recorded as a
@@ -2167,12 +2168,44 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
 
 ## Phase 5 — Plotting
 
-- [ ] T090 `tools/plot.py`: `plot_timeseries(series, start, end, kind)` with no
+- [x] T090 `tools/plot.py`: `plot_timeseries(series, start, end, kind)` with no
   `agg` argument, each `SeriesSpec` naming a **source** and a variable, never data.
   `measured` runs a fixed parameterized query against the as-of view over the five
   tables through a **closed vocabulary** of columns and aggregations; derived
   quantities exist there as flags, and area-normalized outflow is not one of them —
   the vocabulary relabels the unit rather than scaling the values. → T020, T029
+  **The vocabulary is a data table keyed by `(table, variable)`, not by variable.**
+  Two shortwave series from two different instruments — the station's `Rad_SW` and
+  a mast's `SWdown` — are two different series, and the table is half of what the
+  agent declares and half of what §7 scores, so it is part of the key rather than
+  a field that follows from it. Twelve entries over the five tables.
+  **No entry carries a per-roof column.** `ROOFS[roof].columns[table]` is the
+  column and `roofs_with_column` is which roofs a table has, so the semi-intensive
+  roof is undrawable in `outflow` and `radiation` here for the one reason it is
+  absent there — no lysimeter, no mast — rather than because a second list
+  remembered to omit it. `radiation` carries a mast *suffix* joined by
+  `radiation_column`; only `wetter` names a column outright, because the station
+  belongs to no roof. That is the whole of principle 4 applied to this table.
+  **The flux/state flag is drawn on accumulation, not on the physics word.**
+  W/m² is a rate reported *at* an instant, so irradiance is a state: summing 48
+  half-hourly readings of it would report 48× the day's mean under a unit nobody
+  uses. Rain and lysimeter outflow accumulate over the interval and sum.
+  **Area-normalized outflow is absent by construction** — there is one `outflow`
+  entry, it reports `mm`, and it applies no factor. At a 1 m² lysimeter a litre
+  *is* a millimetre (`roofs.LYSIMETER_AREA_M2`), so the entry relabels and the
+  values are the record's own; a second, "normalized" entry could only differ from
+  it by the multiplication that constant exists to forbid.
+  **Two `wetter` columns are deliberately outside it.** `Tmax` needs a `max` and
+  `windspeed` needs the logger's sentinel filtered, and both rules already exist
+  once, in the station derivation — which this tool reaches as a `weather` series,
+  where they arrive as `tx` and `w` (T091). Serving them here under a sum-or-mean
+  would name a mean of half-hourly maxima "the daily maximum".
+  **`_AS_OF_TABLES` became `AS_OF_TABLES`.** The vocabulary's table list is
+  filtered through it, so a variable over a table no as-of view bounds cannot be
+  added and then read past a case's cut; a private name would have meant a second
+  copy of the five. `test_context.py` follows the rename.
+  `uv run ruff check .` and `uv run pytest` clean — 668 passed, same 15
+  pre-existing findings.
 - [ ] T091 `weather` and `model` series resolve through `ctx.weather` and
   `run_gr2l` — the same clients, cache, window resolution and seed rule the
   standalone tools use. A `model` series accepts `initial_soil_moisture_pct`,

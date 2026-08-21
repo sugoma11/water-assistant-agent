@@ -11,7 +11,7 @@ branch on success/error without guessing.
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from water_assistant_agent.assistant.knowledge.store import Provenance
 
@@ -412,6 +412,87 @@ class IrrigationResult(BaseModel):
     window_end: str | None = Field(
         default=None, description="Last day of the simulated window (modelled runs only)"
     )
+
+
+class SeriesSpec(BaseModel):
+    """One series a plot request declares — **a source, never data**.
+
+    The agent names where a series comes from and which quantity to draw; the
+    tool fetches it through the seams the other tools use
+    (``agent_architecture.md`` §3.6). Passing the values in as an argument is
+    what this shape exists to prevent: it drives the data through the LLM and
+    turns the family's argument checking into a test of whether the model
+    retyped forty floats correctly (``decisions.md`` § Plotting).
+
+    ``extra="forbid"``: a field this model does not know is a typed
+    ``invalid_argument`` naming what was valid, not a silently dropped selector
+    that changes which series is drawn.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["measured", "weather", "model"] = Field(
+        description="`measured` reads the site's own record, `weather` the daily "
+        "weather the other tools are forced by, `model` a GR2L run"
+    )
+    variable: str = Field(description="The quantity to draw, out of the closed vocabulary")
+    table: str | None = Field(
+        default=None, description="Which of the five tables (`measured` series only)"
+    )
+    roof: str | None = Field(
+        default=None,
+        description="The roof segment, in any spelling the site uses. Required for a "
+        "`measured` series over a per-roof table; a station series takes none",
+    )
+
+
+class PlotSeries(BaseModel):
+    """One series of the **resolved** spec: what the agent asked for, plus what followed.
+
+    The first four fields are the agent-supplied half — the surface §7 scores —
+    and the rest is derived in code from the variable. The operator is echoed so
+    a reader can see which one ran, never so a caller can choose one
+    (``agent_architecture.md`` §3.6).
+    """
+
+    source: Literal["measured", "weather", "model"]
+    variable: str
+    table: str | None = Field(default=None, description="The table a `measured` series read")
+    roof: str | None = Field(default=None, description="The canonical segment, resolved from any alias")
+    column: str | None = Field(
+        default=None,
+        description="The column the variable and the roof resolved to — the record's own "
+        "name, so an answer can be traced back to it",
+    )
+    quantity: Literal["flux", "state"] = Field(
+        description="`flux` accumulates over the sampling interval, `state` is sampled at "
+        "an instant. This is what decides the operator"
+    )
+    aggregation: Literal["sum", "mean"] = Field(
+        description="The operator that aggregates this series — derived from `quantity`, "
+        "never chosen by the caller: fluxes sum, states average"
+    )
+    note: str | None = Field(
+        default=None,
+        description="What a reader of this series has to know to read it correctly — the "
+        "`radiation` table's hour offset, or outflow's litres-are-millimetres relabel. "
+        "State it in the answer whenever it is present",
+    )
+
+
+class PlotResult(BaseModel):
+    """Result of :func:`plot_timeseries` — the resolved spec, and no series.
+
+    The series' consumer is the renderer, not the LLM
+    (``agent_architecture.md`` §3.6): what comes back here is what the agent
+    asked for, resolved, so it can say what was drawn without transcribing it.
+    """
+
+    status: Literal["success"] = "success"
+    kind: Literal["line", "bar", "model_overlay", "diff"]
+    start: str = Field(description="First day drawn, resolved to an absolute date")
+    end: str = Field(description="Last day drawn, resolved to an absolute date")
+    series: list[PlotSeries]
 
 
 class GreenRoofBalanceResult(BaseModel):

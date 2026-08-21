@@ -21,7 +21,7 @@ import duckdb
 import pytest
 
 from water_assistant_agent.assistant.context import (
-    _AS_OF_TABLES,
+    AS_OF_TABLES,
     AsOfQueryExecutor,
     ScenarioContext,
     connect_asof,
@@ -42,7 +42,7 @@ def _raw_bound(table: str, as_of_utc_naive: datetime) -> tuple[int, datetime | N
     con = duckdb.connect(DB_PATH, read_only=True)
     try:
         count, max_ts = con.execute(
-            f"SELECT count(*), max(timestamp) FROM {table} WHERE timestamp <= ?",  # noqa: S608 - table from _AS_OF_TABLES
+            f"SELECT count(*), max(timestamp) FROM {table} WHERE timestamp <= ?",  # noqa: S608 - table from AS_OF_TABLES
             [as_of_utc_naive],
         ).fetchone()
         return count, max_ts
@@ -50,13 +50,13 @@ def _raw_bound(table: str, as_of_utc_naive: datetime) -> tuple[int, datetime | N
         con.close()
 
 
-@pytest.mark.parametrize("table", _AS_OF_TABLES)
+@pytest.mark.parametrize("table", AS_OF_TABLES)
 def test_connect_asof_bounds_every_table(table: str) -> None:
     """Each of the five tables' view matches an independent raw query at the same bound."""
     connection = connect_asof(DB_PATH, lambda: AS_OF)
     try:
         view_count, view_max = connection.execute(
-            f"SELECT count(*), max(timestamp) FROM main.{table}"  # noqa: S608 - table from _AS_OF_TABLES
+            f"SELECT count(*), max(timestamp) FROM main.{table}"  # noqa: S608 - table from AS_OF_TABLES
         ).fetchone()
     finally:
         connection.close()

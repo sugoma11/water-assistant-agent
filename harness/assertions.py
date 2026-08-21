@@ -128,7 +128,7 @@ def check_inputs(
     the case envelope has no third channel to carry it (§6.1). Omitted, the roof
     check does not run — an un-pooled template names no roof.
     """
-    as_of = _site_day(inputs["as_of"])
+    as_of = site_day(inputs["as_of"])
     params = inputs.get("params") or {}
     violations = [*_check_period_params(params, as_of)]
     if roof_pool is not None:
@@ -147,7 +147,7 @@ def check_calls(
     days the record does not hold has fumbled, and a fumble is scored, not
     asserted away (``decisions.md`` § Tool errors and harness exclusion).
     """
-    day = _site_day(as_of)
+    day = site_day(as_of)
     violations: list[Violation] = []
     for call in calls:
         if call.get("name") != GREEN_ROOF_TOOL:
@@ -298,7 +298,7 @@ def _days_in(value: Any) -> list[date]:
     return []
 
 
-def _site_day(as_of: datetime | str) -> date:
+def site_day(as_of: datetime | str) -> date:
     """The site's own calendar day for *as_of*.
 
     The site's day, not the host's and not UTC: a stamp at 00:30 Berlin time is

@@ -2675,7 +2675,7 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   one wins, since a model that restates its answer has stated the later one.
   `uv run ruff check .` and `uv run pytest` clean — 764 passed (745 + 19), same
   15 pre-existing findings.
-- [ ] T102 `harness/scoring.py`: per-case metric functions plus an aggregation
+- [x] T102 `harness/scoring.py`: per-case metric functions plus an aggregation
   layer. Answer (exact or tolerance, after unit normalization, **skipped with
   coverage reported** where the contract answer is `null`); trajectory (**binary**:
   gold ⊆ called ∧ no listed must-not called ∧ argument checks pass, no partial
@@ -2685,6 +2685,57 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   `harness_error` cases excluded from every aggregate and counted per arm, broken
   down by source. Diagnostics: fixer iterations, steps, tokens, latency, mean extra
   calls per arm, `parse_failure`. → T010
+  **Two layers, because they have two users.** The four `score_*` functions take
+  one recorded run and one case's `expectations`; T122 wraps each as a `Scorer` so
+  the search scores a rollout with the code the measurement run scores it with.
+  Everything needing a *population* — the `harness_error` exclusion, coverage, the
+  per-arm breakdown, the diagnostics — is `aggregate`, and stays on the measurement
+  path. Built as one function, the per-case half would have been written twice.
+  **Two things are called aggregation and they are not the same.**
+  `aggregate_scores` collapses **one record's four values into the selection
+  scalar** — it is `optimize_prompts`' mandatory `aggregation=` callable, verified
+  against `create_metric_from_scorers`' `objective(scores)` call — while
+  `aggregate` collapses **many cases into one arm's report**. The first unwraps a
+  `Feedback` by attribute, so this module never imports MLflow and T122 owns that
+  edge alone.
+  **A skip is dropped *and the remaining weights renormalized*.** Dropping alone
+  would still score a plot case below an otherwise identical case, since the
+  weights it kept would no longer sum to one — which is the "charges the family's
+  share of the suite against fully correct cases" failure `decisions.md`
+  § Plotting rejects, arriving through the objective instead of through the mean.
+  Both skips are the same `SKIPPED` value through the same branch: one mechanism,
+  two users, as §7 asks.
+  **The null answer decides the skip, not the flag.** §7 states the rule over the
+  answer and the schema's validator only runs one way (`skipped` ⇒ `answer: null`),
+  so a null answer skips whatever `answer_metric` says. An abstention case
+  therefore skips the answer metric too — its whole content is the status, which
+  the abstention metric scores, and comparing `null` against `null` would count
+  that once more inside the blend.
+  **`abstained` is carried on the case score, not derived from the metric.** A
+  case scores 0 on abstention both when the agent answered one it should have
+  declined and when it produced no parseable contract at all, and only the first is
+  an abstention. The false-abstention rate counts off the recorded status, so a
+  candidate degrading the output format cannot inflate the number that is supposed
+  to isolate declining.
+  **An argument check is existential over the calls.** A candidate that named the
+  right source on one call named it; failing the check because a second, redundant
+  call carried other arguments would reintroduce the extra-call penalty
+  `decisions.md` § Trajectory scoring rejects, through the back door of the check
+  vocabulary. Extra calls are counted instead — as a multiset difference, so a gold
+  tool called twice is charged and a gold tool never called earns no discount.
+  **A window-resolving check refuses the host clock.** It goes through
+  `resolve_window` for the reason T104's does, and raises when the scorer was given
+  no `as_of` rather than resolving a relative window against the real date; a
+  malformed window fails its check instead, since that is a candidate's fumble.
+  `_site_day` became `assertions.site_day` so the day-boundary rule keeps one home.
+  **The selection weights are stated in the module and pre-registered by T129**
+  (0.40 answer / 0.30 trajectory / 0.20 abstention / 0.10 card recall). They are
+  part of the method the moment selection is blended, and an unweighted scorer name
+  raises rather than defaulting — including on the record where it happened to
+  skip, or a metric nobody weighted would enter the objective the first time it
+  scored.
+  `uv run ruff check .` and `uv run pytest` clean — 859 passed (804 + 55), same
+  15 pre-existing findings.
 - [ ] T103 Oracles for the three pilot templates only: T01 (SQL sum), T07
   (importing `irrigation_decision` — local, no HTTP) and T09 (model chain,
   importing `run_gr2l`). → T063, T023, T009

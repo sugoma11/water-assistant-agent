@@ -1958,6 +1958,21 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   packaged YAML, `enum == card keys` test, the T068 drift test wired in, and the
   card-store sha256 into `eval/pins.json`. Pure, ADK-free, no I/O beyond the
   packaged files. Add `pyyaml` to `[project] dependencies`. → T080, T034
+  **Part landed: the model, the loader, `enum == card keys`, and the no-numerals
+  rule pulled forward from T084.** `pyyaml` is a direct dependency,
+  `knowledge/cards/` ships empty. Outstanding: the card-store sha256 into
+  `eval/pins.json` — which now also carries T081's obligation to verify
+  `data_freshness`'s dates against the tables, since the pin check is where the
+  database is already open.
+  **The store-wide tests are driven by `CARD_TOPICS`, not by the files.**
+  Parametrizing over what is on disk would make an empty store collect zero
+  tests and report green — a vacuous pass on the very rule meant to catch a
+  missing card. Driven by the vocabulary, an absent card fails and names itself.
+  So this packet is red by construction until T080: 12 failures, 11 of them one
+  per unauthored card plus `enum == card keys`, each naming T080.
+  `extra="forbid"` earns its place on the T17b path: `not_applicible` would
+  otherwise load as a card with no exclusions, and the probe would go silently
+  answerable rather than erroring.
 - [ ] T083 `lookup_reference` ADK tool and factory: `topic: Literal[…]` in the
   **signature** so the vocabulary survives any docstring rewrite, `roof` filtering
   but never suppressing `not_applicable:`, the card returned **whole**, no

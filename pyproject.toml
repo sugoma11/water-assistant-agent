@@ -20,6 +20,10 @@ dependencies = [
     "pydantic-settings>=2.0",
     "pyjwt>=2.10",
     "python-dotenv>=1.2.2",
+    # The reference-card store is packaged YAML read at runtime by
+    # `assistant/knowledge/store.py`, so pyyaml is a direct runtime dependency
+    # rather than the transitive one it was.
+    "pyyaml>=6.0",
     "sqlalchemy>=2.0",
     "sqlglot>=30.9.0",
     "structlog>=25.1",

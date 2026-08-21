@@ -19,3 +19,9 @@ pins-write:
 # Probe the live GR2L service and pin its canary response hash (needs the service up)
 pins-canary:
     uv run python scripts/check_pins.py --capture-gr2l-canary
+
+# Check every `provenance: rendered` card against the constants; prints the correct
+# block on drift, so the fix is a paste rather than a transcription. The static cards
+# are pinned elsewhere and are not checked here — `just pins` carries them.
+cards-check:
+    uv run python scripts/check_cards.py

@@ -1819,12 +1819,46 @@ wall clock, and neither weather nor GR2L spec contradicts the code.
   cites it as the disclosure it is.
   `uv run ruff check .` and `uv run pytest` clean — 382 passed, same 15
   pre-existing findings.
-- [ ] T068 **Ordered after T081**, whose decision fixes this function's source
+- [x] T068 **Ordered after T081**, whose decision fixes this function's source
   list. `values_for(card_id)`: project `rules_constants.py` and `roofs.py` into
   each `provenance: rendered` card's `values:` / `applies_to:` / `not_applicable:`
   blocks, plus the drift test asserting the committed card equals it and a
   `just cards-check` that prints the correct block on failure. A test, not a
   writer — hand prose and generated values share one file. → T081, T062, T060
+  Done in `knowledge/rendered.py`, six of the seven projections — T069 adds
+  `roof_reference_ranges`. T081's answer held: two sources, no third shape.
+  **The drift assertion is equality both ways, and that is what makes a card's
+  silences enforceable.** `irrigation_dose` is the case that needs it: the
+  per-roof depth is owed by the site, so `dose_mm` is rendered only where one
+  exists and is absent from every roof today. A one-way assertion would let a
+  card invent a plausible depth and pass, and an invented depth is
+  indistinguishable from the site's own once an answer quotes it back.
+  **Scope blocks are derived per card, which is the only reason they come out
+  different.** The four irrigation cards take `ROOFS` minus `ROOF_RULES` — gravel
+  and the wetland, each with the reason `NON_MODELLABLE_ROOFS` gives — while
+  `retention_target` takes `roofs_with_column("outflow")` and excludes the
+  *semi-intensive* roof instead, on instrumentation rather than substrate. A
+  hand-listed exclusion would have got that wrong in one direction or the other.
+  **Two splits worth recording.** Field capacity sits on `substrate_hydraulics`
+  and not on `irrigation_threshold`: it is the store's property, not a trigger,
+  and the split is also what keeps either card from being named after a single
+  constant. And GR2L's per-roof storage stays out of the hydraulics card
+  although `roofs.py` carries it — the flat capacity disagrees with it
+  deliberately, and both numbers in one block would let an answer quote one as
+  the other.
+  **The eval-policy marker is per key**, listing inside `values:` which of them
+  are this thesis's rather than the site's, because `heatwave_definition` mixes
+  the two — the threshold is the deployed controller's and only the duration is
+  ours. `rules_constants.py` asks for exactly this and it had nowhere to land
+  until there was a card to land in.
+  **Millimetres are rounded once, here**, or field capacity reaches a card as
+  `15.400000000000001`. Safe only because nothing reads a number back out of a
+  card — every consumer imports the constant — and the drift test compares
+  rounded against rounded, so rounding is not a place drift can hide.
+  `just cards-check` reports three states and never raises: drifted (prints the
+  paste-ready block), missing, and — until T069 — no-projection, so one
+  unfinished projection cannot hide the other six.
+  `uv run ruff check .` clean; the suite is red by construction, see T082.
 - [ ] T069 [P] Derive the `roof_reference_ranges` values (normal / low / high per
   roof segment) from the `swc` record under the same drift discipline. → T068
 - [x] T070 Tests: the ladder's reason codes in priority order; the stated-value

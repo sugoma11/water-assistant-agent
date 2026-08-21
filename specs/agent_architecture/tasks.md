@@ -2793,10 +2793,39 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   template that names no roof.
   `uv run ruff check .` and `uv run pytest` clean — 804 passed (777 + 27), same
   15 pre-existing findings.
-- [ ] T105 **Before the gate**: state the lysimeter collection area's *value*
+- [x] T105 **Before the gate**: state the lysimeter collection area's *value*
   (1 m²) in the frozen sub-agent's semantic layer, which today names the area
   without it. Unblocks T12 and every L↔mm answer. The text is byte-stable after the
   freeze. → T027
+  **The fact goes into the description strings, not into a new key.**
+  `format_schema_for_prompt` (`text2sql/core.py:53-61`) renders exactly five
+  keys — `table_name`, the table `description`, and each column's `name`, `type`
+  and `description` — and drops anything else *silently*, while
+  `build_sqlglot_schema` reads only names and types and tolerates the extra key
+  too. A `"collection_area_m2": 1.0` beside the columns would therefore have
+  raised nothing, rendered nothing, and left the model exactly as unable to
+  convert as before. The renderer was left alone rather than extended because it
+  is shared with `src/experiments/text2sql/` (five call sites), where changing
+  the rendered block would move those experiments' prompts — and the table
+  `description` slot it already renders was empty on all five tables, so the
+  space was there for free.
+  **Every assertion runs against `formatted_schema()`, never against the dict.**
+  That is the only string the model sees, and it is the one place a dropped key
+  shows up as an absence. `test_no_fact_is_carried_in_a_key_the_renderer_drops`
+  pins both key sets so a later edit cannot reintroduce the trap under a
+  different name.
+  **`1 m²` is read from `LYSIMETER_AREA_M2`, not typed.** Principle 4 puts the
+  site's physical constants in `roofs.py`; a literal here would be the second
+  place, and the two would drift on the day one moved.
+  **The two small test lysimeters are excluded from the equivalence.**
+  `findings.md` derives 1 m² from the four *roof* lysimeters' outflow ratios
+  against station rainfall; `Zeitlysi_Efflux_x` and `Sensorlysi_Efflux_x` are
+  test lysimeters the ReadMe itself calls small, and no measurement in the
+  record covers their area. They now say so, because stating 1 L = 1 mm there
+  would encode an unmeasured number as schema fact on the exact route this task
+  opens.
+  `uv run ruff check` and `uv run pytest` clean — 863 passed (859 + 4), same 15
+  pre-existing findings in `src/experiments/`.
 - [ ] T106 **Before the gate**: add the alias map to the semantic layer — DE/EN
   roof aliases bridging `Kies` / `KD` / `Kiesdach` / `QGravel` to the gravel roof
   and the equivalents for the other four — together with the `radiation` hour

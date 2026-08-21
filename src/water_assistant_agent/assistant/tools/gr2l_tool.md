@@ -5,7 +5,7 @@
 > the one you actually need:
 >
 > 1. **[Agent-facing tool](#agent-facing-tool)** —
->    `predict_green_roof_water_balance`, the layer the LLM sees. It is
+>    `predict_green_roof_water_balance_tool`, the layer the LLM sees. It is
 >    **self-contained: it fetches its own weather and its own starting soil
 >    moisture** from a roof type + date window. It speaks **%θ**.
 > 2. **[Endpoint contract](#endpoint-contract)** — `POST {API_PREFIX}/predict_gr2l`,
@@ -114,7 +114,7 @@ between the two layers of this document.
 
 | Layer | Who supplies the daily weather rows |
 | ----- | ----------------------------------- |
-| **Agent-facing tool** (`predict_green_roof_water_balance`) | **The tool itself.** It resolves the window through `ctx.weather` — the composite that picks the site's own station or Open-Meteo's Archive from the window alone — and POSTs the rows it gets back, already unit-converted. The agent supplies only a date window and a roof type, and the response echoes which source forced the run in `weather_source`. |
+| **Agent-facing tool** (`predict_green_roof_water_balance_tool`) | **The tool itself.** It resolves the window through `ctx.weather` — the composite that picks the site's own station or Open-Meteo's Archive from the window alone — and POSTs the rows it gets back, already unit-converted. The agent supplies only a date window and a roof type, and the response echoes which source forced the run in `weather_source`. |
 | **HTTP endpoint** (`POST …/predict_gr2l`) | **Its caller** — i.e. the tool above. The endpoint has no weather source of its own; `data[]` is required. |
 
 **Implications for the agent** (this is the layer-1 contract — it is what the
@@ -179,7 +179,7 @@ layer 1, never the agent's and never the LLM's:
 The relation is GR2L's own depth scaling, applied in `swc.py` with each roof's
 `SH`:
 
-```
+```text
 S_mm = (θ% / 100) × SH_mm          θ% = S_mm / SH_mm × 100
 ```
 
@@ -338,6 +338,7 @@ the roof — resolved from the sensor, see
 and `albedo` (see "[Overriding `albedo`](#overriding-albedo)" below).
 Everything else in the table is a physical property of the installed roof and
 must not be varied:
+
 - `Ssubmin` / `Ssubmax` — **measured from this site's soil-moisture record**,
   not the generic model defaults (see the derivation footnote under the table).
   `Ssubmin` is the minimum substrate water content (wilting point) and
@@ -393,7 +394,7 @@ structural fact of the installation — it depends on what the surface currently
 | Light gravel or a reflective "cool roof" coat | `0.4–0.6` |
 | Fresh snow cover                              | `0.8`  |
 
-**Rules for the agent**
+## Rules for the agent
 
 - **Leave it alone by default.** Omit the `albedo` argument and the roof-type
   preset applies. The preset is the calibrated value for this facility.
@@ -441,7 +442,7 @@ async def predict_green_roof_water_balance_tool(
 | -------- | -------- | ------- |
 | `roof_type` | yes | `non_irrigated_extensive`, `irrigated_extensive`, `semi_intensive` — selects the preset from the roof-type table. Gravel and wetland → `not_available` |
 | `start_date` / `end_date` | one of the two pairs | Explicit window, `YYYY-MM-DD`. Both dates, or neither |
-| `past_days` / `forecast_days` | one of the two pairs | Relative window: 0–92 back, 0–16 ahead. `past_days` is complete past days ending **yesterday** and carries no forecast tail; the two forms are exclusive. Resolved to absolute dates before the weather fetch — see [weather § Relative windows are resolved first](./weather_tool.md#relative-windows-are-resolved-first) |
+| `past_days` / `forecast_days` | one of the two pairs | Relative window, whole days ≥ 0 and no upper bound as an argument: `past_days` is complete past days ending **yesterday** and carries no forecast tail, and a window reaching more than 16 days past `as_of` is `not_available` rather than an argument error. The two forms are exclusive. Resolved to absolute dates before the weather fetch — see [weather § Relative windows are resolved first](./weather_tool.md#relative-windows-are-resolved-first) |
 | `initial_soil_moisture_pct` | no | Day-1 soil moisture in **%θ**. Omitted → read from the roof's sensor for the window's first day — see "[Where day 1's soil moisture comes from](#where-day-1s-soil-moisture-comes-from)" |
 | `albedo` | no | Override the roof's default albedo, `0.0–1.0`. Omit unless explicitly asked — see "[Overriding `albedo`](#overriding-albedo)" |
 | `forcings` | no | Counterfactual weather: `{field: {day: value}}` in the daily row's **own** field names, e.g. `{"precip": {"2026-07-22": 50.0}}`. Sparse — unnamed days and fields keep what was fetched. Every day named must fall inside the window. See "[Counterfactual weather](#counterfactual-weather)" |
@@ -541,12 +542,12 @@ re-running the window in pieces to get the days back.
 ## Endpoint contract
 
 > Layer 2 — the raw model service. Its caller is
-> `predict_green_roof_water_balance`, **not** the agent. Everything below,
+> `predict_green_roof_water_balance_tool`, **not** the agent. Everything below,
 > including "the caller must supply `data[]`", is addressed to the tool wrapper.
 
 ### Endpoint
 
-```
+```text
 POST {API_PREFIX}/predict_gr2l
 ```
 
@@ -605,7 +606,8 @@ A key whose `allowed_predict_endpoints` does not include `predict_gr2l` (or
 }
 ```
 
-**Notes for the caller**
+## Notes for the caller
+
 - `data` rows must be chronological — the water balance carries state from one
   day to the next (`Ssub`/`Sret` of day *i* depend on day *i-1*).
 - Every field in each row is required and numeric (except `Date`, a string).

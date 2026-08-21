@@ -199,7 +199,7 @@ which now bounds this tool and GR2L alike.
 
 **Window offsets are load-bearing.** SWC and temperature are read over
 `[0 : decision_horizon]`, *including* the seed step; outflow over
-`[1 : outflow_horizon]`, *excluding* it, because the seed step's outflow is an
+`[1 : refill_horizon]`, *excluding* it, because the seed step's outflow is an
 initialisation artifact (see *The balance*, property 3).
 
 **Reason codes, not prose.** The deployed script carries the German

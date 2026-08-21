@@ -226,7 +226,7 @@ against a document that still contradicts itself.
   deliverable and the abstention alike. One constraint is left to the generator
   because a schema cannot compare sibling arrays: a gold tool may not also be a
   must-not.
-- [ ] T011 **Assert at the freeze gate** (packet P6c) that no tool spec
+- [x] T011 **Assert at the freeze gate** (packet P6c) that no tool spec
   contradicts the code: read `gr2l_tool.md`, `weather_tool.md` and
   `irrigation_tool.md` against the built behaviour one final time and record the
   result. This is a **check, not a sync** — the syncing itself belongs to the
@@ -234,6 +234,51 @@ against a document that still contradicts itself.
   frozen text after T107 in the same sense the sub-agent's prompt is, so this is
   the last moment a contradiction can be repaired rather than disclosed. → T056,
   T057, T071
+  **The check found a clean split: two specs true, one a packet behind.**
+  `gr2l_tool.md` and `irrigation_tool.md` were verified claim by claim against
+  the code and contradict it nowhere. Spot-verified rather than skimmed: all four
+  GR2L presets against `ROOF_PRESETS` field for field; the three roofs' wilting /
+  dry / capacity thresholds and their mm conversions against `ROOF_RULES`
+  (5.0 %θ → 3.5 mm at 7 cm, and the rest); `HEAT_THRESHOLD_C` 24, the horizons
+  48/168 h, `OUTFLOW_EPSILON_MM` 0.01; the five ladder rungs and their reason
+  codes in order; the 31-day series cap; the `not_available` triggers on both
+  tools. Two slips, both one word: `predict_green_roof_water_balance` written
+  without its `_tool` suffix in two places (the registered name is what
+  `questions.md` §1.4 scores a trajectory against) and `outflow_horizon` where
+  the code and the same document's own next section say `refill_horizon`.
+  **`weather_tool.md` was still describing the world before P2.** It said the
+  station source was 🔜 *planned, not yet built* — `weather_station.py` and
+  `CompositeWeatherClient` have been serving it since T057 — and it documented
+  the retired Forecast backend as a live routing target, including the routing
+  table an agent would read to decide what to expect. That is not a stale
+  reference; it is the one document that says what the weather tool does saying
+  the wrong thing about which instrument answers, and P6d freezes it.
+  Repaired rather than disclosed, which is what this gate is for: the two-source
+  table now describes station-or-Archive with the whole-window rule, the
+  Forecast material is consolidated under *Why the Forecast backend is gone* with
+  the three measurements that retired it, and the station section states what it
+  actually does — read through the caller's as-of view, which is what makes the
+  leakage closure structural.
+  **Two argument-surface contradictions, in both specs.** Both stated
+  `past_days` / `forecast_days` as `0–92 back, 0–16 ahead`. Neither bound exists:
+  `_validate_count` rejects only a negative or non-integer count, nothing bounds
+  the backward side at all, and the 16-day horizon is checked *after* resolution
+  and returned as `not_available`. The distinction is the whole of
+  `decisions.md` § Typed abstention — an agent told "0–16" reads a scope limit as
+  an argument to correct and retry.
+  **One repair was itself wrong and was caught.** A first pass wrote that a
+  forward window is served by "the forecast half of the Archive endpoint". There
+  is no such half. What actually happens is that the station's view is bounded at
+  `as_of` and fails the whole-window test, and Archive then answers those days as
+  **reanalysis** — a case's `as_of` sits in the real past, so the case's
+  "tomorrow" has already happened. That is also why `FORECAST_HORIZON_DAYS` has
+  to live in this code: Archive answers day 400 without complaint.
+  **One omission filled, because the section claims to be the mechanism spec:**
+  the completeness rule (48 half-hourly rows and one non-sentinel wind sample,
+  both spring-forward Sundays dropped, days never partially derived) and the
+  sentinel filter being a sign test rather than an equality test. Anchors were
+  re-checked across all three files after the renames, including cross-file
+  links; `rumdl fmt` run on all three.
   **Was a standing task; restated after P2a.** The standing form did not fire:
   P2a built, tested and committed the station source while `weather_tool.md` went
   on saying "Station source (planned)", which is the failure mode T035's split
@@ -247,8 +292,10 @@ against a document that still contradicts itself.
 **Exit — met.** Every cross-document reference resolves (links and
 `decisions.md § …` citations swept mechanically), and `questions.md` §4 is empty:
 its six items are settled and recorded in the sections they govern, with the one
-residual filed as an accepted risk in `decisions.md`. T011 stays open — it is now
-the freeze-gate check rather than the standing task it was written as.
+residual filed as an accepted risk in `decisions.md`. T011 stayed open past this
+packet — it became the freeze-gate check rather than the standing task it was
+written as — and is closed in P6c, where it found `weather_tool.md` a packet
+behind the code.
 
 ---
 

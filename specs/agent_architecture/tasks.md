@@ -2355,8 +2355,30 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   the `outflow` row's `mm` legible as a relabel rather than a conversion.
   `uv run ruff check .` and `uv run pytest` clean — 668 passed, same 15
   pre-existing findings.
-- [ ] T096 Typed outcomes: a `model` series for the gravel roof or the wetland →
+- [x] T096 Typed outcomes: a `model` series for the gravel roof or the wetland →
   `not_available`; a `measured` series for either stays valid. → T051
+  **The reason is `NON_MODELLABLE_ROOFS`', not a third copy of it.** One set
+  already carries both water-balance tools' scope (§3.4), and the plot declines
+  in the same words for the same stated cause — "the gravel roof has no
+  substrate layer… its measured sensor data can still be queried", which is
+  exactly the sentence this tool then makes true by drawing that data.
+  **The abstention is the plot's, not the series'.** A chart is one deliverable,
+  so a legal rain series beside a gravel `model` series is not drawn either.
+  Returning a half-chart would have the answer report a scope limit while the
+  renderer had been handed something to draw under it — worse than drawing
+  nothing, because the user would believe the picture.
+  **`PlotScopeError` is deliberately not `PlotVocabularyError`.** An unreachable
+  column is an argument fault the agent can correct and retry; an unmodellable
+  roof is a well-formed request this deployment declines, and typing the first
+  as an abstention too would make the false-abstention rate uninterpretable
+  (`decisions.md` § Typed abstention). The two land on `invalid_argument` and
+  `not_available` respectively, and both are decided before any I/O.
+  **The check is on the canonical name, so every alias reaches it.** `Kiesdach`,
+  `Sumpfdach`, `kd` and `qgravel` all resolve through `roofs.resolve_roof`
+  first, which is what makes family I askable in German (§3.4's reason for
+  keeping the roof a plain string rather than an enum).
+  `uv run ruff check .` and `uv run pytest` clean — 708 passed, same 15
+  pre-existing findings.
 - [ ] T097 Headless handoff: nothing renders server-side and no plotting library
   enters the Python dependency set. The tool stashes the series under a
   session-state key and the wrapper merges it into the tool-result event, while the

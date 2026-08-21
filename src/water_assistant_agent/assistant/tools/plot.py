@@ -95,7 +95,10 @@ from water_assistant_agent.assistant.tools.gr2l import (
     normalize_forcings,
     run_roof_model,
 )
-from water_assistant_agent.assistant.tools.gr2l_client import Gr2lConfigError
+from water_assistant_agent.assistant.tools.gr2l_client import (
+    NON_MODELLABLE_ROOFS,
+    Gr2lConfigError,
+)
 from water_assistant_agent.assistant.tools.roofs import (
     ROOFS,
     RoofSegment,
@@ -432,6 +435,18 @@ class PlotVocabularyError(ValueError):
     """
 
 
+class PlotScopeError(Exception):
+    """A well-formed series this deployment cannot produce — a typed abstention.
+
+    The one trigger §3.6 gives: a ``model`` series for the gravel roof or the
+    wetland, which GR2L has no store to simulate. Carries
+    :data:`~.gr2l_client.NON_MODELLABLE_ROOFS`' own reason, so the plot declines
+    for the same stated cause and in the same words the water-balance tools use.
+    A ``measured`` series for either roof is untouched by this: their sensors
+    record like any other roof's, and drawing them is an ordinary plot.
+    """
+
+
 def measured_variable(table: str | None, variable: str) -> MeasuredVariable:
     """The vocabulary entry for *variable* in *table*.
 
@@ -580,6 +595,7 @@ def prepare_series(spec: SeriesSpec, start: str, end: str) -> PreparedSeries:
         PlotVocabularyError: the series is outside the closed vocabulary, or
             carries a selector its source does not take.
         ForcingError: a counterfactual that names a day outside ``start..end``.
+        PlotScopeError: a ``model`` series for a roof GR2L has no store for.
     """
     _reject_foreign_selectors(spec)
 
@@ -608,6 +624,12 @@ def prepare_series(spec: SeriesSpec, start: str, end: str) -> PreparedSeries:
         raise PlotVocabularyError(
             f"Unknown roof {spec.roof!r}. Valid roofs: {', '.join(ROOFS)}."
         )
+    # The scope limit, decided against the same table both water-balance tools
+    # are bounded by and phrased in its own words (§3.4). The measured series
+    # for these two roofs never reaches this branch.
+    reason = NON_MODELLABLE_ROOFS.get(segment.name)
+    if reason is not None:
+        raise PlotScopeError(reason)
     # The window's own check, run by the water-balance tool's own validator: a
     # forcing is addressed by day, and a day the chart does not cover is an
     # override that would silently do nothing (`decisions.md` § GR2L argument surface).
@@ -1033,7 +1055,10 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
         ``Ssub`` / ``Sret`` (mm of stored water), ``OUT`` (mm of runoff), ``ET`` /
         ``ET_PM`` (mm of actual / potential evapotranspiration), ``Qdown`` /
         ``Qup`` (mm). The tool fetches the weather and reads the roof's own
-        starting soil moisture itself — do not call another tool first.
+        starting soil moisture itself — do not call another tool first. The
+        **gravel roof and the wetland cannot be modelled**, and asking for one
+        comes back as ``status='not_available'`` with the reason; their
+        *measured* series are drawn like any other roof's.
 
         Nothing else can be drawn: a variable outside these lists comes back as an
         ``invalid_argument`` naming what was valid, and there is no way to plot a
@@ -1090,10 +1115,10 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
             modelled run started from an old sensor reading). ``weather_source``
             of ``'station'`` means the site's own instruments — say so.
 
-            When the window reaches past the forecast horizon,
-            ``status='not_available'`` with a ``reason`` to pass on: that is a
-            scope limit, not a malfunction, and the measured record can still be
-            drawn. On failure
+            When a ``model`` series names the gravel roof or the wetland, or the
+            window reaches past the forecast horizon, ``status='not_available'``
+            with a ``reason`` to pass on: that is a scope limit, not a malfunction,
+            and their measured series can still be drawn. On failure
             ``status='error'`` with ``error_details`` and an ``error_type``:
             ``'invalid_argument'`` means the call itself was wrong and can be
             corrected and retried, ``'upstream'`` means something the tool depends
@@ -1134,6 +1159,9 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
             return ErrorResult(
                 error_type="invalid_argument", error_details=str(exc)
             ).model_dump()
+        except PlotScopeError as exc:
+            logger.info("A plot asked to model a roof outside the model's scope")
+            return NotAvailableResult(reason=str(exc)).model_dump()
 
         # The horizon is the live sources' limit, so it binds exactly the plots
         # that have one: an all-measured chart of a future window is simply empty,

@@ -2563,7 +2563,7 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
 
 ## Phase 6 — Harness, scoring, pilot → FREEZE GATE
 
-- [ ] T100 `harness/run_case.py`: case → `ScenarioContext` → `build_toolset` →
+- [x] T100 `harness/run_case.py`: case → `ScenarioContext` → `build_toolset` →
   `build_root_agent` → runner → parse the answer contract → structured result with
   trajectory and diagnostics. Scans the event log for root-level tool results
   carrying `error_type: "upstream"` — plus, keyed on tool name, any
@@ -2573,6 +2573,65 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   errors are not scanned. **`predict_fn` calls this same function**, or the search
   and the measurement run diverge on the one path that must be identical. → T030,
   T052
+  **The bindings are arguments; the context is not.** `run_case_async` takes
+  `db_path`, `cache_dir` and `allow_live` and builds the context itself, rather
+  than accepting a pre-built one. It is the identity claim's teeth: a test, the
+  search and the measurement run then construct through the same three lines, and
+  a `predict_fn` that passed its own context could diverge from the pass it is
+  supposed to be identical to without any assertion noticing.
+  **`ReplayCache` binds replay at one seam.** The two live dependencies disagree
+  on how a pass says "do not call out": `ArchiveWeatherClient` threads
+  `allow_live` into `ResponseCache.fetch`, while `run_gr2l` passes only the cache
+  and takes the default `True`. A subclass that overrides the argument covers
+  both, which is what makes T104's *no live call in replay* structural instead of
+  a rule each client has to remember. It also lands a replay miss exactly where
+  `decisions.md` § Tool errors and harness exclusion wants it: `CacheMissError` →
+  the wrapper's `upstream` → excluded.
+  **The upstream error in the test is real, not stubbed.** A window predating the
+  station record falls to Archive whole, Archive is bound to an empty replay
+  cache, and the miss is unfillable — so the exit criterion's "injected
+  `upstream`" is an actual fetch failing through the actual seam. The
+  `invalid_argument` half is the same shape: a real unknown `topic`, typed by the
+  real tool, recovered from on the next step, and nothing excluded.
+  **Two outcomes the taxonomy did not name, classified here** (`agent.py`'s
+  `rollout_run_config` docstring left them to this packet). Spending the step cap
+  raises `LlmCallsLimitExceededError` mid-run: that is **scored**, not excluded —
+  a candidate that loops until the cap deterministically caused it — and since it
+  leaves no final message it lands as a `parse_failure` with `step_cap_exceeded`
+  beside it to tell it apart from a candidate that answered in the wrong format.
+  A rollout that raises anything else — the model call, the transport, the
+  runner — is **excluded** under a third source, `rollout`. That is also where a
+  defect in this harness would land, which is why §7's per-arm exclusion counts
+  are published beside the results rather than folded away.
+  **`fixer_iterations` is reported as `None`, not as zero.** The sub-agent's
+  transpile/validate retries happen on the inner `Runner` `AgentTool` builds, and
+  `PipelineResult` carries the counts no further than `pipeline.py` — nothing
+  writes them into the state delta that reaches the root side, the way
+  `query_database_tool` writes its result for FR15. T102 should report the
+  diagnostic as unavailable rather than publish a fabricated zero; wiring it out
+  would be a change to the frozen sub-agent's surface and belongs to whoever owns
+  that decision, not here.
+  **Root-level is enforced by author**, `event.author == agent.name`, which ADK
+  stamps from `invocation_context.agent.name`. The sub-agent's events never enter
+  this stream at all — `AgentTool` runs its own `Runner` over its own session
+  service — so a query that failed twice and was repaired is a success here,
+  which is what it is.
+  **ADK boxes a non-dict tool return as `{"result": …}`** before it becomes a
+  `FunctionResponse`, and `text_to_sql_agent` returns a bare string whenever the
+  model answered in prose. The scan unwraps that one key, or it would never see
+  the status it is looking for; no tool in this toolset returns a lone `result`
+  key of its own, so the unwrap is unambiguous.
+  **The scripted model is the only fake.** The database is the pinned file
+  bounded at the case's own `as_of`, the card store is the packaged YAML, the
+  cache is a real replay cache over an empty directory, and every tool result the
+  tests read is one a tool actually produced. `test_the_tool_really_ran` reads the
+  card out of the *second* request's function-response part rather than off
+  `str(request.contents)`: `google.genai` truncates long strings in its own
+  `__repr__`, so a substring check against the repr reports absent on exactly the
+  payloads worth checking — which is how it was first written, and it failed
+  against a card that had in fact been read.
+  `uv run ruff check .` and `uv run pytest` clean — 777 passed (764 + 13), same
+  15 pre-existing findings.
 - [x] T101 Answer-contract parsing plus the **evaluation-only** candidate
   instruction carrying it, including the explicit no-clarification clause; the
   production instruction is untouched. A final message parsing to neither status is

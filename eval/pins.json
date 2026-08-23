@@ -29,7 +29,7 @@
         "seed": 42,
         "temperature": 0.0
       },
-      "endpoint": "https://chat-ai.academiccloud.de/v1",
+      "endpoint": "https://saia.gwdg.de/v1",
       "model_id": "openai/qwen3.6-35b-a3b"
     },
     "task_model": {
@@ -37,7 +37,7 @@
         "seed": 42,
         "temperature": 0.0
       },
-      "endpoint": "https://chat-ai.academiccloud.de/v1",
+      "endpoint": "https://saia.gwdg.de/v1",
       "model_id": "openai/qwen3.6-35b-a3b"
     },
     "task_model_canary_sha256": null,

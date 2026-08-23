@@ -1,7 +1,7 @@
 """Oracles for family D — the model chains (``questions.md`` §2 D).
 
-T09 asks whether a roof's soil moisture will fall below a threshold within the
-next *h* hours, and its gold trajectory is
+T09 asks whether a roof's soil moisture will fall below a threshold over the
+next *d* days, and its gold trajectory is
 ``predict_green_roof_water_balance_tool`` alone. The oracle runs the same
 simulation the tool runs, through ``run_roof_model`` — the shared composition
 whose steps are the tool's own: ``ctx.weather`` for the forcing, ``_resolve_seed``
@@ -37,36 +37,42 @@ from water_assistant_agent.assistant.tools.weather_client import resolve_window
 from eval.oracles.base import OracleAnswer, OracleInputError, required_params
 from eval.oracles.pins import stamp
 
-HOURS_PER_DAY = 24
+def forecast_days_for(days: Any) -> int:
+    """The horizon as a positive whole number of days, counting today as day 1.
 
+    **There is nothing to convert here, and that is the point.** T09 was phrased
+    in hours until T107's pilot, which is where the cost showed: GR2L's rows are
+    daily, so an hourly horizon had to become a day count somewhere, and wherever
+    it happened it was a rule the candidate had never been told. The oracle read
+    "the next 72 hours" as three days — today and the two after it — while a
+    candidate writing the window as explicit dates read the same phrase as four,
+    and the two disagreed silently on every draw whose minimum did not happen to
+    sit on the same side of the threshold in both windows.
 
-def forecast_days_for(hours: int) -> int:
-    """The whole days a "next *h* hours" question spans, counting today as day 1.
-
-    GR2L's rows are daily, so an hourly horizon has to become a day count
-    somewhere, and it becomes one *here* rather than inside the answer: 24 h is
-    one day (today), 72 h is three (today and the two after it). Hours that do
-    not divide into whole days are refused rather than rounded — a rounding rule
-    invented in the oracle is a rule the candidate was never told, and the
-    catalog samples ``h`` from whole days.
+    So the catalog now names days (``questions.md`` §2 D) and the candidate passes
+    the number the question names straight into ``forecast_days``. What is left to
+    check is only that the draw is a whole positive count, which the generator's
+    own sampling already guarantees; a non-integer reaching here is a template
+    fault, not a hard case.
     """
-    if hours <= 0 or hours % HOURS_PER_DAY:
+    if isinstance(days, bool) or not isinstance(days, int) or days <= 0:
         raise OracleInputError(
-            f"h must be a positive whole number of days in hours (24, 48, 72, …), got {hours}."
+            f"d must be a positive whole number of days (1, 2, 3, …), got {days!r}."
         )
-    return hours // HOURS_PER_DAY
+    return days
 
 
 async def t09_falls_below_threshold(
     inputs: Mapping[str, Any], ctx: ScenarioContext
 ) -> OracleAnswer:
-    """T09 — will this roof's soil moisture fall below *thr* %θ within *h* hours?
+    """T09 — will this roof's soil moisture fall below *thr* %θ over the next *d* days?
 
-    The window is resolved by ``resolve_window(forecast_days=h/24)``, layer 1's
-    own resolver and the one the tool calls: ``forecast_days`` counts from today
-    forward, so the window is ``as_of``'s day through ``h/24 - 1`` days after it.
+    The window is resolved by ``resolve_window(forecast_days=d)``, layer 1's own
+    resolver and the one the tool calls: ``forecast_days`` counts from today
+    forward, so the window is ``as_of``'s day through ``d - 1`` days after it.
     Re-deriving those two dates here would let the oracle and the tool disagree
-    about whether "the next 72 hours" includes today.
+    about where the window ends — and phrasing the question in days is what stops
+    them disagreeing about where it *starts* (:func:`forecast_days_for`).
 
     The comparison is **strict** (``min < thr``), matching the question's "fall
     below". §1.6's oracle-validity filter discards a draw whose minimum sits
@@ -81,9 +87,9 @@ async def t09_falls_below_threshold(
     Params:
         roof: any spelling ``normalize_roof_type`` accepts; pool P2.
         thr: the threshold in %θ.
-        h: the horizon in hours, a whole number of days.
+        d: the horizon in whole days, counting today as day 1.
     """
-    roof_name, threshold, hours = required_params(inputs, "roof", "thr", "h")
+    roof_name, threshold, days = required_params(inputs, "roof", "thr", "d")
     roof_type = normalize_roof_type(str(roof_name))
     if roof_type in NON_MODELLABLE_ROOFS or roof_type not in ROOF_PRESETS:
         pool = ", ".join(sorted(set(ROOF_PRESETS) - set(NON_MODELLABLE_ROOFS)))
@@ -92,7 +98,7 @@ async def t09_falls_below_threshold(
         )
 
     window_start, window_end = resolve_window(
-        forecast_days=forecast_days_for(int(hours)), today=ctx.as_of.date()
+        forecast_days=forecast_days_for(days), today=ctx.as_of.date()
     )
     run = await run_roof_model(ctx, roof_type, window_start, window_end)
 

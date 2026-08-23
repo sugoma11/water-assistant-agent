@@ -418,7 +418,7 @@ def test_t09_compares_the_modelled_minimum_with_the_threshold(
     ctx = _context(weather=StubWeather())
 
     answer = asyncio.run(
-        t09_falls_below_threshold(_inputs("T09", roof=MODELLABLE, thr=threshold, h=72), ctx)
+        t09_falls_below_threshold(_inputs("T09", roof=MODELLABLE, thr=threshold, d=3), ctx)
     )
 
     assert answer.detail["min_swc_pct"] == FLAT_SWC_PCT
@@ -437,7 +437,7 @@ def test_t09_reads_the_minimum_over_a_falling_series(monkeypatch: pytest.MonkeyP
     ctx = _context(weather=StubWeather())
 
     answer = asyncio.run(
-        t09_falls_below_threshold(_inputs("T09", roof=MODELLABLE, thr=15.0, h=72), ctx)
+        t09_falls_below_threshold(_inputs("T09", roof=MODELLABLE, thr=15.0, d=3), ctx)
     )
 
     assert answer.detail["min_swc_pct"] == FLAT_SWC_PCT
@@ -446,27 +446,37 @@ def test_t09_reads_the_minimum_over_a_falling_series(monkeypatch: pytest.MonkeyP
 
 
 def test_t09_resolves_the_horizon_the_way_the_tool_does(monkeypatch: pytest.MonkeyPatch):
-    """"The next 72 hours" is today and the two days after it, not four days.
+    """"The next 3 days" is today and the two days after it, not four days.
 
     Both sides go through ``resolve_window``, so the window a case is scored on
     and the window it was answered over are one resolution rather than two.
+
+    This test is why T09 is phrased in days. It passed when the question said
+    "72 hours" too — the *oracle* always resolved three days — but the pilot's
+    candidate, writing the same phrase as explicit dates, sent four, and nothing
+    on this side could see the disagreement (T107).
     """
     monkeypatch.setattr(gr2l_module, "run_gr2l", StubGr2l())
     weather = StubWeather()
     ctx = _context(weather=weather)
 
     asyncio.run(
-        t09_falls_below_threshold(_inputs("T09", roof=MODELLABLE, thr=1.0, h=72), ctx)
+        t09_falls_below_threshold(_inputs("T09", roof=MODELLABLE, thr=1.0, d=3), ctx)
     )
 
     assert weather.calls == [("2026-04-20", "2026-04-22")]
 
 
-@pytest.mark.parametrize("hours", [0, -24, 36, 1])
-def test_t09_refuses_an_horizon_that_is_not_whole_days(hours: int):
-    """GR2L's rows are daily; rounding 36 h would be a rule nobody was told."""
+@pytest.mark.parametrize("days", [0, -3, 1.5, "3", True])
+def test_t09_refuses_a_horizon_that_is_not_whole_days(days: object):
+    """The horizon is a positive whole day count, and nothing here rounds one.
+
+    ``True`` is in the list because ``isinstance(True, int)`` is ``True`` in
+    Python: a bool reaching this argument is a template fault, and simulating one
+    day because a flag was passed would be the silent kind.
+    """
     with pytest.raises(OracleInputError, match="whole number of days"):
-        forecast_days_for(hours)
+        forecast_days_for(days)
 
 
 @pytest.mark.parametrize("threshold", [5.0, 14.29, 25.0])
@@ -485,7 +495,7 @@ def test_t09_agrees_with_the_water_balance_tool_on_the_same_context(
 
     answer = asyncio.run(
         t09_falls_below_threshold(
-            _inputs("T09", roof=MODELLABLE, thr=threshold, h=72), ctx
+            _inputs("T09", roof=MODELLABLE, thr=threshold, d=3), ctx
         )
     )
     tool = asyncio.run(make_green_roof_balance_tool(ctx)(MODELLABLE, forecast_days=3))
@@ -503,7 +513,7 @@ def test_t09_refuses_a_roof_the_water_balance_declines(monkeypatch: pytest.Monke
     for roof in ("Kiesdach", "Sumpfdach"):
         with pytest.raises(OracleInputError, match="P2"):
             asyncio.run(
-                t09_falls_below_threshold(_inputs("T09", roof=roof, thr=10.0, h=72), ctx)
+                t09_falls_below_threshold(_inputs("T09", roof=roof, thr=10.0, d=3), ctx)
             )
 
 
@@ -568,7 +578,7 @@ def test_t09_stamps_the_gr2l_canary(monkeypatch: pytest.MonkeyPatch):
     ctx = _context(weather=StubWeather())
 
     pins = asyncio.run(
-        t09_falls_below_threshold(_inputs("T09", roof=MODELLABLE, thr=10.0, h=72), ctx)
+        t09_falls_below_threshold(_inputs("T09", roof=MODELLABLE, thr=10.0, d=3), ctx)
     ).pins
 
     assert len(pins["gr2l_canary"]) == 64

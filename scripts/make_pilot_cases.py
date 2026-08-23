@@ -141,9 +141,9 @@ DRAWS: list[dict[str, Any]] = [
         "language": "en",
         "question": (
             "Will the soil moisture of the non-irrigated extensive roof fall below "
-            "20 %θ within the next 72 hours?"
+            "20 %θ over the next 3 days?"
         ),
-        "params": {"roof": "non_irrigated_extensive", "thr": 20, "h": 72},
+        "params": {"roof": "non_irrigated_extensive", "thr": 20, "d": 3},
     },
     {
         "case_id": "T09-0002",
@@ -152,9 +152,9 @@ DRAWS: list[dict[str, Any]] = [
         "language": "en",
         "question": (
             "Will the soil moisture of the irrigated extensive roof fall below "
-            "10 %θ within the next 72 hours?"
+            "10 %θ over the next 3 days?"
         ),
-        "params": {"roof": "irrigated_extensive", "thr": 10, "h": 72},
+        "params": {"roof": "irrigated_extensive", "thr": 10, "d": 3},
     },
     {
         "case_id": "T09-0003",
@@ -163,9 +163,9 @@ DRAWS: list[dict[str, Any]] = [
         "language": "en",
         "question": (
             "Will the soil moisture of the semi-intensive roof fall below 5 %θ "
-            "within the next 48 hours?"
+            "over the next 2 days?"
         ),
-        "params": {"roof": "semi_intensive", "thr": 5, "h": 48},
+        "params": {"roof": "semi_intensive", "thr": 5, "d": 2},
     },
 ]
 

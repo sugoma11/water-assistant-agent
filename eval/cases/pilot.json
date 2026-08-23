@@ -242,11 +242,11 @@
       "case_id": "T09-0001",
       "language": "en",
       "params": {
-        "h": 72,
+        "d": 3,
         "roof": "non_irrigated_extensive",
         "thr": 20
       },
-      "question": "Will the soil moisture of the non-irrigated extensive roof fall below 20 %θ within the next 72 hours?",
+      "question": "Will the soil moisture of the non-irrigated extensive roof fall below 20 %θ over the next 3 days?",
       "template_id": "T09"
     }
   },
@@ -280,11 +280,11 @@
       "case_id": "T09-0002",
       "language": "en",
       "params": {
-        "h": 72,
+        "d": 3,
         "roof": "irrigated_extensive",
         "thr": 10
       },
-      "question": "Will the soil moisture of the irrigated extensive roof fall below 10 %θ within the next 72 hours?",
+      "question": "Will the soil moisture of the irrigated extensive roof fall below 10 %θ over the next 3 days?",
       "template_id": "T09"
     }
   },
@@ -318,11 +318,11 @@
       "case_id": "T09-0003",
       "language": "en",
       "params": {
-        "h": 48,
+        "d": 2,
         "roof": "semi_intensive",
         "thr": 5
       },
-      "question": "Will the soil moisture of the semi-intensive roof fall below 5 %θ within the next 48 hours?",
+      "question": "Will the soil moisture of the semi-intensive roof fall below 5 %θ over the next 2 days?",
       "template_id": "T09"
     }
   }

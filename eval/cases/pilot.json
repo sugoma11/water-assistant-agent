@@ -1,0 +1,329 @@
+[
+  {
+    "expectations": {
+      "answer": 46.0,
+      "answer_metric": "scored",
+      "argument_checks": [],
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "gold_cards": [],
+      "must_not_tools": [
+        "lookup_reference"
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      },
+      "status": "answered",
+      "tolerance": {
+        "kind": "rel",
+        "value": 0.02
+      },
+      "unit": "L"
+    },
+    "inputs": {
+      "as_of": "2025-08-14T08:00:00+02:00",
+      "case_id": "T01-0001",
+      "language": "en",
+      "params": {
+        "month": "2025-07",
+        "roof": "gravel"
+      },
+      "question": "What was the total outflow of the gravel roof in July 2025?",
+      "template_id": "T01"
+    }
+  },
+  {
+    "expectations": {
+      "answer": 3.4,
+      "answer_metric": "scored",
+      "argument_checks": [],
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "gold_cards": [],
+      "must_not_tools": [
+        "lookup_reference"
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      },
+      "status": "answered",
+      "tolerance": {
+        "kind": "rel",
+        "value": 0.02
+      },
+      "unit": "L"
+    },
+    "inputs": {
+      "as_of": "2025-10-10T09:00:00+02:00",
+      "case_id": "T01-0002",
+      "language": "en",
+      "params": {
+        "month": "2025-09",
+        "roof": "non_irrigated_extensive"
+      },
+      "question": "What was the total outflow of the non-irrigated extensive roof in September 2025?",
+      "template_id": "T01"
+    }
+  },
+  {
+    "expectations": {
+      "answer": 39.4,
+      "answer_metric": "scored",
+      "argument_checks": [],
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "gold_cards": [],
+      "must_not_tools": [
+        "lookup_reference"
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      },
+      "status": "answered",
+      "tolerance": {
+        "kind": "rel",
+        "value": 0.02
+      },
+      "unit": "L"
+    },
+    "inputs": {
+      "as_of": "2026-03-05T09:00:00+01:00",
+      "case_id": "T01-0003",
+      "language": "en",
+      "params": {
+        "month": "2026-02",
+        "roof": "wetland"
+      },
+      "question": "What was the total outflow of the wetland roof in February 2026?",
+      "template_id": "T01"
+    }
+  },
+  {
+    "expectations": {
+      "answer": false,
+      "answer_metric": "scored",
+      "argument_checks": [],
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "gold_cards": [],
+      "must_not_tools": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      },
+      "status": "answered",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "unit": null
+    },
+    "inputs": {
+      "as_of": "2025-07-20T07:00:00+02:00",
+      "case_id": "T07-0001",
+      "language": "en",
+      "params": {
+        "roof": "non_irrigated_extensive"
+      },
+      "question": "Does the non-irrigated extensive roof need irrigation right now?",
+      "template_id": "T07"
+    }
+  },
+  {
+    "expectations": {
+      "answer": false,
+      "answer_metric": "scored",
+      "argument_checks": [],
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "gold_cards": [],
+      "must_not_tools": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      },
+      "status": "answered",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "unit": null
+    },
+    "inputs": {
+      "as_of": "2026-03-10T07:00:00+01:00",
+      "case_id": "T07-0002",
+      "language": "en",
+      "params": {
+        "roof": "irrigated_extensive"
+      },
+      "question": "Does the irrigated extensive roof need irrigation right now?",
+      "template_id": "T07"
+    }
+  },
+  {
+    "expectations": {
+      "answer": true,
+      "answer_metric": "scored",
+      "argument_checks": [],
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "gold_cards": [],
+      "must_not_tools": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      },
+      "status": "answered",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "unit": null
+    },
+    "inputs": {
+      "as_of": "2025-08-05T07:00:00+02:00",
+      "case_id": "T07-0003",
+      "language": "en",
+      "params": {
+        "roof": "semi_intensive"
+      },
+      "question": "Does the semi-intensive roof need irrigation right now?",
+      "template_id": "T07"
+    }
+  },
+  {
+    "expectations": {
+      "answer": true,
+      "answer_metric": "scored",
+      "argument_checks": [],
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "gold_cards": [],
+      "must_not_tools": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "0c39f945a3f94073847202804d7e21e686dd8651b5ae81cb44bf4d04fbf20faa",
+        "weather_source": [
+          "archive"
+        ]
+      },
+      "status": "answered",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "unit": null
+    },
+    "inputs": {
+      "as_of": "2025-07-20T07:00:00+02:00",
+      "case_id": "T09-0001",
+      "language": "en",
+      "params": {
+        "h": 72,
+        "roof": "non_irrigated_extensive",
+        "thr": 20
+      },
+      "question": "Will the soil moisture of the non-irrigated extensive roof fall below 20 %θ within the next 72 hours?",
+      "template_id": "T09"
+    }
+  },
+  {
+    "expectations": {
+      "answer": false,
+      "answer_metric": "scored",
+      "argument_checks": [],
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "gold_cards": [],
+      "must_not_tools": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "0c39f945a3f94073847202804d7e21e686dd8651b5ae81cb44bf4d04fbf20faa",
+        "weather_source": [
+          "archive"
+        ]
+      },
+      "status": "answered",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "unit": null
+    },
+    "inputs": {
+      "as_of": "2026-03-10T07:00:00+01:00",
+      "case_id": "T09-0002",
+      "language": "en",
+      "params": {
+        "h": 72,
+        "roof": "irrigated_extensive",
+        "thr": 10
+      },
+      "question": "Will the soil moisture of the irrigated extensive roof fall below 10 %θ within the next 72 hours?",
+      "template_id": "T09"
+    }
+  },
+  {
+    "expectations": {
+      "answer": false,
+      "answer_metric": "scored",
+      "argument_checks": [],
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "gold_cards": [],
+      "must_not_tools": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "0c39f945a3f94073847202804d7e21e686dd8651b5ae81cb44bf4d04fbf20faa",
+        "weather_source": [
+          "archive"
+        ]
+      },
+      "status": "answered",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "unit": null
+    },
+    "inputs": {
+      "as_of": "2025-08-05T07:00:00+02:00",
+      "case_id": "T09-0003",
+      "language": "en",
+      "params": {
+        "h": 48,
+        "roof": "semi_intensive",
+        "thr": 5
+      },
+      "question": "Will the soil moisture of the semi-intensive roof fall below 5 %θ within the next 48 hours?",
+      "template_id": "T09"
+    }
+  }
+]

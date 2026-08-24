@@ -17,6 +17,7 @@ so it has no such twin; its day-boundary fixture is the substitute.
 """
 
 import asyncio
+import dataclasses
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,14 @@ from eval.oracles.base import OracleInputError
 from eval.oracles.irrigation import t07_needs_irrigation_now
 from eval.oracles.model_chain import forecast_days_for, t09_falls_below_threshold
 from eval.oracles.pins import duckdb_sha256, station_derivation_version
+import eval.oracles.reference as reference_module
+from eval.oracles.reference import t06_stated_constant, t17a_absent_constant
+from eval.oracles.weather import t18a_unservable_window
+from water_assistant_agent.assistant.knowledge.store import load_card
+from water_assistant_agent.assistant.rules_constants import ROOF_RULES
+from water_assistant_agent.assistant.tools.weather_client import (
+    FORECAST_HORIZON_DAYS,
+)
 from eval.oracles.sql import month_window, t01_total_outflow
 from water_assistant_agent.assistant.agents.text_to_sql.executor import (
     DuckDbQueryExecutor,
@@ -605,16 +614,121 @@ def test_every_pin_stamped_here_matches_the_case_schema():
     }
 
 
+# --- T06, T17a, T18a: the coverage draws (T107) --------------------------------
+
+
+def test_t06_reads_the_dry_threshold_from_the_constants():
+    """10.0 %θ, and it comes from `rules_constants`, not from the card.
+
+    The card's `values:` block is test-bound to the constants (§3.2), so reading
+    the constant is reading what the card must say — while reading the card would
+    make the oracle agree with a drifted card, which is the one disagreement the
+    binding exists to catch.
+    """
+    answer = asyncio.run(t06_stated_constant(_inputs("T06"), _context()))
+
+    assert answer.answer == ROOF_RULES["irrigated_extensive"].dry_pct
+    assert answer.answer == 10.0
+    assert answer.unit == "%θ"
+    assert answer.status == "answered"
+    assert answer.detail["level"] == "dry_pct"
+
+
+def test_t06_refuses_if_the_extensive_roofs_stop_sharing_a_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """"The threshold for the extensive roofs" needs there to be one of them.
+
+    Single-valuedness is a property of the constants, not of the question, so it
+    is checked rather than assumed: if one roof moved, §1.6's oracle-validity
+    filter should discard the template rather than the oracle picking a side.
+    """
+    moved = dict(ROOF_RULES)
+    moved["irrigated_extensive"] = dataclasses.replace(
+        ROOF_RULES["irrigated_extensive"], dry_pct=12.0
+    )
+    monkeypatch.setattr(reference_module, "ROOF_RULES", moved)
+
+    with pytest.raises(OracleInputError, match="no longer share"):
+        asyncio.run(t06_stated_constant(_inputs("T06"), _context()))
+
+
+def test_t17a_abstains_and_grounds_it_in_the_rule_parameters():
+    """No wind anywhere in the ladder's inputs, so the case cannot be answered.
+
+    The check is over parameters and never over prose: the card's text *names*
+    wind, among the quantities the rule does not test, so a keyword scan would
+    report a wind clause exactly where the card is most explicit that there is
+    none.
+    """
+    answer = asyncio.run(t17a_absent_constant(_inputs("T17a"), _context()))
+
+    assert answer.status == "not_available"
+    assert answer.answer is None
+    assert answer.unit is None
+    assert not [p for p in answer.detail["rule_parameters"] if "wind" in p]
+
+
+def test_t17a_refuses_if_the_rule_grows_a_wind_parameter(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A wind cutoff would make the case answerable and its expectation wrong."""
+    card = load_card("irrigation_rule")
+    grown = card.model_copy(
+        update={"values": {**(card.values or {}), "wind_cutoff_kmh": 30.0}}
+    )
+    monkeypatch.setattr(reference_module, "load_card", lambda _id: grown)
+
+    with pytest.raises(OracleInputError, match="wind_cutoff_kmh"):
+        asyncio.run(t17a_absent_constant(_inputs("T17a"), _context()))
+
+
+def test_t18a_abstains_on_a_window_past_the_horizon():
+    """Four weeks out is beyond the 16-day limit, and the window is well formed.
+
+    Well-formed matters: a resolvable window refused for reach is a scope limit
+    and types `not_available`, where a malformed one would be an
+    `invalid_argument` the candidate could fix. Blurring the two is what makes
+    the false-abstention rate unreadable.
+    """
+    answer = asyncio.run(
+        t18a_unservable_window(_inputs("T18a", ahead_days=28), _context())
+    )
+
+    assert answer.status == "not_available"
+    assert answer.answer is None
+    assert answer.detail["horizon_days"] == FORECAST_HORIZON_DAYS
+    assert answer.detail["days_past_horizon"] == 28 - FORECAST_HORIZON_DAYS
+
+
+def test_t18a_refuses_a_window_the_tool_would_actually_serve():
+    """Inside the horizon there is no abstention to score, so the draw is invalid."""
+    with pytest.raises(OracleInputError, match="within"):
+        asyncio.run(
+            t18a_unservable_window(
+                _inputs("T18a", ahead_days=FORECAST_HORIZON_DAYS - 1), _context()
+            )
+        )
+
+
 # --- The registry -------------------------------------------------------------
 
 
 def test_the_registry_holds_the_pilot_set_and_only_it():
-    """T103 is three templates; T110 adds the rest, family by family.
+    """T103's three templates plus T107's coverage draws; T110 adds the rest.
 
     Registering an oracle the pilot does not exercise would put an unchecked
     answer one lookup away from a case file.
+
+    **T24a is absent on purpose.** Its answer is null and the deliverable is the
+    spec, so there is nothing to materialize; an entry would have to invent an
+    answer to have something to return.
     """
-    assert sorted(ORACLES) == ["T01", "T07", "T09"]
+    assert sorted(ORACLES) == ["T01", "T06", "T07", "T09", "T17a", "T18a"]
     assert ORACLES["T01"] is t01_total_outflow
+    assert ORACLES["T06"] is t06_stated_constant
     assert ORACLES["T07"] is t07_needs_irrigation_now
     assert ORACLES["T09"] is t09_falls_below_threshold
+    assert ORACLES["T17a"] is t17a_absent_constant
+    assert ORACLES["T18a"] is t18a_unservable_window
+    assert "T24a" not in ORACLES

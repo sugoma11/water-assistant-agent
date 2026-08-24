@@ -352,6 +352,91 @@ def test_the_diagnostic_counts_the_extra_calls_the_metric_forgave() -> None:
 # ── Trajectory: the declarative argument checks ──────────────────────────────
 
 
+def test_a_wildcard_collects_one_field_across_every_series() -> None:
+    """``series.*.roof`` is the roofs of the call, in no particular order.
+
+    The catalog scores a plot's roofs "as a set match" (``questions.md`` §2 H),
+    and neither of the other two addresses can say that: an index imposes an
+    order the request does not have, and ``set_eq`` on ``series`` itself compares
+    whole declarations, so a candidate that added an optional key it was entitled
+    to add would fail a check about roofs.
+    """
+    run = result(
+        trajectory=(
+            ToolCall(
+                "plot_timeseries",
+                {
+                    "series": [
+                        {"source": "measured", "roof": "gravel", "kind": "line"},
+                        {"source": "measured", "roof": "irrigated_extensive"},
+                    ]
+                },
+            ),
+        )
+    )
+    check = {"tool": "plot_timeseries", "path": "series.*.roof", "op": "set_eq"}
+
+    # The declared order is the reverse of the case's, and it still matches.
+    passing = score_trajectory(
+        run,
+        expectations(
+            expected_tool_calls=[{"name": "plot_timeseries"}],
+            argument_checks=[
+                {**check, "value": ["irrigated_extensive", "gravel"]}
+            ],
+        ),
+    )
+    wrong_roof = score_trajectory(
+        run,
+        expectations(
+            expected_tool_calls=[{"name": "plot_timeseries"}],
+            argument_checks=[{**check, "value": ["gravel", "semi_intensive"]}],
+        ),
+    )
+
+    assert passing.value == 1.0
+    assert wrong_roof.value == 0.0
+
+
+def test_a_wildcard_skips_a_member_that_has_no_such_field() -> None:
+    """A weather series carries no roof, and that is not a missing argument.
+
+    Collecting it as ``None`` would make every mixed chart fail a roof check;
+    skipping it makes ``series.*.roof`` a statement about the series that have
+    roofs, which is what the check is about.
+    """
+    run = result(
+        trajectory=(
+            ToolCall(
+                "plot_timeseries",
+                {
+                    "series": [
+                        {"source": "weather", "variable": "precip"},
+                        {"source": "measured", "roof": "gravel"},
+                    ]
+                },
+            ),
+        )
+    )
+
+    score = score_trajectory(
+        run,
+        expectations(
+            expected_tool_calls=[{"name": "plot_timeseries"}],
+            argument_checks=[
+                {
+                    "tool": "plot_timeseries",
+                    "path": "series.*.roof",
+                    "op": "set_eq",
+                    "value": ["gravel"],
+                }
+            ],
+        ),
+    )
+
+    assert score.value == 1.0
+
+
 def test_an_eq_check_reads_a_dotted_path_into_the_call() -> None:
     run = result(
         trajectory=(

@@ -32,6 +32,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from eval.oracles import ORACLES  # noqa: E402
+from eval.oracles.pins import stamp  # noqa: E402
 from harness.assertions import assert_case  # noqa: E402
 from harness.run_case import _as_instant, make_case_context  # noqa: E402
 
@@ -70,6 +71,98 @@ TEMPLATES: dict[str, dict[str, Any]] = {
         "must_not_tools": [],
         "gold_cards": [],
         "argument_checks": [],
+    },
+    # --- T107's coverage draws: the scorer branches the first nine never took ---
+    # questions.md §2 B — T06: numeric (%θ, exact), Traj {lookup_reference},
+    # Cards `irrigation_threshold`. The suite's only GRADED card-recall case.
+    "T06": {
+        "roof_pool": None,
+        "answer_metric": "scored",
+        "tolerance": {"kind": "exact"},
+        "expected_tool_calls": [
+            {"name": "lookup_reference", "args": {"topic": "irrigation_threshold"}}
+        ],
+        "must_not_tools": [],
+        "gold_cards": ["irrigation_threshold"],
+        "argument_checks": [],
+    },
+    # questions.md §2 B — T17a: not_available, Traj {lookup_reference}, Cards
+    # `irrigation_rule` — the card that should have carried the clause, so recall
+    # stays scored on a case with no answer.
+    "T17a": {
+        "roof_pool": None,
+        "answer_metric": "skipped",
+        "expected_tool_calls": [
+            {"name": "lookup_reference", "args": {"topic": "irrigation_rule"}}
+        ],
+        "must_not_tools": [],
+        "gold_cards": ["irrigation_rule"],
+        "argument_checks": [],
+    },
+    # questions.md §2 C — T18a: not_available, Traj {get_weather_forecast_tool}.
+    # No cards: the abstention is the tool's typed scope limit, not a documented one.
+    "T18a": {
+        "roof_pool": None,
+        "answer_metric": "skipped",
+        "expected_tool_calls": [{"name": "get_weather_forecast_tool"}],
+        "must_not_tools": [],
+        "gold_cards": [],
+        "argument_checks": [],
+    },
+    # questions.md §2 H — T24a(i): answered, answer null (the chart is the
+    # deliverable), Traj {plot_timeseries}, Must-not `text_to_sql_agent`.
+    # `oracle: False` — the deliverable is the spec, so there is nothing to
+    # materialize and no registry entry to look up.
+    "T24a-i": {
+        "template_id": "T24a",
+        "oracle": False,
+        "roof_pool": "P1",
+        "status": "answered",
+        "answer_metric": "skipped",
+        "expected_tool_calls": [{"name": "plot_timeseries"}],
+        "must_not_tools": ["text_to_sql_agent"],
+        "gold_cards": [],
+        "argument_checks": [
+            {"tool": "plot_timeseries", "path": "series.*.source", "op": "set_eq",
+             "value": ["measured"]},
+            {"tool": "plot_timeseries", "path": "series.*.variable", "op": "set_eq",
+             "value": ["soil_moisture"]},
+            {"tool": "plot_timeseries", "path": "series.*.roof", "op": "set_eq",
+             "value": ["gravel", "irrigated_extensive"]},
+            {"tool": "plot_timeseries", "path": "start_date", "op": "eq",
+             "value": "2025-07-01", "resolve": "window"},
+            {"tool": "plot_timeseries", "path": "end_date", "op": "eq",
+             "value": "2025-07-31", "resolve": "window"},
+        ],
+    },
+    # questions.md §2 H — T24a(ii): the model overlay. One `measured` swc series
+    # against one `model` swc_pct series on the same roof, which is the suite's
+    # only `model` series and the only place §3.6's mixed-resolution rule binds.
+    "T24a-ii": {
+        "template_id": "T24a",
+        "oracle": False,
+        "roof_pool": "P2",
+        "status": "answered",
+        "answer_metric": "skipped",
+        "expected_tool_calls": [{"name": "plot_timeseries"}],
+        "must_not_tools": ["text_to_sql_agent"],
+        "gold_cards": [],
+        "argument_checks": [
+            {"tool": "plot_timeseries", "path": "series.*.source", "op": "set_eq",
+             "value": ["measured", "model"]},
+            {"tool": "plot_timeseries", "path": "series.*.variable", "op": "set_eq",
+             "value": ["soil_moisture", "swc_pct"]},
+            {"tool": "plot_timeseries", "path": "series.*.roof", "op": "set_eq",
+             "value": ["non_irrigated_extensive"]},
+            # `present`, not `eq`: the roof is the modelling argument the model
+            # series must carry, and §7 scores a candidate-chosen modelling
+            # argument on presence rather than on a value the oracle dictated.
+            {"tool": "plot_timeseries", "path": "series.*.roof", "op": "present"},
+            {"tool": "plot_timeseries", "path": "start_date", "op": "eq",
+             "value": "2026-02-01", "resolve": "window"},
+            {"tool": "plot_timeseries", "path": "end_date", "op": "eq",
+             "value": "2026-02-28", "resolve": "window"},
+        ],
     },
 }
 
@@ -167,6 +260,78 @@ DRAWS: list[dict[str, Any]] = [
         ),
         "params": {"roof": "semi_intensive", "thr": 5, "d": 2},
     },
+    # --- The coverage draws. One instance each; the branch each one is here for
+    # is named in its comment, because that is the only reason it exists. ---
+    # Answer metric SCORED on a lookup, and the suite's only GRADED card recall.
+    {
+        "case_id": "T06-0001",
+        "template_key": "T06",
+        "as_of": "2026-03-05T09:00:00+01:00",
+        "language": "en",
+        "question": "What is the soil-moisture threshold for irrigating the extensive roofs?",
+        "params": {},
+    },
+    # ABSTENTION, correct half: a case that cannot be answered and must be
+    # declined. Card recall stays graded — the agent must fetch the card that
+    # fails to answer it.
+    {
+        "case_id": "T17a-0001",
+        "template_key": "T17a",
+        "as_of": "2026-03-05T09:00:00+01:00",
+        "language": "en",
+        "question": "What is the maximum wind speed at which irrigation must be shut off?",
+        "params": {},
+    },
+    # ABSTENTION, tool-signalled: the window resolves cleanly and is then refused
+    # as a scope limit. `ahead_days` rather than a date, so T104's
+    # period_param_within_as_of does not reject the very thing under test.
+    {
+        "case_id": "T18a-0001",
+        "template_key": "T18a",
+        "as_of": "2026-03-05T09:00:00+01:00",
+        "language": "en",
+        "question": "What will the temperature be in four weeks?",
+        "params": {"ahead_days": 28},
+    },
+    # ANSWER METRIC SKIPPED with coverage, and argument_checks with a set match.
+    # The pair includes the gravel roof: a `measured` series for it is valid, so
+    # this is (iii)'s counter-probe and charges a candidate that generalized
+    # "gravel ⇒ not_available" through the false-abstention rate.
+    {
+        "case_id": "T24a-0001",
+        "template_key": "T24a-i",
+        "as_of": "2025-08-14T08:00:00+02:00",
+        "language": "en",
+        "question": (
+            "Show me how the soil moisture of the gravel roof and the irrigated "
+            "extensive roof developed in July 2025."
+        ),
+        "params": {
+            "variant": "measured_pair",
+            "roof_a": "gravel",
+            "roof_b": "irrigated_extensive",
+            "table": "swc",
+            "month": "2025-07",
+        },
+    },
+    # argument_checks with `present` AND mixed resolution: half-hourly `swc`
+    # against daily GR2L, which is the only case in the suite that binds §3.6's
+    # aggregation rule.
+    {
+        "case_id": "T24a-0002",
+        "template_key": "T24a-ii",
+        "as_of": "2026-03-05T09:00:00+01:00",
+        "language": "en",
+        "question": (
+            "Plot the measured soil moisture of the non-irrigated extensive roof "
+            "against the model's prediction for February 2026."
+        ),
+        "params": {
+            "variant": "model_overlay",
+            "roof": "non_irrigated_extensive",
+            "month": "2026-02",
+        },
+    },
 ]
 
 
@@ -176,34 +341,62 @@ async def build(*, allow_live: bool) -> list[dict[str, Any]]:
     One event loop for the whole set: ``gr2l_client`` holds its ``httpx``
     client in a module-level singleton bound to the loop that made it, so a loop
     per case fails on the second live GR2L call (``run_case.run_case``'s note).
+
+    A draw names a **template key**, which is the template id for every family
+    but H: T24a's variants fix different series shapes and therefore different
+    ``argument_checks``, so each is its own entry keyed ``T24a-i`` / ``T24a-ii``
+    while both emit ``template_id: "T24a"``. The unit of analysis stays the
+    template (§7); only the constants differ.
     """
     cases: list[dict[str, Any]] = []
     for draw in DRAWS:
-        template = TEMPLATES[draw["template_id"]]
-        inputs = {key: value for key, value in draw.items() if key != "question"}
-        inputs["question"] = draw["question"]
-        ctx = make_case_context(_as_instant(draw["as_of"]), allow_live=allow_live)
-        answer = await ORACLES[draw["template_id"]](inputs, ctx)
-
-        case = {
-            "inputs": {
-                "question": draw["question"],
-                "as_of": draw["as_of"],
-                "case_id": draw["case_id"],
-                "template_id": draw["template_id"],
-                "params": draw["params"],
-                "language": draw["language"],
-            },
-            "expectations": {
-                **answer.expectations(),
-                "answer_metric": template["answer_metric"],
-                "tolerance": template["tolerance"],
-                "expected_tool_calls": template["expected_tool_calls"],
-                "must_not_tools": template["must_not_tools"],
-                "gold_cards": template["gold_cards"],
-                "argument_checks": template["argument_checks"],
-            },
+        key = draw.get("template_key", draw.get("template_id"))
+        template = TEMPLATES[key]
+        template_id = template.get("template_id", key)
+        inputs = {
+            "question": draw["question"],
+            "as_of": draw["as_of"],
+            "case_id": draw["case_id"],
+            "template_id": template_id,
+            "params": draw["params"],
+            "language": draw["language"],
         }
+
+        if template.get("oracle", True):
+            ctx = make_case_context(_as_instant(draw["as_of"]), allow_live=allow_live)
+            materialized = (await ORACLES[template_id](inputs, ctx)).expectations()
+        else:
+            # A plot's deliverable is the spec, so there is no answer to compute
+            # and no oracle to compute it (see eval/oracles/__init__). The pins
+            # are `duckdb_sha256` alone, and deliberately not the weather source
+            # or the GR2L canary even where the rollout will read both: what this
+            # case scores is `argument_checks` over the call's ARGUMENTS, which no
+            # fetched value can move. Stamping more would assert a dependency the
+            # scored surface does not have (eval/oracles/pins).
+            materialized = {
+                "status": template["status"],
+                "answer": None,
+                "unit": None,
+                "pins": stamp(),
+            }
+
+        expectations = {
+            **materialized,
+            "answer_metric": template["answer_metric"],
+            "expected_tool_calls": template["expected_tool_calls"],
+            "must_not_tools": template["must_not_tools"],
+            "gold_cards": template["gold_cards"],
+            "argument_checks": template["argument_checks"],
+        }
+        # The schema requires a tolerance exactly where the answer is a number,
+        # and forbids nothing elsewhere; a null answer carries none rather than a
+        # vacuous `exact`.
+        if template.get("tolerance") is not None and isinstance(
+            expectations["answer"], (int, float)
+        ):
+            expectations["tolerance"] = template["tolerance"]
+
+        case = {"inputs": inputs, "expectations": expectations}
         assert_case(case, roof_pool=template["roof_pool"])
         cases.append(case)
     return sorted(cases, key=lambda case: case["inputs"]["case_id"])

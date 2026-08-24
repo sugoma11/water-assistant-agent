@@ -775,9 +775,36 @@ def _at_path(args: Any, path: str) -> Any:
     path into a tool *result*: the scored surface is the agent-supplied half of
     a call, which is what keeps the plotting family measuring the model rather
     than the resolver (§6.1).
+
+    **``*`` collects one field across a list**, so ``series.*.roof`` is the roofs
+    of every series in the call. It exists because the catalog scores a plot's
+    roofs "as a set match" (``questions.md`` §2 H) and there was no way to say
+    that: an index addresses one series and so imposes an order the request does
+    not have, while ``set_eq`` on ``series`` itself compares whole declarations
+    and fails a candidate that added an optional key it was entitled to add. The
+    wildcard addresses the field, which is the thing the check is about.
+
+    A member missing the field is skipped rather than collected as ``None`` —
+    ``set_eq`` is then a statement about the series that carry the field, which
+    is what makes ``series.*.roof`` meaningful on a chart whose weather series
+    legitimately has no roof.
     """
-    value: Any = args
-    for segment in path.split("."):
+    return _walk(args, path.split("."))
+
+
+def _walk(value: Any, segments: Sequence[str]) -> Any:
+    """:func:`_at_path`'s recursion, split out so ``*`` can branch over a list."""
+    for position, segment in enumerate(segments):
+        if segment == "*":
+            if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+                return _MISSING
+            rest = segments[position + 1 :]
+            collected = [
+                found
+                for item in value
+                if (found := _walk(item, rest) if rest else item) is not _MISSING
+            ]
+            return collected
         if isinstance(value, Mapping):
             if segment not in value:
                 return _MISSING

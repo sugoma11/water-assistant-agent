@@ -334,11 +334,19 @@ T18a's tool-signalled abstention to one with no tool signal.
 ### D. Model chains
 
 **T09 — threshold crossing ahead**
-Q: "Will the soil moisture of the {roof} roof fall below {thr} %θ within the next {h} hours?"
+Q: "Will the soil moisture of the {roof} roof fall below {thr} %θ over the next {d} days?"
 · roof ∈ P2
 A: bool (balanced) · Traj: {predict_green_roof_water_balance_tool} · Split: train+seen
 Oracle: `run_gr2l` over the resolved window, seeded per architecture §3.4's `min(window_start,
 as_of)` rule; min `swc_pct` < thr.
+Note: **days, not hours, and that is a T107 finding rather than a preference.** Phrased in hours,
+the horizon had to be converted to GR2L's daily rows somewhere, and the conversion was a rule the
+candidate was never told: the oracle read "the next 72 hours" as three days while the pilot's
+candidate, writing the window as explicit dates, read it as four. Neither reading is wrong, which
+is precisely the problem — the disagreement is invisible except on a draw whose minimum falls
+between the two windows. In days the candidate passes the number the question names straight into
+`forecast_days`, and there is nothing left to infer. **T10 carries the identical ambiguity** ("the
+next 72 h") and should be rephrased the same way when T110 implements it.
 
 **T10 — predicted minimum**
 Q: "What is the minimum soil moisture predicted for the {roof} roof over the next 72 h?" · roof ∈ P2

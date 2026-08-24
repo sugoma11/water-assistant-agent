@@ -35,6 +35,11 @@ import pytest
 from zoneinfo import ZoneInfo
 
 from eval.oracles import ORACLES
+from eval.oracles.availability import (
+    VARIANTS as T27_VARIANTS,
+    declined_spellings,
+    t27_non_modellable_roof,
+)
 from eval.oracles.base import OracleInputError
 from eval.oracles.counterfactual import (
     InertOverrideError,
@@ -117,7 +122,7 @@ from water_assistant_agent.assistant.tools.gr2l import (
 )
 from water_assistant_agent.assistant.tools.gr2l_client import ROOF_PRESETS
 from water_assistant_agent.assistant.tools.irrigation import make_irrigation_tool
-from water_assistant_agent.assistant.tools.roofs import ROOFS
+from water_assistant_agent.assistant.tools.roofs import ROOFS, resolve_roof
 from water_assistant_agent.assistant.tools.schemas import (
     DailyWeatherRow,
     Gr2lResultRow,
@@ -2142,6 +2147,241 @@ def test_t11_refuses_a_roof_the_rule_declines(tmp_path: Path):
         asyncio.run(t11_needs_irrigation_tomorrow(_inputs("T11", roof="Sumpfdach"), ctx))
 
 
+# --- T27: family I, modelling availability (T110) ------------------------------
+
+
+@pytest.mark.parametrize("roof", ["gravel", "wetland"])
+@pytest.mark.parametrize("variant", list(T27_VARIANTS))
+def test_t27_abstains_for_every_spelling_of_both_roofs(roof: str, variant: str):
+    """Both roofs, every spelling in the pool, all three variants: ``not_available``.
+
+    The two roofs behave identically under every water-balance route, which is
+    what lets family dependence carry the whole probe — A, B and H's ``measured``
+    series answer about these same roofs from the record, and every route that
+    reaches a model abstains.
+    """
+    ctx = make_case_context(AS_OF)
+    params: dict[str, Any] = {"variant": variant}
+    if variant != "irrigation":
+        params["d"] = 3
+
+    for alias in declined_spellings(roof):
+        answer = asyncio.run(
+            t27_non_modellable_roof(_inputs("T27", alias=alias, **params), ctx)
+        )
+
+        assert answer.status == "not_available"
+        assert answer.answer is None
+        assert answer.unit is None
+        assert answer.detail["roof"] == roof
+
+
+@pytest.mark.parametrize("variant", list(T27_VARIANTS))
+def test_t27_agrees_with_the_tool_its_variant_names(variant: str):
+    """The oracle's status against what the gold tool actually returns.
+
+    (i) and (iii) reach ``predict_green_roof_water_balance_tool`` and (ii)
+    reaches ``calc_irrigation``, and one scope table bounds both — so the limit
+    is a property of the roof rather than of one tool, which is the claim the
+    variant axis exists to make.
+    """
+    ctx = make_case_context(AS_OF)
+    params: dict[str, Any] = {"variant": variant}
+    if variant != "irrigation":
+        params["d"] = 3
+
+    answer = asyncio.run(
+        t27_non_modellable_roof(_inputs("T27", alias="Kiesdach", **params), ctx)
+    )
+    if variant == "irrigation":
+        tool = asyncio.run(make_irrigation_tool(ctx)("Kiesdach"))
+    else:
+        tool = asyncio.run(make_green_roof_balance_tool(ctx)("Kiesdach", forecast_days=3))
+
+    assert tool["status"] == answer.status == "not_available"
+    assert answer.detail["tool"] in {
+        "predict_green_roof_water_balance_tool",
+        "calc_irrigation",
+    }
+
+
+def test_t27_records_the_scope_tables_wording_not_one_tools():
+    """One membership, two wordings, and the oracle records the table's.
+
+    GR2L declines the wetland because its ponded storage has no water-content
+    contract; the irrigation rule declines it because it has no soil store to
+    read a wilting point against. Same roofs, different sentence — deliberate,
+    and stated as such in ``tools/irrigation.py``. An oracle that claimed one
+    tool's prose would be wrong on the variants routed to the other.
+    """
+    ctx = make_case_context(AS_OF)
+
+    answer = asyncio.run(
+        t27_non_modellable_roof(
+            _inputs("T27", alias="Sumpfdach", variant="irrigation"), ctx
+        )
+    )
+    model = asyncio.run(make_green_roof_balance_tool(ctx)("Sumpfdach", forecast_days=2))
+    calc = asyncio.run(make_irrigation_tool(ctx)("Sumpfdach"))
+
+    assert model["reason"] != calc["reason"]
+    assert answer.detail["scope_table_reason"] == model["reason"]
+
+
+def test_t27_pool_is_the_intersection_of_the_two_vocabularies():
+    """The alias map and the scope table disagree, and the pool is where they agree.
+
+    ``sd`` is a wetland alias ``roofs.py`` carries and ``NON_MODELLABLE_ROOFS``
+    omits, so it is in the first and not the second. The pool is read off both
+    rather than listed, so a spelling added to one and not the other leaves the
+    pool rather than silently joining it.
+    """
+    gravel, wetland = declined_spellings("gravel"), declined_spellings("wetland")
+
+    assert set(gravel) == ROOFS["gravel"].aliases
+    assert "sd" in ROOFS["wetland"].aliases
+    assert "sd" not in wetland
+    assert set(wetland) == ROOFS["wetland"].aliases - {"sd"}
+
+
+def test_t27_refuses_a_spelling_that_would_be_an_argument_fault():
+    """"SD" reaches ``invalid_argument``, not the scope limit, so the case is wrong.
+
+    The tool docstring tells the agent to name the roof the user asked about, so
+    passing the question's own spelling is the instructed behaviour — and it
+    converts a scope limit into a fumble the candidate could correct. Both look
+    like "did not answer", so the substitution would be silent
+    (``decisions.md`` § Typed abstention).
+    """
+    ctx = make_case_context(AS_OF)
+
+    with pytest.raises(OracleInputError, match="invalid_argument"):
+        asyncio.run(
+            t27_non_modellable_roof(
+                _inputs("T27", alias="SD", variant="irrigation"), ctx
+            )
+        )
+    tool = asyncio.run(make_irrigation_tool(ctx)("SD"))
+    assert tool["status"] == "error"
+    assert tool["error_type"] == "invalid_argument"
+
+
+@pytest.mark.parametrize("alias", ["das Kiesdach", "the gravel roof", "wetland roof"])
+def test_t27_refuses_multi_word_natural_language(alias: str):
+    """``normalize_roof_type`` strips and lowercases and does nothing else.
+
+    So no phrase carrying an article or an extra noun reaches either table —
+    including ``das Kiesdach``, which T27's own params line named, and ``the
+    gravel roof``, which is §1.6's example of covered natural language. The
+    question *text* may still say either; what this constrains is the ``alias``
+    parameter the oracle and the candidate both read.
+    """
+    ctx = make_case_context(AS_OF)
+
+    with pytest.raises(OracleInputError, match="no roof answers to"):
+        asyncio.run(
+            t27_non_modellable_roof(
+                _inputs("T27", alias=alias, variant="irrigation"), ctx
+            )
+        )
+    assert resolve_roof(alias) is None
+
+
+def test_t27_refuses_a_roof_the_water_balances_model():
+    """A modellable roof here would record an answerable request as an abstention.
+
+    That is the error the false-abstention rate cannot see, because it is
+    computed against the gold set that would carry it.
+    """
+    ctx = make_case_context(AS_OF)
+
+    with pytest.raises(OracleInputError, match="which the water balances model"):
+        asyncio.run(
+            t27_non_modellable_roof(
+                _inputs("T27", alias="semi_intensive", variant="irrigation"), ctx
+            )
+        )
+
+
+def test_t27_counts_its_horizon_in_days():
+    """The last template carrying "the next {h} hours", repaired in this packet.
+
+    It moves no answer — an abstention is an abstention whatever the window is —
+    and that is exactly why it would have survived: the defect is invisible to
+    this family's own oracle, and would have reached a candidate as an
+    hours-to-days conversion nobody specified.
+    """
+    ctx = make_case_context(AS_OF)
+
+    answer = asyncio.run(
+        t27_non_modellable_roof(
+            _inputs("T27", alias="Kiesdach", variant="predicted_minimum", d=3), ctx
+        )
+    )
+    assert answer.detail["horizon_days"] == 3
+
+    with pytest.raises(OracleInputError, match="whole number of days"):
+        asyncio.run(
+            t27_non_modellable_roof(
+                _inputs("T27", alias="Kiesdach", variant="predicted_minimum", d="72h"),
+                ctx,
+            )
+        )
+
+
+def test_t27_takes_no_horizon_on_the_irrigation_variant():
+    """``calc_irrigation`` has no date arguments, so (ii) carries no ``d``."""
+    ctx = make_case_context(AS_OF)
+
+    answer = asyncio.run(
+        t27_non_modellable_roof(
+            _inputs("T27", alias="Sumpfdach", variant="irrigation"), ctx
+        )
+    )
+
+    assert answer.detail["horizon_days"] is None
+    assert answer.detail["tool"] == "calc_irrigation"
+
+
+def test_t27_fetches_nothing_and_stamps_only_the_database():
+    """Both tools check scope at entry, so a T27 case costs no cache entry.
+
+    No weather fetch and — the reason it matters for T116 — no GR2L request, which
+    puts T27 in the same zero-capture class as T18a and T24a(iii). Asserted with a
+    context whose database and weather client both raise.
+    """
+
+    class Exploding:
+        def execute_query(self, *_: Any, **__: Any) -> Any:
+            raise AssertionError("T27 must not read the database")
+
+        async def fetch(self, **_: Any) -> Any:
+            raise AssertionError("T27 must not fetch weather")
+
+    ctx = _context(db=Exploding(), weather=Exploding())
+
+    answer = asyncio.run(
+        t27_non_modellable_roof(
+            _inputs("T27", alias="QWetland", variant="forced_rain", d=2), ctx
+        )
+    )
+
+    assert set(answer.pins) == {"duckdb_sha256"}
+    assert "gr2l_canary" not in answer.pins
+
+
+def test_t27_refuses_an_unknown_variant():
+    """The variant axis is closed; an unknown one is a generation fault."""
+    ctx = make_case_context(AS_OF)
+
+    with pytest.raises(OracleInputError, match="unknown T27 variant"):
+        asyncio.run(
+            t27_non_modellable_roof(
+                _inputs("T27", alias="Kiesdach", variant="plot", d=3), ctx
+            )
+        )
+
+
 # --- T21, T22, T23, T26: family G, the counterfactuals (T110) ------------------
 
 
@@ -3034,6 +3274,7 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
         "T24b",
         "T25",
         "T26",
+        "T27",
     ]
     assert ORACLES["T01"] is t01_total_outflow
     assert ORACLES["T02"] is t02_hot_day_count
@@ -3066,3 +3307,4 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
     assert ORACLES["T23"] is t23_state_override
     assert ORACLES["T25"] is t25_tomorrow_warmer_than_yesterday
     assert ORACLES["T26"] is t26_composed_override
+    assert ORACLES["T27"] is t27_non_modellable_roof

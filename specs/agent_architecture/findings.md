@@ -723,6 +723,40 @@ same 13.99.
 service through `make_case_context(..., allow_live=True)`, one event loop.
 *Date:* 2026-08-24.
 
+**The alias map and the scope table are not the same vocabulary, and three of
+T27's own stated spellings fall in the gap.** `roofs.py`'s alias map is what
+§1.6 means by "natural language the semantic layer's alias map covers";
+`NON_MODELLABLE_ROOFS` is what both water-balance tools match a normalized
+argument against. Posting every spelling of the two excluded roofs to
+`predict_green_roof_water_balance_tool` and to `calc_irrigation`: twelve reach
+`status='not_available'` from both, and three do not.
+
+| Spelling | `resolve_roof` | in scope table | both tools return |
+|---|---|---|---|
+| `SD` | wetland | **no** | `error` / `invalid_argument` |
+| `das Kiesdach` | **none** | no | `error` / `invalid_argument` |
+| `the gravel roof` | **none** | no | `error` / `invalid_argument` |
+
+Two distinct causes. `SD` is a wetland alias `roofs.py` carries and the scope
+table omits. The other two are multi-word: `normalize_roof_type` strips and
+lowercases and does nothing else, so no phrase containing an article or a noun
+reaches either table. `das Kiesdach` was **named verbatim in T27's params line**
+and `the gravel roof` is §1.6's own example of covered natural language.
+
+Why it matters beyond tidiness: the tool docstring instructs the agent to "name
+the roof the user actually asked about", so passing the question's own spelling
+is the behaviour the prompt asks for — and it converts a scope limit into an
+`invalid_argument`, which `decisions.md § Typed abstention` keeps apart precisely
+because one is a fumble the candidate can correct and the other is not. Both
+outcomes look like "did not answer", so the substitution is silent, and the
+false-abstention rate is computed against the gold set that would carry it. T27's
+pool is now the intersection, read off the two tables by the oracle rather than
+listed. Over that pool the oracle and the tools agree on all **36** combinations
+(12 spellings × 3 variants), with no fetch of any kind on any of them.
+*Verified:* both tool factories over every alias of the two roofs at `as_of`
+2026-04-20 through a replay-cache context, against
+`t27_non_modellable_roof`. *Date:* 2026-08-24.
+
 **T19 is the only GR2L window in the catalog that can reach the station.** It
 follows from the forward-window finding above rather than being a separate
 measurement: every other model template (T09, T10, T21, T22, T26) resolves a

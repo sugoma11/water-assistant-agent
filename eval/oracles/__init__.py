@@ -5,13 +5,31 @@ a case's ``inputs`` and the rollout context the answer is computed through, and
 returns the four ``expectations`` keys it owns plus the pins the answer was
 stamped against (:mod:`eval.oracles.base`).
 
-**Where the set stands.** T103 wrote the first three — T01, T07 and T09 — and
-T107 added the coverage draws: T06 (a stated constant) and the two abstentions,
-T17a and T18a, whose oracles assert an outcome because there is no number to
-compute. T110 adds the measured families in one packet — A, B, C and H — and the
-model families D, E, F, G and I in the next. The registry is what T111's
-generator looks a template up in, so a template with no oracle fails loudly at
-generation rather than emitting a case with no answer.
+**The set is complete: all 32 catalog entries have one.** T103 wrote the first
+three — T01, T07 and T09 — T107 added the coverage draws (T06 and the two
+abstentions T17a and T18a, whose oracles assert an outcome because there is no
+number to compute), and T110 finished the rest in two packets: the measured
+families A, B, C and H, then the model families D, E, F, G and I. The registry is
+what T111's generator looks a template up in, so a template with no oracle fails
+loudly at generation rather than emitting a case with no answer.
+
+**Registered is not the same as materializable, and one entry is currently the
+difference.** T22 raises rather than answering, because the GR2L build serving
+this deployment accepts ``albedo`` and ignores it, so every answer would equal
+the un-overridden prediction and a candidate that never passed the argument would
+score full marks (:func:`~eval.oracles.counterfactual.t22_albedo_override`). The
+refusal is computed per draw against the roof's own default, so the entry starts
+producing cases unchanged the day the service wires the parameter up. T23 raises
+on the same grounds for a *draw* rather than for the template — a window whose
+store has saturated has forgotten the seed it was given.
+
+**Four modules carry the model families, split by what they share rather than by
+family letter.** ``model_chain`` holds the GR2L scope check and the run every
+family D and G oracle goes through; ``counterfactual`` adds the three overrides;
+``irrigation`` holds both of the calculator's entry points, so family E's T07 and
+T11 sit beside family F's T16a and T16b; ``hybrid`` holds the card-grounded
+chains. Family E is therefore in two files, which is the tool boundary rather
+than an accident.
 
 **T24a is registered, and what it materializes is a status rather than a
 number.** The earlier reading — that a plot needs no oracle, because its
@@ -25,6 +43,7 @@ the abstention the third variant is scored on
 (:func:`~eval.oracles.presentation.t24a_plot_request`).
 """
 
+from eval.oracles.availability import t27_non_modellable_roof
 from eval.oracles.base import Oracle, OracleAnswer, OracleInputError
 from eval.oracles.counterfactual import (
     t21_forced_rain_minimum,
@@ -103,6 +122,7 @@ ORACLES: dict[str, Oracle] = {
     "T24b": t24b_extensive_gap,
     "T25": t25_tomorrow_warmer_than_yesterday,
     "T26": t26_composed_override,
+    "T27": t27_non_modellable_roof,
 }
 """Template id → the oracle that answers it.
 
@@ -146,4 +166,5 @@ __all__ = [
     "t24b_extensive_gap",
     "t25_tomorrow_warmer_than_yesterday",
     "t26_composed_override",
+    "t27_non_modellable_roof",
 ]

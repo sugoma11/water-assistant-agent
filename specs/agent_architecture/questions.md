@@ -674,14 +674,31 @@ on every variant-(i) instance.
 
 **T27 — modelling request for a non-modellable roof (abstention)**
 Q variants, all naming a roof outside both water-balance tools' scope:
-(i) "What is the minimum soil moisture predicted for the {alias} over the next {h} hours?" —
+(i) "What is the minimum soil moisture predicted for the {alias} over the next {d} days?" —
 Traj: {predict_green_roof_water_balance_tool} · Must-not: `text_to_sql_agent`
 (ii) "Does the {alias} need irrigation tomorrow?" — Traj: {calc_irrigation}
-(iii) "If 30 mm fell tomorrow, what would the {alias}'s minimum soil moisture be over the next
-48 h?" — Traj: {predict_green_roof_water_balance_tool(forcings=…)} · Must-not: `text_to_sql_agent`
+(iii) "If {mm} mm fell tomorrow, what would the {alias}'s minimum soil moisture be over the next
+{d} days?" — Traj: {predict_green_roof_water_balance_tool(forcings=…)} · Must-not: `text_to_sql_agent`
 DE: "Wie feucht wird das Kiesdach morgen sein?"
-Params: alias ∈ the semantic layer's gravel aliases {gravel roof, Kiesdach, das Kiesdach, KD} and its
-wetland aliases (§1.6); window; variant. Roof pool: **gravel and wetland**, deliberately outside
+Params: alias ∈ the spellings that **actually reach the scope limit** — `gravel`, `gravel_roof`,
+`kies`, `kiesdach`, `KD`, `QGravel` and `wetland`, `wetland_roof`, `sumpf`, `sumpfdach`, `Sumpf2`,
+`QWetland`, matched case-insensitively; window; variant.
+**The pool is the intersection of two vocabularies that ought to be one, and T110 measured the gap.**
+`roofs.py`'s alias map and `NON_MODELLABLE_ROOFS` — the table both tools match an argument against —
+disagree in two ways. `SD` resolves to the wetland in the alias map and is **absent** from the scope
+table, so a candidate passing that spelling gets `invalid_argument` where the gold expectation is
+`not_available`; and multi-word natural language resolves in neither, because `normalize_roof_type`
+only strips and lowercases — so `das Kiesdach`, **named verbatim in this entry's own earlier params
+line**, and `the gravel roof`, §1.6's own example, both fail. The catalog now states the pool as
+spellings rather than as roofs, and the oracle reads it off the two tables rather than carrying a
+list (`findings.md`). Note the question *text* may still say "das Kiesdach" — that is a paraphrase
+concern, and what the pool constrains is the `{alias}` parameter.
+**The horizon on (i) and (iii) is `{d}` days**, repaired here from "the next `{h}` hours" and "the
+next 48 h" — the last two entries carrying the phrasing T09, T13 and T15b were repaired out of, and
+the ones P7a1 handed to this packet. It moves no answer, since an abstention is an abstention
+whatever the window is, which is exactly why it would have survived: this is the one family where
+the defect is invisible to its own oracle and would have reached a candidate as an unspecified
+hours-to-days conversion. Roof pool: **gravel and wetland**, deliberately outside
 §1.8's pools. **Every variant samples both roofs** — `calc_irrigation` excludes the wetland on the
 same terms as GR2L (architecture §3.5), so variant (ii) is an abstention case for either roof.
 A: not_available (unit null) · Cards: [] · Split: train+seen

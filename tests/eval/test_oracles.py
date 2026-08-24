@@ -36,7 +36,19 @@ from zoneinfo import ZoneInfo
 
 from eval.oracles import ORACLES
 from eval.oracles.base import OracleInputError
-from eval.oracles.irrigation import t07_needs_irrigation_now
+from eval.oracles.hybrid import (
+    heatwave_days,
+    heatwave_definition_card,
+    heatwave_runs,
+    t08_heatwave_days,
+    t12_retention_above_target,
+    t20_forecast_heatwave,
+    t25_tomorrow_warmer_than_yesterday,
+)
+from eval.oracles.irrigation import (
+    t07_needs_irrigation_now,
+    t11_needs_irrigation_tomorrow,
+)
 from eval.oracles.model_chain import (
     forecast_days_for,
     past_days_for,
@@ -1689,6 +1701,434 @@ def test_t18a_refuses_a_window_the_tool_would_actually_serve():
         )
 
 
+# --- T08, T11, T12, T20, T25: family E (T110) ----------------------------------
+
+
+class RoutedWeather:
+    """A weather client whose rows and source depend on the window it is asked for.
+
+    T25's whole subject: the composite serves the station only where the record
+    covers every day of the window, so asking for yesterday alone and asking for
+    yesterday-through-tomorrow reach two different sources — and the site's
+    instruments and the reanalysis disagree about the same day.
+    """
+
+    def __init__(self, station: dict[str, float], archive: dict[str, float]):
+        self.calls: list[tuple[str, str]] = []
+        self._station, self._archive = station, archive
+
+    async def fetch(self, *, start_date: str, end_date: str) -> WeatherResult:
+        self.calls.append((start_date, end_date))
+        start = date.fromisoformat(start_date)
+        end = date.fromisoformat(end_date)
+        days = [start + timedelta(days=n) for n in range((end - start).days + 1)]
+        covered = all(day.isoformat() in self._station for day in days)
+        table = self._station if covered else self._archive
+        return WeatherResult(
+            latitude=51.353484,
+            longitude=12.432152,
+            timezone="Europe/Berlin",
+            source="station" if covered else "archive",
+            data=[
+                DailyWeatherRow(
+                    Date=day.isoformat(),
+                    tm=table[day.isoformat()] - 6.0,
+                    tx=table[day.isoformat()],
+                    tn=table[day.isoformat()] - 12.0,
+                    rf=55.0,
+                    precip=0.0,
+                    w=6.0,
+                    gs=2400.0,
+                )
+                for day in days
+            ],
+        )
+
+
+class RampWeather:
+    """A forecast whose daily maximum is read off a per-day table, Archive-served."""
+
+    def __init__(self, by_day: dict[str, float]):
+        self.calls: list[tuple[str, str]] = []
+        self._by_day = by_day
+
+    async def fetch(self, *, start_date: str, end_date: str) -> WeatherResult:
+        self.calls.append((start_date, end_date))
+        start = date.fromisoformat(start_date)
+        end = date.fromisoformat(end_date)
+        return WeatherResult(
+            latitude=51.353484,
+            longitude=12.432152,
+            timezone="Europe/Berlin",
+            source="archive",
+            data=[
+                DailyWeatherRow(
+                    Date=(start + timedelta(days=n)).isoformat(),
+                    tm=10.0,
+                    tx=self._by_day.get((start + timedelta(days=n)).isoformat(), 10.0),
+                    tn=5.0,
+                    rf=55.0,
+                    precip=0.0,
+                    w=6.0,
+                    gs=2400.0,
+                )
+                for n in range((end - start).days + 1)
+            ],
+        )
+
+
+@pytest.mark.parametrize(
+    ("hot", "expected"),
+    [
+        ([True] * 3, [(0, 3)]),
+        ([True] * 2, []),
+        ([True, True, False, True, True, True], [(3, 6)]),
+        ([True] * 3 + [False] + [True] * 4, [(0, 3), (4, 8)]),
+        ([False, True, True, True], [(1, 4)]),
+    ],
+)
+def test_heatwave_runs_are_maximal_and_at_least_three_days(
+    hot: list[bool], expected: list[tuple[int, int]]
+):
+    """Three consecutive days make a heatwave; two do not, and a gap ends one.
+
+    The last case is the one worth stating: a day with no reading is not a hot
+    day, so it *breaks* a run rather than joining the two around it. That is the
+    conservative direction — a gap silently joining two spells would manufacture
+    a heatwave out of missing data.
+    """
+    assert heatwave_runs(hot) == expected
+
+
+def test_heatwave_days_refuses_a_run_that_crosses_the_windows_edge():
+    """One hot day at the window's end is nothing inside it and a heatwave day outside.
+
+    30 June, 1 July and 2 July at 26 °C: counted inside June the 30th is a lone
+    hot day and no heatwave at all, and counted over the record it is the first
+    day of a three-day spell. Neither reading is wrong — a heatwave is a property
+    of the weather and a count is a property of the window — which is exactly why
+    one cannot simply be chosen (§1.6). It is the shape that refuses June 2025 in
+    the pinned record, at 11 days against 12.
+    """
+    daily_max = {date(2025, 6, 30) + timedelta(days=n): 26.0 for n in range(3)}
+
+    with pytest.raises(OracleInputError, match="crosses the edge"):
+        heatwave_days(daily_max, (date(2025, 6, 1), date(2025, 6, 30)), "the month")
+
+
+def test_heatwave_days_counts_a_run_wholly_inside_the_window():
+    """A cold edge makes the two readings agree, and then the count is the run's length."""
+    daily_max = {date(2025, 6, 10) + timedelta(days=n): 26.0 for n in range(4)}
+    daily_max[date(2025, 6, 14)] = 15.0
+
+    assert heatwave_days(daily_max, (date(2025, 6, 1), date(2025, 6, 30)), "x") == 4
+
+
+def test_t08_counts_july_2025s_fifteen_heatwave_days():
+    """15 days, worked out from the record's own runs rather than from the code.
+
+    July 2025 reaches 24 °C on the 1st–7th, the 10th, 11th, 13th, 14th, the
+    18th–25th and the 27th — twenty hot days. Only two of those stretches last
+    three days: the seven from the 1st and the eight from the 18th. 7 + 8 = 15,
+    and the five isolated or paired days count for nothing, which is what makes
+    this a heatwave count rather than a hot-day count.
+    """
+    answer = asyncio.run(
+        t08_heatwave_days(
+            _inputs("T08", period="2025-07-01..2025-07-31"),
+            make_case_context(AS_OF),
+        )
+    )
+
+    assert answer.answer == 15
+    assert answer.detail["hot_days"] == 20
+    assert answer.unit == "count"
+    assert answer.pins["duckdb_sha256"] == duckdb_sha256()
+
+
+def test_t08_reads_the_definition_from_the_card_the_route_fetches():
+    """The card states the two values the constants hold, and marks one eval policy.
+
+    T08 scores ``heatwave_definition`` as a gold card, so the correct trajectory
+    includes fetching it. A card that stopped stating the duration would leave
+    that route unable to answer while the oracle went on producing a number, and
+    a duration that lost its ``eval_policy`` mark would have an answer quoting it
+    as the site's own policy.
+    """
+    definition = heatwave_definition_card()
+
+    assert definition == {"heat_threshold_c": 24.0, "min_consecutive_days": 3}
+    card = load_card("heatwave_definition")
+    assert "min_consecutive_days" in card.values["eval_policy"]
+    assert "heat_threshold_c" not in card.values["eval_policy"]
+
+
+def test_t08_refuses_a_period_the_case_cannot_see():
+    """A window running past ``as_of`` has no single defensible count."""
+    ctx = make_case_context(datetime(2025, 7, 15, 12, 0, tzinfo=BERLIN))
+
+    with pytest.raises(OracleInputError, match="past the case's as_of"):
+        asyncio.run(t08_heatwave_days(_inputs("T08", period="2025-07-01..2025-07-31"), ctx))
+
+
+# T12's fixture: one rain event over two Berlin days, with both the rain and the
+# outflow straddling the boundary so a UTC grouping moves water between the two.
+# Berlin 2025-07-12 holds 8.0 mm of rain (the 22:30 UTC row of the 11th plus the
+# midday row) and the roof sheds 1.0 L; Berlin 07-13 holds 2.0 mm and 1.0 L.
+# Over the window: rain 10.0, outflow 2.0, retention 0.8 — above the 0.5 target.
+# Grouped in UTC the same rows give rain 4.0 and outflow 2.0, a retention of 0.5,
+# which is exactly *on* the target and answers the other way.
+_T12_ROWS = """
+CREATE TABLE wetter (timestamp TIMESTAMP, Rain DOUBLE, Tmax DOUBLE);
+INSERT INTO wetter VALUES
+  (TIMESTAMP '2025-07-11 22:30:00', 6.0, 18.0),
+  (TIMESTAMP '2025-07-12 12:00:00', 2.0, 19.0),
+  (TIMESTAMP '2025-07-12 22:30:00', 1.5, 17.0),
+  (TIMESTAMP '2025-07-13 12:00:00', 0.5, 20.0);
+CREATE TABLE outflow (timestamp TIMESTAMP, Kies_Efflux DOUBLE);
+INSERT INTO outflow VALUES
+  (TIMESTAMP '2025-07-11 22:30:00', 1.0),
+  (TIMESTAMP '2025-07-12 22:30:00', 0.8),
+  (TIMESTAMP '2025-07-13 12:00:00', 0.2);
+"""
+
+
+def test_t12_compares_retention_with_the_target_over_the_sites_own_days(tmp_path: Path):
+    """0.8 retention on Berlin days — and 0.5, the target itself, on UTC ones.
+
+    ``(10.0 − 2.0) / 10.0`` against a 0.50 target is a yes. The same four rows
+    grouped in UTC put 6.0 mm of the rain on the 11th and leave the window with
+    4.0 mm against 2.0 L, which is 0.5 and answers no under the strict
+    comparison. The fixture is built that way on purpose: the day boundary is not
+    a detail of this template, it is what decides it
+    (``decisions.md`` § The day boundary).
+    """
+    ctx = _context(
+        as_of=datetime(2026, 1, 1, 12, 0, tzinfo=BERLIN),
+        db=_executor(tmp_path / "t12.duckdb", _T12_ROWS),
+    )
+
+    answer = asyncio.run(
+        t12_retention_above_target(
+            _inputs("T12", roof="gravel", event="2025-07-12..2025-07-13"), ctx
+        )
+    )
+
+    assert answer.detail["rain_mm"] == 10.0
+    assert answer.detail["outflow_mm"] == 2.0
+    assert answer.detail["retention"] == 0.8
+    assert answer.answer is True
+    assert answer.unit is None
+
+
+def test_t12_refuses_an_impossible_retention(tmp_path: Path):
+    """Outflow above rainfall over a closed window is not a retention of −0.3.
+
+    It means the gauge undercaught or a previous event was still draining in.
+    ``t12_rain_events.md`` rejects those pairs at enumeration; enforcing it here
+    is what stops one being written into the gold set as truth if a draw slips
+    through.
+    """
+    rows = _T12_ROWS.replace("(TIMESTAMP '2025-07-12 22:30:00', 0.8)", "(TIMESTAMP '2025-07-12 22:30:00', 15.0)")
+    ctx = _context(
+        as_of=datetime(2026, 1, 1, 12, 0, tzinfo=BERLIN),
+        db=_executor(tmp_path / "t12bad.duckdb", rows),
+    )
+
+    with pytest.raises(OracleInputError, match="physically impossible"):
+        asyncio.run(
+            t12_retention_above_target(
+                _inputs("T12", roof="gravel", event="2025-07-12..2025-07-13"), ctx
+            )
+        )
+
+
+def test_t12_refuses_the_roof_the_card_excludes(tmp_path: Path):
+    """The semi-intensive roof has no lysimeter, so its retention is unknown, not poor.
+
+    Refused through ``roofs.py``'s own absence of an ``outflow`` column — the
+    same route T01 and T04 take — and the ``retention_target`` card carries the
+    matching exclusion for the agent to read.
+    """
+    ctx = _context(
+        as_of=datetime(2026, 1, 1, 12, 0, tzinfo=BERLIN),
+        db=_executor(tmp_path / "t12pool.duckdb", _T12_ROWS),
+    )
+
+    with pytest.raises(OracleInputError, match="no lysimeter"):
+        asyncio.run(
+            t12_retention_above_target(
+                _inputs("T12", roof="semi_intensive", event="2025-07-12..2025-07-13"), ctx
+            )
+        )
+    assert "semi_intensive" in load_card("retention_target").not_applicable
+
+
+@pytest.mark.parametrize(
+    ("roof", "event", "retention", "expected"),
+    [
+        ("gravel", "2025-07-12..2025-07-14", 0.2239, False),
+        ("irrigated_extensive", "2025-07-12..2025-07-14", 1.0, True),
+        ("irrigated_extensive", "2026-02-17..2026-02-19", 0.3017, False),
+    ],
+)
+def test_t12_reproduces_the_committed_event_table(
+    roof: str, event: str, retention: float, expected: bool
+):
+    """22.4 %, 100.0 % and 30.2 % — `t12_rain_events.md`'s own numbers, recomputed.
+
+    The report is generated by a standalone script that shares no code with this
+    oracle, so agreement is two independent readings of one record rather than
+    one reading twice. The first two rows are the same event on two roofs and
+    answer opposite ways, which is the class balance the 50 % target was chosen
+    for (``rules_constants.RETENTION_TARGET``).
+    """
+    answer = asyncio.run(
+        t12_retention_above_target(
+            _inputs("T12", roof=roof, event=event), make_case_context(AS_OF)
+        )
+    )
+
+    assert answer.detail["retention"] == pytest.approx(retention, abs=5e-5)
+    assert answer.answer is expected
+    assert answer.detail["target"] == 0.5
+
+
+def test_t20_applies_the_same_definition_to_the_forecast():
+    """Three forecast days at 24 °C qualify; two do not.
+
+    The card's rule, the forecast's rows. ``tx`` is the daily maximum a heatwave
+    is defined on, the same field T14 reads and for the same reason.
+    """
+    hot = {
+        (AS_OF.date() + timedelta(days=n)).isoformat(): 26.0 for n in range(3)
+    }
+    ctx = _context(weather=RampWeather(hot))
+
+    answer = asyncio.run(t20_forecast_heatwave(_inputs("T20", d=7), ctx))
+
+    assert answer.answer is True
+    assert answer.detail["heatwave_days"] == 3
+
+    two = {(AS_OF.date() + timedelta(days=n)).isoformat(): 26.0 for n in range(2)}
+    answer = asyncio.run(
+        t20_forecast_heatwave(_inputs("T20", d=7), _context(weather=RampWeather(two)))
+    )
+
+    assert answer.answer is False
+    assert answer.detail["heatwave_days"] == 0
+
+
+def test_t20_fetches_two_days_past_the_window_to_see_the_far_edge():
+    """A run reaching the last forecast day and continuing is refused, not decided.
+
+    The oracle asks for ``d + 2`` days so the ambiguity is visible; the extra
+    days are never counted. Without the margin a two-day spell at the end of the
+    window would answer "no" while the forecast the candidate can see says the
+    spell runs to three.
+    """
+    weather = RampWeather(
+        {(AS_OF.date() + timedelta(days=n)).isoformat(): 26.0 for n in (5, 6, 7)}
+    )
+    ctx = _context(weather=weather)
+
+    with pytest.raises(OracleInputError, match="crosses the edge"):
+        asyncio.run(t20_forecast_heatwave(_inputs("T20", d=7), ctx))
+    assert weather.calls == [("2026-04-20", "2026-04-28")]
+
+
+def test_t20_refuses_a_horizon_whose_margin_leaves_the_forecast():
+    """Sixteen days plus the margin is past the tool's limit, so the edge is unreadable."""
+    ctx = _context(weather=RampWeather({}))
+
+    with pytest.raises(OracleInputError, match="beyond the tool's"):
+        asyncio.run(t20_forecast_heatwave(_inputs("T20", d=16), ctx))
+
+
+# T25's fixture: the station and the Archive disagree about yesterday by 0.63 °C,
+# the gap measured at `as_of` 2026-04-20 (`findings.md`). Tomorrow is fixed at
+# 12.9 °C, which sits between the two readings — so the two-call route answers
+# "warmer" and the single-call route answers "not warmer".
+_T25_STATION = {"2026-04-19": 12.57}
+_T25_ARCHIVE = {"2026-04-19": 13.20, "2026-04-20": 13.0, "2026-04-21": 12.9}
+
+
+def test_t25_compares_tomorrows_maximum_with_yesterdays():
+    """Each day from the source its own window resolves to, and the answer is strict."""
+    weather = RoutedWeather(_T25_STATION, {**_T25_ARCHIVE, "2026-04-21": 11.9})
+    ctx = _context(weather=weather)
+
+    answer = asyncio.run(t25_tomorrow_warmer_than_yesterday(_inputs("T25"), ctx))
+
+    assert answer.answer is False
+    assert answer.detail["yesterday_source"] == "station"
+    assert answer.detail["tomorrow_source"] == "archive"
+    assert answer.detail["yesterday_tx_c"] == 12.57
+    assert answer.pins["weather_source"] == ["archive", "station"]
+    assert answer.pins["station_derivation"] == station_derivation_version()
+
+
+def test_t25_refuses_a_draw_the_two_gold_routes_answer_differently():
+    """12.9 °C sits between the station's yesterday and the Archive's, so the route decides.
+
+    Both routes are gold — the docstring recommends the combined call for exactly
+    this shape — so a case whose answer turns on which one a candidate took would
+    score it wrong for doing what it was told. That is §1.6's "more than one
+    defensible reading", reached through the *route* rather than through the
+    window, and it is the only template in the catalog where it happens.
+    """
+    ctx = _context(weather=RoutedWeather(_T25_STATION, _T25_ARCHIVE))
+
+    with pytest.raises(OracleInputError, match="two gold routes disagree"):
+        asyncio.run(t25_tomorrow_warmer_than_yesterday(_inputs("T25"), ctx))
+
+
+def test_t25_asks_for_both_days_and_for_the_window_that_spans_them():
+    """Three fetches: yesterday, tomorrow, and the combined window the check needs."""
+    weather = RoutedWeather(_T25_STATION, {**_T25_ARCHIVE, "2026-04-21": 11.9})
+
+    asyncio.run(t25_tomorrow_warmer_than_yesterday(_inputs("T25"), _context(weather=weather)))
+
+    assert weather.calls == [
+        ("2026-04-19", "2026-04-19"),
+        ("2026-04-21", "2026-04-21"),
+        ("2026-04-19", "2026-04-21"),
+    ]
+
+
+@pytest.mark.parametrize("tx", [5.0, 30.0])
+@pytest.mark.parametrize("offset", [-1.0, 2.0, 10.0])
+def test_t11_is_t07s_call_and_agrees_with_the_tool(
+    tx: float, offset: float, tmp_path: Path
+):
+    """The twin is in the question, not in the computation, and the tool forces that.
+
+    ``calc_irrigation`` takes no date arguments: the decision horizon is 48 h —
+    today and tomorrow — so a candidate asked "tomorrow?" issues the call one
+    asked "right now?" issues. An oracle that shifted the window would encode a
+    number no gold route produces.
+    """
+    theta = _theta_at(IRRIGABLE, "wilting") + offset
+    path = tmp_path / f"t11{abs(hash((tx, offset)))}.duckdb"
+    ctx = _context(db=_seed_db(path, IRRIGABLE, theta), weather=StubWeather(tx=tx))
+
+    eleven = asyncio.run(t11_needs_irrigation_tomorrow(_inputs("T11", roof=IRRIGABLE), ctx))
+    seven = asyncio.run(t07_needs_irrigation_now(_inputs("T07", roof=IRRIGABLE), ctx))
+    tool = asyncio.run(make_irrigation_tool(ctx)(IRRIGABLE))
+
+    assert tool["status"] == "success"
+    assert eleven.answer == seven.answer == tool["irrigate"]
+    assert eleven.detail["reason"] == tool["reason"]
+
+
+def test_t11_refuses_a_roof_the_rule_declines(tmp_path: Path):
+    """Pool P2, named in the refusal so a sampling defect says which pool it broke."""
+    ctx = _context(db=_seed_db(tmp_path / "t11scope.duckdb", IRRIGABLE, 20.0))
+
+    with pytest.raises(OracleInputError, match="T11's pool is P2"):
+        asyncio.run(t11_needs_irrigation_tomorrow(_inputs("T11", roof="Sumpfdach"), ctx))
+
+
 # --- T24a, T24b: family H (T110) -----------------------------------------------
 
 
@@ -1936,8 +2376,11 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
         "T05",
         "T06",
         "T07",
+        "T08",
         "T09",
         "T10",
+        "T11",
+        "T12",
         "T13",
         "T14",
         "T15a",
@@ -1947,8 +2390,10 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
         "T18a",
         "T18b",
         "T19",
+        "T20",
         "T24a",
         "T24b",
+        "T25",
     ]
     assert ORACLES["T01"] is t01_total_outflow
     assert ORACLES["T02"] is t02_hot_day_count
@@ -1968,5 +2413,10 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
     assert ORACLES["T15b"] is t15b_future_rain
     assert ORACLES["T18a"] is t18a_unservable_window
     assert ORACLES["T18b"] is t18b_missing_variable
+    assert ORACLES["T08"] is t08_heatwave_days
+    assert ORACLES["T11"] is t11_needs_irrigation_tomorrow
+    assert ORACLES["T12"] is t12_retention_above_target
+    assert ORACLES["T20"] is t20_forecast_heatwave
     assert ORACLES["T24a"] is t24a_plot_request
     assert ORACLES["T24b"] is t24b_extensive_gap
+    assert ORACLES["T25"] is t25_tomorrow_warmer_than_yesterday

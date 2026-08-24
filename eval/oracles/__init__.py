@@ -26,7 +26,16 @@ the abstention the third variant is scored on
 """
 
 from eval.oracles.base import Oracle, OracleAnswer, OracleInputError
-from eval.oracles.irrigation import t07_needs_irrigation_now
+from eval.oracles.hybrid import (
+    t08_heatwave_days,
+    t12_retention_above_target,
+    t20_forecast_heatwave,
+    t25_tomorrow_warmer_than_yesterday,
+)
+from eval.oracles.irrigation import (
+    t07_needs_irrigation_now,
+    t11_needs_irrigation_tomorrow,
+)
 from eval.oracles.model_chain import (
     t09_falls_below_threshold,
     t10_predicted_minimum,
@@ -62,8 +71,11 @@ ORACLES: dict[str, Oracle] = {
     "T05": t05_peak_outflow_day,
     "T06": t06_stated_constant,
     "T07": t07_needs_irrigation_now,
+    "T08": t08_heatwave_days,
     "T09": t09_falls_below_threshold,
     "T10": t10_predicted_minimum,
+    "T11": t11_needs_irrigation_tomorrow,
+    "T12": t12_retention_above_target,
     "T13": t13_rain_expected,
     "T14": t14_forecast_max_temperature,
     "T15a": t15a_past_rain,
@@ -73,8 +85,10 @@ ORACLES: dict[str, Oracle] = {
     "T18a": t18a_unservable_window,
     "T18b": t18b_missing_variable,
     "T19": t19_model_deviation,
+    "T20": t20_forecast_heatwave,
     "T24a": t24a_plot_request,
     "T24b": t24b_extensive_gap,
+    "T25": t25_tomorrow_warmer_than_yesterday,
 }
 """Template id → the oracle that answers it.
 
@@ -94,8 +108,11 @@ __all__ = [
     "t05_peak_outflow_day",
     "t06_stated_constant",
     "t07_needs_irrigation_now",
+    "t08_heatwave_days",
     "t09_falls_below_threshold",
     "t10_predicted_minimum",
+    "t11_needs_irrigation_tomorrow",
+    "t12_retention_above_target",
     "t13_rain_expected",
     "t14_forecast_max_temperature",
     "t15a_past_rain",
@@ -105,6 +122,8 @@ __all__ = [
     "t18a_unservable_window",
     "t18b_missing_variable",
     "t19_model_deviation",
+    "t20_forecast_heatwave",
     "t24a_plot_request",
     "t24b_extensive_gap",
+    "t25_tomorrow_warmer_than_yesterday",
 ]

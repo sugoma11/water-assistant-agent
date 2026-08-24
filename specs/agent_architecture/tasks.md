@@ -3054,6 +3054,26 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   `uv run ruff check` and `uv run pytest` clean — 953 passed (934 + 19), same 15
   pre-existing findings in `src/experiments/`. (`just lint` / `just test` are not
   recipes in this repo; these two are what the earlier rows ran.)
+  **P7a1 — family B (T17b) landed.** One oracle; T06 and T17a were T107's.
+  **Hand-checked:** the `irrigation_threshold` card states a threshold for
+  `irrigated_extensive`, `non_irrigated_extensive` and `semi_intensive` and
+  excludes the wetland with a reason ("a ponded fleece mat rather than a
+  substrate…"), so the answer is `not_available` and the ground is the exclusion
+  the agent is handed *inside* the card it fetched.
+  **The oracle asserts the probe's shape, not merely the absence**, and the third
+  condition is the one a straightforward absence check would have missed:
+  `values:` must still be **non-empty for the other roofs**. A card that lost its
+  rule would leave the wetland just as unanswerable and the case would still
+  pass — while having become a much easier question, because abstaining from an
+  empty card takes no reading at all. What makes T17b the strongest hallucination
+  probe is the wrong-scope rule sitting beside the exclusion, so that is what is
+  checked.
+  **The roof is named rather than sampled, and read when it is supplied.** The
+  catalog fixes the wetland; family I is where the two excluded roofs are sampled
+  as a set (§1.8), and T17b is not a second family I. The oracle still reads a
+  `roof` parameter when a generator passes one, so it can never answer quietly
+  about the wetland when it was asked about the gravel roof.
+  `uv run ruff check` and `uv run pytest` clean — 959 passed (953 + 6).
 - [ ] T111 Template instantiation with the §1.6 generation filters, evaluated
   **through the as-of view** and anchored at `seed_at` for seed-bearing families:
   coverage, per-column plausibility, and the frozenness run test applied to state

@@ -1,4 +1,4 @@
-"""The three pilot oracles, against answers computed by hand (T103).
+"""The oracles, against answers computed by hand (T103, T107, T110).
 
 Two kinds of assertion, and both are needed.
 
@@ -12,8 +12,15 @@ tool would agree with the tool about a shared mistake.
 single deterministic tool, so oracle and tool can be run over one context and
 compared directly. This is the claim T103 rests on — an oracle that drifted from
 the tool would encode as truth a number no route could produce — and it is
-checked rather than argued. T01's counterpart is a language model writing SQL,
-so it has no such twin; its day-boundary fixture is the substitute.
+checked rather than argued. Family A's counterpart is a language model writing
+SQL, so it has no such twin; its day-boundary fixtures are the substitute, and
+each is built so a UTC grouping and a Berlin one give different numbers.
+
+**A third, for the templates whose answer is an outcome rather than a number.**
+The abstention templates have no number, so what a test can check is the
+*ground* — a card's exclusion, a rule's parameter list, a horizon — and, as
+importantly, that the ground has not moved in a way that leaves the case passing
+for a different reason than the one it was written for.
 """
 
 import asyncio
@@ -32,7 +39,12 @@ from eval.oracles.irrigation import t07_needs_irrigation_now
 from eval.oracles.model_chain import forecast_days_for, t09_falls_below_threshold
 from eval.oracles.pins import duckdb_sha256, station_derivation_version
 import eval.oracles.reference as reference_module
-from eval.oracles.reference import t06_stated_constant, t17a_absent_constant
+from eval.oracles.reference import (
+    T17B_ROOF,
+    t06_stated_constant,
+    t17a_absent_constant,
+    t17b_scope_near_miss,
+)
 from eval.oracles.weather import t18a_unservable_window
 from water_assistant_agent.assistant.knowledge.store import load_card
 from water_assistant_agent.assistant.rules_constants import ROOF_RULES
@@ -1060,6 +1072,94 @@ def test_t17a_refuses_if_the_rule_grows_a_wind_parameter(
         asyncio.run(t17a_absent_constant(_inputs("T17a"), _context()))
 
 
+def test_t17b_abstains_on_the_exclusion_the_card_carries():
+    """The wetland is under ``not_applicable:``, with the reason it is excluded for.
+
+    ``lookup_reference`` returns a known topic whole and never filters that block
+    by roof, so the agent is handed three substrate roofs' thresholds and the
+    wetland's exclusion in one object. The oracle's content is that exclusion.
+    """
+    answer = asyncio.run(t17b_scope_near_miss(_inputs("T17b"), _context()))
+
+    assert answer.status == "not_available"
+    assert answer.answer is None
+    assert answer.unit is None
+    assert answer.detail["roof"] == "wetland"
+    assert "fleece mat" in answer.detail["excluded_because"]
+
+
+def test_t17b_records_the_rule_the_exclusion_sits_under():
+    """Three roofs keep a stated threshold, and that is half of what makes this hard.
+
+    The probe is the exclusion sitting *under* a confidently worded rule that
+    does not apply, so which roofs still carry one is part of what the answer was
+    materialized against and is written into the detail rather than assumed.
+    """
+    answer = asyncio.run(t17b_scope_near_miss(_inputs("T17b"), _context()))
+
+    assert answer.detail["thresholds_stated_for"] == [
+        "irrigated_extensive",
+        "non_irrigated_extensive",
+        "semi_intensive",
+    ]
+
+
+def test_t17b_refuses_a_card_with_nothing_beside_the_exclusion(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """An empty ``values:`` block makes the case pass for the wrong reason."""
+    card = load_card("irrigation_threshold")
+    monkeypatch.setattr(
+        reference_module, "load_card", lambda _id: card.model_copy(update={"values": {}})
+    )
+
+    with pytest.raises(OracleInputError, match="no longer a near miss"):
+        asyncio.run(t17b_scope_near_miss(_inputs("T17b"), _context()))
+
+
+def test_t17b_refuses_a_roof_that_gained_a_threshold(monkeypatch: pytest.MonkeyPatch):
+    """A wetland with both an exclusion and a number is a card mid-edit.
+
+    Either the roof is out of scope or it has a threshold; carrying both makes
+    the expectation wrong in a way nothing else in the suite would notice.
+    """
+    card = load_card("irrigation_threshold")
+    grown = card.model_copy(
+        update={"values": {**card.values, "wetland": {"dry_pct": 40.0}}}
+    )
+    monkeypatch.setattr(reference_module, "load_card", lambda _id: grown)
+
+    with pytest.raises(OracleInputError, match="now has a threshold"):
+        asyncio.run(t17b_scope_near_miss(_inputs("T17b"), _context()))
+
+
+def test_t17b_answers_about_the_roof_it_was_asked_about():
+    """A sampled roof is read; an unsampled one falls back to the wetland.
+
+    The template names the wetland, and family I is where the two excluded roofs
+    are sampled as a set. Reading the parameter when there is one is what stops
+    the oracle answering quietly about the wetland if that ever changes.
+    """
+    named = asyncio.run(t17b_scope_near_miss(_inputs("T17b", roof="Kiesdach"), _context()))
+    default = asyncio.run(t17b_scope_near_miss(_inputs("T17b"), _context()))
+
+    assert named.detail["roof"] == "gravel"
+    assert named.status == "not_available"
+    assert default.detail["roof"] == T17B_ROOF
+
+
+def test_t17b_refuses_a_roof_the_card_covers():
+    """An extensive roof has a threshold, so there is no abstention to score.
+
+    T06 is that question; reaching here with it means the draw went to the wrong
+    template rather than that the case is hard.
+    """
+    with pytest.raises(OracleInputError, match="no longer excludes"):
+        asyncio.run(
+            t17b_scope_near_miss(_inputs("T17b", roof="irrigated_extensive"), _context())
+        )
+
+
 def test_t18a_abstains_on_a_window_past_the_horizon():
     """Four weeks out is beyond the 16-day limit, and the window is well formed.
 
@@ -1113,6 +1213,7 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
         "T09",
         "T15a",
         "T17a",
+        "T17b",
         "T18a",
     ]
     assert ORACLES["T01"] is t01_total_outflow
@@ -1125,5 +1226,6 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
     assert ORACLES["T09"] is t09_falls_below_threshold
     assert ORACLES["T15a"] is t15a_past_rain
     assert ORACLES["T17a"] is t17a_absent_constant
+    assert ORACLES["T17b"] is t17b_scope_near_miss
     assert ORACLES["T18a"] is t18a_unservable_window
     assert "T24a" not in ORACLES

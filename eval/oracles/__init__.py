@@ -23,7 +23,11 @@ have something to return.
 from eval.oracles.base import Oracle, OracleAnswer, OracleInputError
 from eval.oracles.irrigation import t07_needs_irrigation_now
 from eval.oracles.model_chain import t09_falls_below_threshold
-from eval.oracles.reference import t06_stated_constant, t17a_absent_constant
+from eval.oracles.reference import (
+    t06_stated_constant,
+    t17a_absent_constant,
+    t17b_scope_near_miss,
+)
 from eval.oracles.sql import (
     t01_total_outflow,
     t02_hot_day_count,
@@ -45,6 +49,7 @@ ORACLES: dict[str, Oracle] = {
     "T09": t09_falls_below_threshold,
     "T15a": t15a_past_rain,
     "T17a": t17a_absent_constant,
+    "T17b": t17b_scope_near_miss,
     "T18a": t18a_unservable_window,
 }
 """Template id → the oracle that answers it.
@@ -68,5 +73,6 @@ __all__ = [
     "t09_falls_below_threshold",
     "t15a_past_rain",
     "t17a_absent_constant",
+    "t17b_scope_near_miss",
     "t18a_unservable_window",
 ]

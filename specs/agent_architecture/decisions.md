@@ -1391,3 +1391,74 @@ index in one particular list. Two lists that share values and are striped
 separately put the same value on both sides — measured on T24a's `{month}`, whose
 two tables offer overlapping month lists (`findings.md`). Pools that overlap are
 striped once, over the widest of them, and narrowed afterwards.
+
+---
+
+## A shortfall is stated in the suite, not resolved by coercion
+
+Where an oracle answers something the case schema cannot carry, emission writes
+every other case and records the missing instances as a **shortfall** — the
+template, the split, the count and the schema error. It neither withholds the
+suite nor invents a representation for the answer.
+
+**Because the two frozen surfaces are what disagree, and neither is emission's to
+move.** T26(ii) and T26(iii) answer the winning roof's canonical name;
+`case.schema.json`'s `answer` admits a boolean, a number, an ISO day or null. The
+repair is a specification change in the schema or in the oracle, and both are
+frozen as of T107 — so the honest outcome is a suite of 276 that says which five
+instances are missing and why, rather than a suite of 281 with five coerced
+answers or no suite at all.
+
+**This refines T111's `Unemittable` rather than reversing it.** That decision —
+"an answer the schema cannot carry is not resampled" — stands: the draw is not
+put back, because every draw fails identically. What changes is the blast radius.
+T111 raised for the whole template, so a whole-catalog pass had to exclude T26
+and the holdout landed at 48. Carrying the shortfall per *instance* lets variant
+(i), which answers a boolean, emit its three stratified instances — so the
+holdout keeps a live T26 probe in the committed files.
+
+**Rejected:**
+
+- *Failing the whole emission.* One holdout variant would then block every other
+  case in the catalog from being committed, and the packet that could fix it is a
+  specification change nobody is in the middle of.
+- *Backfilling the five instances from variant (i).* It fills the ledger and
+  silently deletes a probe — (iii) exists to keep the compositional headline off
+  double transfer — and `decisions.md § An answer the schema cannot carry is not
+  resampled` already rejects it for that reason.
+- *Emitting the five with `answer: null` and `answer_metric: "skipped"`.* Valid
+  against the schema, and it records a case with an answer as a case without one:
+  the abstention metric would then score five answerable cases as abstentions.
+
+**Validity condition:** a shortfall is reported per instance with the cause that
+produced it, and the suite's stated size is what it contains. Any total quoted
+against `templates × m` names the difference — 276 of 281, not "about 281".
+
+---
+
+## The emitted key order is written out, not inherited
+
+`eval/cases/*.json` carry their keys in the order `emit.py` names, and a key the
+emitter does not know raises rather than being written or dropped.
+
+**Because insertion order is a property of a code path.** A dict preserves the
+order keys were added in, and that order is decided by branches: the optional
+`tolerance` is appended only where the answer is numeric, so it lands last on
+some cases and nowhere on others. Committing that means committing the shape of
+the generator's control flow, and a refactor that moved one assignment would
+rewrite every case file with no change to a single value.
+
+**Rejected:**
+
+- *`sort_keys=True`.* Stable, and it interleaves the fields nobody reads with the
+  ones a reviewer scans first — `answer` between `answer_metric` and
+  `argument_checks`, `case_id` before `as_of` but after nothing legible.
+- *Letting an unknown key through.* It is written in dict order, which is the
+  thing this exists to prevent, and it does so silently on a schema change.
+- *Dropping an unknown key.* Silently loses a field the schema may since have
+  required, and the case still validates because the schema's required list is
+  what was checked before the drop.
+
+**Validity condition:** the order is stable across runs and across refactors of
+the generator. Adding a field to the schema is a two-line change here, and
+forgetting it is a loud failure rather than an unstable file.

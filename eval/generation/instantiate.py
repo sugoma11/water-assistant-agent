@@ -44,6 +44,7 @@ from pathlib import Path
 from random import Random
 from typing import Any, Callable
 
+import structlog
 from jsonschema import Draft202012Validator
 
 from water_assistant_agent.assistant.context import ScenarioContext
@@ -66,6 +67,8 @@ from eval.oracles import ORACLES
 from eval.oracles.base import OracleInputError
 from harness.assertions import CaseAssertionError, assert_case, pool_members
 from harness.run_case import make_case_context
+
+logger = structlog.get_logger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = REPO_ROOT / "eval" / "schema" / "case.schema.json"
@@ -91,6 +94,22 @@ class Exhausted(RuntimeError):
     """
 
 
+class TemplateDefect(RuntimeError):
+    """A case violates the one constraint ``case.schema.json`` cannot express.
+
+    A schema validates one document and cannot compare two sibling arrays, so
+    "a gold tool may not also be a must-not" belongs to the generator
+    (``eval/schema/README.md``). It is a **template** defect rather than a draw's:
+    every instance of that template carries it, so it is raised rather than
+    resampled, exactly as :class:`Unemittable` is.
+
+    Worth checking at all because the failure is silent in both scoring
+    directions — the trajectory metric would require the call and the route metric
+    would penalize it, so every candidate loses a point it cannot win back, on a
+    case that looks well-formed.
+    """
+
+
 class Unemittable(RuntimeError):
     """The oracle answered, and the case schema cannot carry what it answered.
 
@@ -113,6 +132,24 @@ class Rejected:
     | ``undrawable`` | ``invariant``."""
 
     detail: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Shortfall:
+    """An instance the ledger calls for and that no case file can carry.
+
+    Not a rejection: a rejection is a draw put back, and every draw of this one
+    fails identically. Not a crash either, which is T114's decision rather than
+    T111's — a whole suite withheld because one holdout variant answers a shape
+    the schema does not admit is a worse outcome than a suite that is 8 cases
+    short and says so in as many words (``decisions.md § A shortfall is stated in
+    the suite, not resolved by coercion``).
+    """
+
+    template_id: str
+    split: str
+    instances: int
+    reason: str
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -152,6 +189,13 @@ class GenerationRun:
 
     instances: list[Instance] = dataclasses.field(default_factory=list)
     rejections: list[Rejected] = dataclasses.field(default_factory=list)
+    shortfalls: list[Shortfall] = dataclasses.field(default_factory=list)
+    """Instances the ledger calls for and that could not be emitted, with the cause.
+
+    Empty is a suite of exactly ``templates × m``; non-empty is a suite that is
+    short by a stated amount for a stated reason, which is the only other honest
+    outcome (:class:`Shortfall`).
+    """
     attempts: dict[tuple[str, str], int] = dataclasses.field(default_factory=dict)
     answered: dict[tuple[str, str], dict[bool, int]] = dataclasses.field(
         default_factory=dict
@@ -218,6 +262,15 @@ class GenerationRun:
         )
         return {
             "n": {split: len(cases) for split, cases in by_split.items()},
+            "shortfalls": [
+                {
+                    "template_id": short.template_id,
+                    "split": short.split,
+                    "instances": short.instances,
+                    "reason": short.reason,
+                }
+                for short in self.shortfalls
+            ],
             "abstentions": {
                 split: sum(
                     1 for item in self.instances if item.split == split and item.abstains
@@ -302,6 +355,14 @@ def validate(case: Mapping[str, Any]) -> tuple[str, ...]:
     return tuple(error.message for error in _validator().iter_errors(payload))
 
 
+def gold_conflicts(case: Mapping[str, Any]) -> tuple[str, ...]:
+    """Tools that are both gold and forbidden in *case* — empty is the rule kept."""
+    expectations = case.get("expectations") or {}
+    gold = {call["name"] for call in expectations.get("expected_tool_calls") or ()}
+    forbidden = set(expectations.get("must_not_tools") or ())
+    return tuple(sorted(gold & forbidden))
+
+
 async def daily_rain(ctx: ScenarioContext) -> dict[date, float]:
     """Station rain per site day, through the case's own as-of view.
 
@@ -365,18 +426,26 @@ async def bind_record(
 ContextFactory = Callable[[datetime], ScenarioContext]
 
 
-def cached_contexts(*, allow_live: bool = True) -> ContextFactory:
+def cached_contexts(
+    *, allow_live: bool = True, cache_dir: Path | str | None = None
+) -> ContextFactory:
     """One :class:`ScenarioContext` per distinct ``as_of``, reused across draws.
 
     Each context opens a DuckDB connection and builds five as-of views, and a
     rejection-sampled template draws the same day many times over; building one
     per attempt would spend most of a run on ``ATTACH``.
+
+    *cache_dir* is where a live fetch is recorded. **Generation should not write
+    into ``eval/cache/``**: that directory is the capture pass's to fill and to
+    commit (T116), and a generation run touches a different, larger set of
+    requests — every draw it rejected as well as every case it kept.
     """
     contexts: dict[datetime, ScenarioContext] = {}
 
     def factory(as_of: datetime) -> ScenarioContext:
         if as_of not in contexts:
-            contexts[as_of] = make_case_context(as_of, allow_live=allow_live)
+            extra = {} if cache_dir is None else {"cache_dir": cache_dir}
+            contexts[as_of] = make_case_context(as_of, allow_live=allow_live, **extra)
         return contexts[as_of]
 
     return factory
@@ -468,6 +537,13 @@ async def draw_one(
             Rejected(template.template_id, split, "invariant", str(exc))
         )
         return None
+    conflicts = gold_conflicts(case)
+    if conflicts:
+        raise TemplateDefect(
+            f"{template.template_id} lists {', '.join(conflicts)} as both a gold call "
+            "and a must-not; a schema cannot compare two sibling arrays, so this is "
+            "the generator's to refuse"
+        )
     errors = validate(case)
     if errors:
         raise Unemittable(
@@ -528,21 +604,33 @@ async def instantiate(
     counts = {True: 0, False: 0}
 
     cases: list[dict[str, Any]] = []
+    unemittable = 0
     for index in range(count):
         for _ in range(max_attempts):
-            case = await draw_one(
-                template,
-                split=split,
-                rng=rng,
-                pools=pools,
-                context_for=context_for,
-                fixed=strata[index],
-                case_id=f"{template.template_id}-{start_index + index:04d}",
-                surface=asked[index],
-                quota=quota,
-                counts=counts,
-                run=run,
-            )
+            try:
+                case = await draw_one(
+                    template,
+                    split=split,
+                    rng=rng,
+                    pools=pools,
+                    context_for=context_for,
+                    fixed=strata[index],
+                    case_id=f"{template.template_id}-{start_index + index:04d}",
+                    surface=asked[index],
+                    quota=quota,
+                    counts=counts,
+                    run=run,
+                )
+            except Unemittable as exc:
+                # Every draw of this instance fails identically, so the loop stops
+                # here rather than spending `max_attempts` proving it. Recorded and
+                # carried, never resampled and never coerced: `decisions.md § A
+                # shortfall is stated in the suite, not resolved by coercion`.
+                unemittable += 1
+                run.shortfalls.append(
+                    Shortfall(template.template_id, split, 1, str(exc))
+                )
+                break
             if case is not None:
                 cases.append(case)
                 break
@@ -552,6 +640,14 @@ async def instantiate(
                 f"{split} in {max_attempts} draws per instance; the pool is too tight "
                 "or a predicate is rejecting everything"
             )
+    if unemittable:
+        logger.warning(
+            "A template is short of its m and it is not a sampling problem",
+            template_id=template.template_id,
+            split=split,
+            filled=len(cases),
+            of=count,
+        )
     run.instances.extend(Instance(split=split, case=case) for case in cases)
     return cases
 

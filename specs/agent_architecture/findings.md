@@ -1102,6 +1102,34 @@ sampler.
 *Verified:* an offline generation pass over T12 in `tests/eval/test_splits.py`.
 *Date:* 2026-08-24.
 
+**The emitter is byte-stable across two runs, and the suite is 276 of 281.**
+`scripts/generate_cases.py` run twice into two directories produced
+byte-identical files — `train.json` `d66cc411…`, `test_seen.json` `a0d0a016…`,
+`test_unseen.json` `6a725e71…` on both passes — and `--check` against the
+committed files exits 0. Train 100/100 and test_seen 125/125 are exactly
+`templates × m`; test_unseen is **51 of 56**, five short, all of them T26's two
+cross-roof variants. `parameter_overlaps` is empty, `as_of` is inside each
+split's own stripe on every case, and the languages land 50/50, 63/62 and 26/25.
+The three files load through MLflow's own `_convert_eval_set_to_df` and
+`validate_train_data` with columns `['expectations', 'inputs']`, so the search and
+the measurement run pass them straight in as `train_data`.
+*Verified:* two full passes at seed 20260824 against the live GR2L and Archive,
+diffed and hashed; `tests/eval/test_emit.py`. *Date:* 2026-08-24.
+
+**T26 emits three of its eight instances rather than none, which is a better
+suite than T111 could hand over.** T111 raised `Unemittable` for the whole
+template, so a whole-catalog pass had to exclude T26 and the holdout landed 48.
+Emission carries the shortfall per instance instead: variant (i) answers a
+boolean and materializes normally, so its **3 stratified instances are emitted**,
+and only (ii) and (iii)'s 5 are withheld. The holdout therefore keeps a live T26
+probe in the committed files rather than only in principle, and the compositional
+headline is reported over what exists. The five withheld instances are named in
+the run report with the schema error each produced — `'semi_intensive' is not
+valid under any of the given schemas` and the same for the other roofs — so the
+shortfall is legible without rerunning anything.
+*Verified:* the emitted `test_unseen.json` carries 3 T26 cases, all variant (i);
+the report lists 5 shortfalls. *Date:* 2026-08-24.
+
 ## External sources on this machine
 
 Paths outside this repository, recorded here rather than in the plan because a

@@ -1,0 +1,2025 @@
+[
+  {
+    "inputs": {
+      "case_id": "T16b-0001",
+      "template_id": "T16b",
+      "language": "en",
+      "as_of": "2025-09-19T23:00:00+02:00",
+      "question": "The semi-intensive green roof is at 4.5 %θ, with 16 °C expected over the next 48 h and 1.0 mm of rain over the coming week. Could you tell me whether we should irrigate?",
+      "params": {
+        "roof": "semi_intensive",
+        "x": 4.5,
+        "tmax": 16,
+        "y": 1.0
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "must_not_tools": [
+        "lookup_reference"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T16b-0002",
+      "template_id": "T16b",
+      "language": "de",
+      "as_of": "2025-11-24T23:00:00+01:00",
+      "question": "Das Intensivdach liegt bei 9.5 %θ, für die nächsten 48 h werden 28 °C erwartet und für die kommende Woche 2.0 mm Niederschlag. Könnten Sie mir sagen, ob wir bewässern sollen?",
+      "params": {
+        "roof": "semi_intensive",
+        "x": 9.5,
+        "tmax": 28,
+        "y": 2.0
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "must_not_tools": [
+        "lookup_reference"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T16b-0003",
+      "template_id": "T16b",
+      "language": "en",
+      "as_of": "2025-11-21T23:00:00+01:00",
+      "question": "Readings in front of me: the semi-intensive green roof at 8.0 %θ, 16 °C over the next 48 h, 14.0 mm of rain over the coming week. Should we irrigate?",
+      "params": {
+        "roof": "semi_intensive",
+        "x": 8.0,
+        "tmax": 16,
+        "y": 14.0
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "must_not_tools": [
+        "lookup_reference"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T16b-0004",
+      "template_id": "T16b",
+      "language": "de",
+      "as_of": "2026-04-08T23:00:00+02:00",
+      "question": "Unbewässertes Extensivdach: 8.0 %θ, 48 h 31 °C, kommende Woche 10.0 mm — bewässern?",
+      "params": {
+        "roof": "non_irrigated_extensive",
+        "x": 8.0,
+        "tmax": 31,
+        "y": 10.0
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "must_not_tools": [
+        "lookup_reference"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T16b-0005",
+      "template_id": "T16b",
+      "language": "en",
+      "as_of": "2025-07-12T23:00:00+02:00",
+      "question": "The non-irrigated extensive green roof is at 6.0 %θ, with 34 °C expected over the next 48 h and 2.0 mm of rain over the coming week. Could you tell me whether we should irrigate?",
+      "params": {
+        "roof": "non_irrigated_extensive",
+        "x": 6.0,
+        "tmax": 34,
+        "y": 2.0
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "must_not_tools": [
+        "lookup_reference"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T16b-0006",
+      "template_id": "T16b",
+      "language": "de",
+      "as_of": "2026-04-20T23:00:00+02:00",
+      "question": "Das bewässerte Extensivdach liegt bei 15.0 %θ, für die nächsten 48 h werden 16 °C erwartet und für die kommende Woche 7.0 mm Niederschlag. Könnten Sie mir sagen, ob wir bewässern sollen?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "x": 15.0,
+        "tmax": 16,
+        "y": 7.0
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "must_not_tools": [
+        "lookup_reference"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T16b-0007",
+      "template_id": "T16b",
+      "language": "en",
+      "as_of": "2025-11-27T23:00:00+01:00",
+      "question": "Readings in front of me: the irrigated extensive green roof at 6.0 %θ, 22 °C over the next 48 h, 10.0 mm of rain over the coming week. Should we irrigate?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "x": 6.0,
+        "tmax": 22,
+        "y": 10.0
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "must_not_tools": [
+        "lookup_reference"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T16b-0008",
+      "template_id": "T16b",
+      "language": "de",
+      "as_of": "2026-04-02T23:00:00+02:00",
+      "question": "Bewässertes Extensivdach: 13.5 %θ, 48 h 19 °C, kommende Woche 4.0 mm — bewässern?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "x": 13.5,
+        "tmax": 19,
+        "y": 4.0
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "must_not_tools": [
+        "lookup_reference"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T17b-0001",
+      "template_id": "T17b",
+      "language": "de",
+      "as_of": "2025-09-13T23:00:00+02:00",
+      "question": "Könnten Sie mir den Bodenfeuchte-Schwellenwert für die Bewässerung des Sumpfdachs nennen?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_threshold"
+          }
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "irrigation_threshold"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T17b-0002",
+      "template_id": "T17b",
+      "language": "en",
+      "as_of": "2025-11-06T23:00:00+01:00",
+      "question": "Could you tell me the soil-moisture irrigation threshold for the wetland roof?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_threshold"
+          }
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "irrigation_threshold"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T17b-0003",
+      "template_id": "T17b",
+      "language": "de",
+      "as_of": "2025-09-04T23:00:00+02:00",
+      "question": "Bewässerungsschwelle Sumpfdach — welcher Wert?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_threshold"
+          }
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "irrigation_threshold"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T17b-0004",
+      "template_id": "T17b",
+      "language": "en",
+      "as_of": "2026-01-14T23:00:00+01:00",
+      "question": "The wetland roof looked dry this morning. What is its soil-moisture irrigation threshold?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_threshold"
+          }
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "irrigation_threshold"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T17b-0005",
+      "template_id": "T17b",
+      "language": "de",
+      "as_of": "2025-11-24T23:00:00+01:00",
+      "question": "Könnten Sie mir den Bodenfeuchte-Schwellenwert für die Bewässerung des Sumpfdachs nennen?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_threshold"
+          }
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "irrigation_threshold"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T17b-0006",
+      "template_id": "T17b",
+      "language": "en",
+      "as_of": "2026-04-14T23:00:00+02:00",
+      "question": "Could you tell me the soil-moisture irrigation threshold for the wetland roof?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_threshold"
+          }
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "irrigation_threshold"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T17b-0007",
+      "template_id": "T17b",
+      "language": "de",
+      "as_of": "2025-12-15T23:00:00+01:00",
+      "question": "Bewässerungsschwelle Sumpfdach — welcher Wert?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_threshold"
+          }
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "irrigation_threshold"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T17b-0008",
+      "template_id": "T17b",
+      "language": "en",
+      "as_of": "2025-12-21T23:00:00+01:00",
+      "question": "The wetland roof looked dry this morning. What is its soil-moisture irrigation threshold?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_threshold"
+          }
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "irrigation_threshold"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T18b-0001",
+      "template_id": "T18b",
+      "language": "en",
+      "as_of": "2025-06-09T23:00:00+02:00",
+      "question": "Could you give me the forecast dew point for the next 5 days?",
+      "params": {
+        "variable": "dew point",
+        "d": 5
+      }
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T18b-0002",
+      "template_id": "T18b",
+      "language": "de",
+      "as_of": "2026-01-05T23:00:00+01:00",
+      "question": "Könnten Sie mir sagen, wie der Luftdruck für die nächsten 5 Tage vorhergesagt ist?",
+      "params": {
+        "variable": "air pressure",
+        "d": 5
+      }
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T18b-0003",
+      "template_id": "T18b",
+      "language": "en",
+      "as_of": "2025-12-30T23:00:00+01:00",
+      "question": "For the sensor report I still need the forecast soil moisture over the next 6 days.",
+      "params": {
+        "variable": "soil moisture",
+        "d": 6
+      }
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T18b-0004",
+      "template_id": "T18b",
+      "language": "de",
+      "as_of": "2026-01-17T23:00:00+01:00",
+      "question": "Vorhersage Taupunkt, nächste 4 Tage?",
+      "params": {
+        "variable": "dew point",
+        "d": 4
+      }
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T18b-0005",
+      "template_id": "T18b",
+      "language": "en",
+      "as_of": "2026-03-24T23:00:00+01:00",
+      "question": "Could you give me the forecast soil temperature for the next 2 days?",
+      "params": {
+        "variable": "soil temperature",
+        "d": 2
+      }
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T18b-0006",
+      "template_id": "T18b",
+      "language": "de",
+      "as_of": "2026-01-23T23:00:00+01:00",
+      "question": "Könnten Sie mir sagen, wie der Luftdruck für die nächsten 7 Tage vorhergesagt ist?",
+      "params": {
+        "variable": "air pressure",
+        "d": 7
+      }
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T18b-0007",
+      "template_id": "T18b",
+      "language": "en",
+      "as_of": "2026-01-08T23:00:00+01:00",
+      "question": "For the sensor report I still need the forecast air pressure over the next 5 days.",
+      "params": {
+        "variable": "air pressure",
+        "d": 5
+      }
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T18b-0008",
+      "template_id": "T18b",
+      "language": "de",
+      "as_of": "2025-08-05T23:00:00+02:00",
+      "question": "Vorhersage Luftdruck, nächste 2 Tage?",
+      "params": {
+        "variable": "air pressure",
+        "d": 2
+      }
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T20-0001",
+      "template_id": "T20",
+      "language": "de",
+      "as_of": "2025-12-18T23:00:00+01:00",
+      "question": "Könnten Sie prüfen, ob die Vorhersage für die nächsten 4 Tage nach der Definition des Betriebshandbuchs eine Hitzewelle ist?",
+      "params": {
+        "d": 4
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "heatwave_definition"
+          }
+        },
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [
+        "heatwave_definition"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T20-0002",
+      "template_id": "T20",
+      "language": "en",
+      "as_of": "2025-12-27T23:00:00+01:00",
+      "question": "Could you tell me whether the forecast for the next 7 days qualifies as a heatwave under the operations manual's definition?",
+      "params": {
+        "d": 7
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "heatwave_definition"
+          }
+        },
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [
+        "heatwave_definition"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T20-0003",
+      "template_id": "T20",
+      "language": "de",
+      "as_of": "2026-03-21T23:00:00+01:00",
+      "question": "Nächste 4 Tage laut Betriebshandbuch eine Hitzewelle?",
+      "params": {
+        "d": 4
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "heatwave_definition"
+          }
+        },
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [
+        "heatwave_definition"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T20-0004",
+      "template_id": "T20",
+      "language": "en",
+      "as_of": "2025-11-30T23:00:00+01:00",
+      "question": "We may have to plan extra irrigation. Does the forecast for the next 5 days qualify as a heatwave under the operations manual's definition?",
+      "params": {
+        "d": 5
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "heatwave_definition"
+          }
+        },
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [
+        "heatwave_definition"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T20-0005",
+      "template_id": "T20",
+      "language": "de",
+      "as_of": "2025-08-17T23:00:00+02:00",
+      "question": "Könnten Sie prüfen, ob die Vorhersage für die nächsten 4 Tage nach der Definition des Betriebshandbuchs eine Hitzewelle ist?",
+      "params": {
+        "d": 4
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "heatwave_definition"
+          }
+        },
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [
+        "heatwave_definition"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T20-0006",
+      "template_id": "T20",
+      "language": "en",
+      "as_of": "2025-08-11T23:00:00+02:00",
+      "question": "Could you tell me whether the forecast for the next 7 days qualifies as a heatwave under the operations manual's definition?",
+      "params": {
+        "d": 7
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "heatwave_definition"
+          }
+        },
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [
+        "heatwave_definition"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T20-0007",
+      "template_id": "T20",
+      "language": "de",
+      "as_of": "2025-06-27T23:00:00+02:00",
+      "question": "Nächste 6 Tage laut Betriebshandbuch eine Hitzewelle?",
+      "params": {
+        "d": 6
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "heatwave_definition"
+          }
+        },
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [
+        "heatwave_definition"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T20-0008",
+      "template_id": "T20",
+      "language": "en",
+      "as_of": "2025-06-27T23:00:00+02:00",
+      "question": "We may have to plan extra irrigation. Does the forecast for the next 5 days qualify as a heatwave under the operations manual's definition?",
+      "params": {
+        "d": 5
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "heatwave_definition"
+          }
+        },
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [
+        "heatwave_definition"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T22-0001",
+      "template_id": "T22",
+      "language": "en",
+      "as_of": "2025-07-06T23:00:00+02:00",
+      "question": "Could you tell me what soil moisture is predicted for the irrigated extensive green roof tomorrow under the current forecast but with albedo 0.3?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "a": 0.3
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 15.67,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "albedo",
+          "op": "eq",
+          "value": 0.3
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T22-0002",
+      "template_id": "T22",
+      "language": "de",
+      "as_of": "2025-12-09T23:00:00+01:00",
+      "question": "Könnten Sie mir sagen, welche Bodenfeuchte für das unbewässerte Extensivdach morgen vorhergesagt wird, wenn man bei der aktuellen Vorhersage die Albedo auf 0.9 setzt?",
+      "params": {
+        "roof": "non_irrigated_extensive",
+        "a": 0.9
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 21.59,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "albedo",
+          "op": "eq",
+          "value": 0.9
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T22-0003",
+      "template_id": "T22",
+      "language": "en",
+      "as_of": "2025-10-16T23:00:00+02:00",
+      "question": "We are considering a lighter surface on the irrigated extensive green roof. Under the current forecast but with albedo 0.75, what soil moisture is predicted for it tomorrow?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "a": 0.75
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 28.85,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "albedo",
+          "op": "eq",
+          "value": 0.75
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T22-0004",
+      "template_id": "T22",
+      "language": "de",
+      "as_of": "2025-09-13T23:00:00+02:00",
+      "question": "Intensivdach morgen, aktuelle Vorhersage, aber Albedo 0.9: Bodenfeuchte?",
+      "params": {
+        "roof": "semi_intensive",
+        "a": 0.9
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 11.74,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "albedo",
+          "op": "eq",
+          "value": 0.9
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T22-0005",
+      "template_id": "T22",
+      "language": "en",
+      "as_of": "2025-07-09T23:00:00+02:00",
+      "question": "Could you tell me what soil moisture is predicted for the semi-intensive green roof tomorrow under the current forecast but with albedo 0.45?",
+      "params": {
+        "roof": "semi_intensive",
+        "a": 0.45
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 4.97,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "albedo",
+          "op": "eq",
+          "value": 0.45
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T22-0006",
+      "template_id": "T22",
+      "language": "de",
+      "as_of": "2026-03-12T23:00:00+01:00",
+      "question": "Könnten Sie mir sagen, welche Bodenfeuchte für das bewässerte Extensivdach morgen vorhergesagt wird, wenn man bei der aktuellen Vorhersage die Albedo auf 0.05 setzt?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "a": 0.05
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 10.93,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "albedo",
+          "op": "eq",
+          "value": 0.05
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T22-0007",
+      "template_id": "T22",
+      "language": "en",
+      "as_of": "2026-02-10T23:00:00+01:00",
+      "question": "We are considering a lighter surface on the irrigated extensive green roof. Under the current forecast but with albedo 0.6, what soil moisture is predicted for it tomorrow?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "a": 0.6
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 31.46,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "albedo",
+          "op": "eq",
+          "value": 0.6
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T22-0008",
+      "template_id": "T22",
+      "language": "de",
+      "as_of": "2025-09-19T23:00:00+02:00",
+      "question": "Bewässertes Extensivdach morgen, aktuelle Vorhersage, aber Albedo 0.45: Bodenfeuchte?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "a": 0.45
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 10.75,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "albedo",
+          "op": "eq",
+          "value": 0.45
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T23-0001",
+      "template_id": "T23",
+      "language": "de",
+      "as_of": "2025-11-21T23:00:00+01:00",
+      "question": "Könnten Sie mir sagen, wo die Bodenfeuchte des unbewässerten Extensivdachs heute läge, wenn sie vor 2 Tagen bei 18 %θ gelegen hätte?",
+      "params": {
+        "roof": "non_irrigated_extensive",
+        "x": 18,
+        "d": 2
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 17.92,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [
+        "get_weather_forecast_tool"
+      ],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "initial_soil_moisture_pct",
+          "op": "eq",
+          "value": 18
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T23-0002",
+      "template_id": "T23",
+      "language": "en",
+      "as_of": "2026-02-10T23:00:00+01:00",
+      "question": "If the semi-intensive green roof's soil moisture had been 18 %θ 4 days ago, could you tell me where it would be now?",
+      "params": {
+        "roof": "semi_intensive",
+        "x": 18,
+        "d": 4
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 17.17,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [
+        "get_weather_forecast_tool"
+      ],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "initial_soil_moisture_pct",
+          "op": "eq",
+          "value": 18
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T23-0003",
+      "template_id": "T23",
+      "language": "de",
+      "as_of": "2026-03-12T23:00:00+01:00",
+      "question": "Unbewässertes Extensivdach: vor 2 Tagen 8 %θ — wo läge die Bodenfeuchte jetzt?",
+      "params": {
+        "roof": "non_irrigated_extensive",
+        "x": 8,
+        "d": 2
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 6.92,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [
+        "get_weather_forecast_tool"
+      ],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "initial_soil_moisture_pct",
+          "op": "eq",
+          "value": 8
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T23-0004",
+      "template_id": "T23",
+      "language": "en",
+      "as_of": "2025-08-29T23:00:00+02:00",
+      "question": "Suppose the irrigated extensive green roof had started at 20 %θ 7 days ago. Where would its soil moisture be now?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "x": 20,
+        "d": 7
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 18.14,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [
+        "get_weather_forecast_tool"
+      ],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "initial_soil_moisture_pct",
+          "op": "eq",
+          "value": 20
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T23-0005",
+      "template_id": "T23",
+      "language": "de",
+      "as_of": "2025-06-09T23:00:00+02:00",
+      "question": "Könnten Sie mir sagen, wo die Bodenfeuchte des bewässerten Extensivdachs heute läge, wenn sie vor 10 Tagen bei 16 %θ gelegen hätte?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "x": 16,
+        "d": 10
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 8.24,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [
+        "get_weather_forecast_tool"
+      ],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "initial_soil_moisture_pct",
+          "op": "eq",
+          "value": 16
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T23-0006",
+      "template_id": "T23",
+      "language": "en",
+      "as_of": "2025-09-22T23:00:00+02:00",
+      "question": "If the irrigated extensive green roof's soil moisture had been 10 %θ 3 days ago, could you tell me where it would be now?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "x": 10,
+        "d": 3
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 25.87,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [
+        "get_weather_forecast_tool"
+      ],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "initial_soil_moisture_pct",
+          "op": "eq",
+          "value": 10
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T23-0007",
+      "template_id": "T23",
+      "language": "de",
+      "as_of": "2026-04-23T23:00:00+02:00",
+      "question": "Intensivdach: vor 4 Tagen 18 %θ — wo läge die Bodenfeuchte jetzt?",
+      "params": {
+        "roof": "semi_intensive",
+        "x": 18,
+        "d": 4
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 17.43,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [
+        "get_weather_forecast_tool"
+      ],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "initial_soil_moisture_pct",
+          "op": "eq",
+          "value": 18
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T23-0008",
+      "template_id": "T23",
+      "language": "en",
+      "as_of": "2026-03-03T23:00:00+01:00",
+      "question": "Suppose the irrigated extensive green roof had started at 12 %θ 3 days ago. Where would its soil moisture be now?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "x": 12,
+        "d": 3
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 8.42,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [
+        "get_weather_forecast_tool"
+      ],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "initial_soil_moisture_pct",
+          "op": "eq",
+          "value": 12
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T26-0001",
+      "template_id": "T26",
+      "language": "en",
+      "as_of": "2025-12-15T23:00:00+01:00",
+      "question": "If albedo were 0.05 and 20 mm fell on day 1 of the next 2 days, could you tell me whether the irrigated extensive green roof would stay above the irrigation threshold?",
+      "params": {
+        "variant": "albedo_and_rain",
+        "d": 2,
+        "mm": 20,
+        "offset": 1,
+        "roof": "irrigated_extensive",
+        "a": 0.05
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "forcings.precip",
+          "op": "present"
+        },
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "albedo",
+          "op": "eq",
+          "value": 0.05
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T26-0004",
+      "template_id": "T26",
+      "language": "de",
+      "as_of": "2026-03-24T23:00:00+01:00",
+      "question": "Albedo 0.05, 40 mm an Tag 6 von 7: bleibt das unbewässerte Extensivdach über der Bewässerungsschwelle?",
+      "params": {
+        "variant": "albedo_and_rain",
+        "d": 7,
+        "mm": 40,
+        "offset": 6,
+        "roof": "non_irrigated_extensive",
+        "a": 0.05
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "forcings.precip",
+          "op": "present"
+        },
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "albedo",
+          "op": "eq",
+          "value": 0.05
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T26-0007",
+      "template_id": "T26",
+      "language": "en",
+      "as_of": "2025-06-30T23:00:00+02:00",
+      "question": "Two changes at once: albedo 0.6, and 20 mm of rain on day 1 of the next 2 days. Would the semi-intensive green roof stay above the irrigation threshold?",
+      "params": {
+        "variant": "albedo_and_rain",
+        "d": 2,
+        "mm": 20,
+        "offset": 1,
+        "roof": "semi_intensive",
+        "a": 0.6
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "forcings.precip",
+          "op": "present"
+        },
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "albedo",
+          "op": "eq",
+          "value": 0.6
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  }
+]

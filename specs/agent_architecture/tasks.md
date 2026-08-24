@@ -3469,10 +3469,61 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   and train and test_seen hold disjoint event sets with both classes reachable —
   which is what `t12_rain_events.md` predicted.
   `uv run ruff check .` and `uv run pytest` clean.
-- [ ] T114 Emit `eval/cases/{train,test_seen,test_unseen}.json` as pretty-printed
+- [x] T114 Emit `eval/cases/{train,test_seen,test_unseen}.json` as pretty-printed
   arrays through T010's schema — deterministic key order, sorted by `case_id`,
   `indent=2`, trailing newline, generated and never hand-edited. Loadable directly
   as MLflow `train_data` by both the search and the measurement run. → T113, T110
+  Done. `eval/generation/emit.py` writes the three files and
+  `scripts/generate_cases.py` is the one command from the catalog to them
+  (`just cases`, `just cases-check`). **276 cases committed**: train 100/100,
+  test_seen 125/125, test_unseen 51/56.
+  **Byte-stable, measured rather than asserted.** Two full passes into two
+  directories produced byte-identical files (`train.json` `d66cc411…`,
+  `test_seen.json` `a0d0a016…`, `test_unseen.json` `6a725e71…`), and
+  `just cases-check` against the committed files exits 0. It takes three things at
+  once and only one of them is the seed: the **key order is written out** rather
+  than inherited from dict insertion order, which is a property of a code path —
+  `tolerance` is appended only where the answer is numeric, so insertion order
+  puts it last on some cases and nowhere on others (`decisions.md § The emitted
+  key order is written out, not inherited`). An unknown key raises rather than
+  being written unordered or dropped silently.
+  **The constraint a schema cannot express is enforced here**: a gold tool may not
+  also be a must-not, which compares two sibling arrays. Worth having because the
+  failure is silent in *both* scoring directions — the trajectory metric requires
+  the call and the route metric penalizes it, so every candidate loses a point it
+  cannot win back on a case that looks well-formed. The test asserts the schema
+  itself accepts such a case, which is what makes the check necessary rather than
+  redundant. `case_id` uniqueness is checked on the same ground.
+  **Loadable as `train_data` through MLflow's own code, not a paraphrase of it.**
+  `_convert_eval_set_to_df` and `validate_train_data` are run over each committed
+  file in `tests/eval/test_emit.py`; columns come out `['expectations', 'inputs']`
+  and validation passes, so the claim is about mlflow 3.13.0 as installed rather
+  than about our reading of it.
+  **T26 emits three of eight instead of none, and that is a better suite than
+  T111 could hand over.** T111 raised `Unemittable` for the whole template, so a
+  whole-catalog pass had to exclude T26 and the holdout landed at 48. Emission
+  carries the shortfall **per instance**: variant (i) answers a boolean and
+  materializes normally, so its 3 stratified instances are emitted and only (ii)
+  and (iii)'s 5 are withheld — the holdout keeps a live T26 probe in the committed
+  files rather than only in principle. **The schema was not edited**, per this
+  packet's constraint: the five are reported with the error each produced, and the
+  repair remains a specification change in the schema's `answer` or the oracle's
+  return, both frozen as of T107 (`decisions.md § A shortfall is stated in the
+  suite, not resolved by coercion`). Any total quoted against `templates × m` says
+  276 of 281, never "about 281".
+  **Generation writes to `.generation-cache/`, never `eval/cache/`.** The second is
+  the replay cache T116 captures and commits, and it holds what the *cases* ask
+  for; a generation run fetches for every draw it rejected as well, so committing
+  those would be responses no case will ever ask for. Gitignored, and the tests
+  that generate run offline.
+  **The committed files are re-checked as artifacts, not only as output**: every
+  case validates, the three files re-serialize to their own bytes (which a
+  hand-edit would break), no case id repeats across the whole suite, train ∩
+  test_seen is empty on every sampled parameter, and every `as_of` sits in its own
+  split's stripe. Those last two are T113's exit criteria asserted against files a
+  reviewer can open, with no generator in the loop.
+  23 tests in `tests/eval/test_emit.py`. `uv run ruff check .` and `uv run pytest`
+  clean.
 - [x] T115 Stand up the GR2L service, record its served build, and commit the
   canary request/response hash to `eval/pins.json`. Capture cannot start without
   it, and a diverging canary is a hard failure by design. **Pull forward — run it

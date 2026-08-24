@@ -1,0 +1,3790 @@
+[
+  {
+    "inputs": {
+      "case_id": "T01-0001",
+      "template_id": "T01",
+      "language": "en",
+      "as_of": "2026-03-13T23:00:00+01:00",
+      "question": "What was the total outflow of the wetland green roof in February 2026?",
+      "params": {
+        "roof": "wetland",
+        "month": "2026-02"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 39.4,
+      "unit": "L",
+      "tolerance": {
+        "kind": "rel",
+        "value": 0.02
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [
+        "lookup_reference"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T01-0002",
+      "template_id": "T01",
+      "language": "de",
+      "as_of": "2025-08-09T23:00:00+02:00",
+      "question": "Wie viel Wasser ist im Juni 2025 insgesamt vom bewässerten Extensivdach abgeflossen?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "month": "2025-06"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 0.0,
+      "unit": "L",
+      "tolerance": {
+        "kind": "rel",
+        "value": 0.02
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [
+        "lookup_reference"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T01-0003",
+      "template_id": "T01",
+      "language": "en",
+      "as_of": "2025-12-13T23:00:00+01:00",
+      "question": "Outflow total, gravel, 2025-08 — how much?",
+      "params": {
+        "roof": "gravel",
+        "month": "2025-08"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 19.8,
+      "unit": "L",
+      "tolerance": {
+        "kind": "rel",
+        "value": 0.02
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [
+        "lookup_reference"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T01-0004",
+      "template_id": "T01",
+      "language": "de",
+      "as_of": "2026-03-13T23:00:00+01:00",
+      "question": "Sag mal, wie viel ist im Juni 2025 eigentlich alles vom bewässerten Extensivdach runtergekommen?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "month": "2025-06"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 0.0,
+      "unit": "L",
+      "tolerance": {
+        "kind": "rel",
+        "value": 0.02
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [
+        "lookup_reference"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T02-0001",
+      "template_id": "T02",
+      "language": "de",
+      "as_of": "2025-08-09T23:00:00+02:00",
+      "question": "An wie vielen Tagen vom 2025-07-18 bis 2025-07-31 lag die maximale Lufttemperatur über 26 °C?",
+      "params": {
+        "period": "2025-07-18..2025-07-31",
+        "thr": 26
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 4,
+      "unit": "count",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T02-0002",
+      "template_id": "T02",
+      "language": "en",
+      "as_of": "2025-12-10T23:00:00+01:00",
+      "question": "On how many days from 2025-11-03 to 2025-11-16 did the maximum air temperature exceed 24 °C?",
+      "params": {
+        "period": "2025-11-03..2025-11-16",
+        "thr": 24
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 0,
+      "unit": "count",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T02-0003",
+      "template_id": "T02",
+      "language": "de",
+      "as_of": "2025-11-13T23:00:00+01:00",
+      "question": "Wie viele Tage waren vom 22.10.2025 bis 04.11.2025 denn über 20 °C Höchsttemperatur?",
+      "params": {
+        "period": "2025-10-22..2025-11-04",
+        "thr": 20
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 0,
+      "unit": "count",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T02-0004",
+      "template_id": "T02",
+      "language": "en",
+      "as_of": "2026-01-27T23:00:00+01:00",
+      "question": "Days with max air temperature above 26 °C, 2025-07-03..2025-07-16 — count?",
+      "params": {
+        "period": "2025-07-03..2025-07-16",
+        "thr": 26
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 5,
+      "unit": "count",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T03-0001",
+      "template_id": "T03",
+      "language": "en",
+      "as_of": "2026-01-15T23:00:00+01:00",
+      "question": "What was the mean soil-moisture difference between the irrigated and the non-irrigated extensive roof from 2025-09-16 to 2025-09-29?",
+      "params": {
+        "period": "2025-09-16..2025-09-29"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 9.514,
+      "unit": "pp",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.2
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T03-0002",
+      "template_id": "T03",
+      "language": "de",
+      "as_of": "2026-03-25T23:00:00+01:00",
+      "question": "Wie groß war vom 2026-02-04 bis 2026-02-17 der mittlere Bodenfeuchteunterschied zwischen dem bewässerten und dem unbewässerten Extensivdach?",
+      "params": {
+        "period": "2026-02-04..2026-02-17"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 4.899,
+      "unit": "pp",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.2
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T03-0003",
+      "template_id": "T03",
+      "language": "en",
+      "as_of": "2026-03-16T23:00:00+01:00",
+      "question": "Mean soil-moisture gap, irrigated_extensive against non_irrigated_extensive, 2026-01-26..2026-02-08?",
+      "params": {
+        "period": "2026-01-26..2026-02-08"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 1.287,
+      "unit": "pp",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.2
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T03-0004",
+      "template_id": "T03",
+      "language": "de",
+      "as_of": "2026-04-06T23:00:00+02:00",
+      "question": "Wie weit lagen das bewässerte und das unbewässerte Extensivdach vom 07.02.2026 bis 20.02.2026 bei der Bodenfeuchte im Schnitt auseinander?",
+      "params": {
+        "period": "2026-02-07..2026-02-20"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 6.124,
+      "unit": "pp",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.2
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T04-0001",
+      "template_id": "T04",
+      "language": "de",
+      "as_of": "2025-12-07T23:00:00+01:00",
+      "question": "Ist am 2025-09-02 überhaupt Wasser vom Kiesdach abgeflossen?",
+      "params": {
+        "roof": "gravel",
+        "date": "2025-09-02"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [
+        "predict_green_roof_water_balance_tool"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T04-0002",
+      "template_id": "T04",
+      "language": "en",
+      "as_of": "2025-09-17T23:00:00+02:00",
+      "question": "Did the wetland green roof produce any outflow on 11 September 2025?",
+      "params": {
+        "roof": "wetland",
+        "date": "2025-09-11"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [
+        "predict_green_roof_water_balance_tool"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T04-0003",
+      "template_id": "T04",
+      "language": "de",
+      "as_of": "2026-01-12T23:00:00+01:00",
+      "question": "Kam am 25.12.2025 eigentlich irgendwas vom unbewässerten Extensivdach runter?",
+      "params": {
+        "roof": "non_irrigated_extensive",
+        "date": "2025-12-25"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [
+        "predict_green_roof_water_balance_tool"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T04-0004",
+      "template_id": "T04",
+      "language": "en",
+      "as_of": "2026-01-24T23:00:00+01:00",
+      "question": "Any outflow at all, irrigated_extensive, 2025-09-26?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "date": "2025-09-26"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [
+        "predict_green_roof_water_balance_tool"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T05-0001",
+      "template_id": "T05",
+      "language": "en",
+      "as_of": "2026-04-15T23:00:00+02:00",
+      "question": "On which day in February 2026 did the wetland green roof have its highest outflow?",
+      "params": {
+        "roof": "wetland",
+        "month": "2026-02"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": "2026-02-22",
+      "unit": null,
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T05-0002",
+      "template_id": "T05",
+      "language": "de",
+      "as_of": "2026-03-28T23:00:00+01:00",
+      "question": "An welchem Tag im August 2025 hatte das Kiesdach seinen höchsten Abfluss?",
+      "params": {
+        "roof": "gravel",
+        "month": "2025-08"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": "2025-08-28",
+      "unit": null,
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T05-0003",
+      "template_id": "T05",
+      "language": "en",
+      "as_of": "2026-01-06T23:00:00+01:00",
+      "question": "Peak outflow day, non_irrigated_extensive, 2025-12?",
+      "params": {
+        "roof": "non_irrigated_extensive",
+        "month": "2025-12"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": "2025-12-08",
+      "unit": null,
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T05-0004",
+      "template_id": "T05",
+      "language": "de",
+      "as_of": "2026-03-31T23:00:00+02:00",
+      "question": "An welchem Tag ist im Februar 2026 am meisten vom Kiesdach runtergekommen?",
+      "params": {
+        "roof": "gravel",
+        "month": "2026-02"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": "2026-02-07",
+      "unit": null,
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T06-0001",
+      "template_id": "T06",
+      "language": "de",
+      "as_of": "2026-02-23T23:00:00+01:00",
+      "question": "Ab welcher Bodenfeuchte werden die Extensivdächer bewässert?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 10.0,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_threshold"
+          }
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "irrigation_threshold"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T06-0002",
+      "template_id": "T06",
+      "language": "en",
+      "as_of": "2025-11-25T23:00:00+01:00",
+      "question": "What is the soil-moisture threshold for irrigating the extensive roofs?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 10.0,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_threshold"
+          }
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "irrigation_threshold"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T06-0003",
+      "template_id": "T06",
+      "language": "de",
+      "as_of": "2025-11-28T23:00:00+01:00",
+      "question": "Ab wie viel Bodenfeuchte wird bei den Extensivdächern eigentlich bewässert?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 10.0,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_threshold"
+          }
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "irrigation_threshold"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T06-0004",
+      "template_id": "T06",
+      "language": "en",
+      "as_of": "2025-08-03T23:00:00+02:00",
+      "question": "Irrigation threshold for the extensive roofs — what value?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 10.0,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_threshold"
+          }
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "irrigation_threshold"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T07-0001",
+      "template_id": "T07",
+      "language": "en",
+      "as_of": "2026-01-09T23:00:00+01:00",
+      "question": "Does the semi-intensive green roof need irrigation right now?",
+      "params": {
+        "roof": "semi_intensive"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T07-0002",
+      "template_id": "T07",
+      "language": "de",
+      "as_of": "2025-07-19T23:00:00+02:00",
+      "question": "Muss das bewässerte Extensivdach jetzt bewässert werden?",
+      "params": {
+        "roof": "irrigated_extensive"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T07-0003",
+      "template_id": "T07",
+      "language": "en",
+      "as_of": "2025-06-19T23:00:00+02:00",
+      "question": "irrigated_extensive: irrigate now?",
+      "params": {
+        "roof": "irrigated_extensive"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T07-0004",
+      "template_id": "T07",
+      "language": "de",
+      "as_of": "2026-03-10T23:00:00+01:00",
+      "question": "Muss das Intensivdach gerade gegossen werden?",
+      "params": {
+        "roof": "semi_intensive"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T08-0001",
+      "template_id": "T08",
+      "language": "de",
+      "as_of": "2025-12-28T23:00:00+01:00",
+      "question": "Wie viele Hitzetage im Sinne des Betriebshandbuchs gab es vom 2025-09-28 bis 2025-10-11?",
+      "params": {
+        "period": "2025-09-28..2025-10-11"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 0,
+      "unit": "count",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "heatwave_definition"
+          }
+        },
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "heatwave_definition"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T08-0002",
+      "template_id": "T08",
+      "language": "en",
+      "as_of": "2026-03-25T23:00:00+01:00",
+      "question": "How many heatwave days, as defined in the operations manual, occurred from 2026-03-12 to 2026-03-25?",
+      "params": {
+        "period": "2026-03-12..2026-03-25"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 0,
+      "unit": "count",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "heatwave_definition"
+          }
+        },
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "heatwave_definition"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T08-0003",
+      "template_id": "T08",
+      "language": "de",
+      "as_of": "2026-03-13T23:00:00+01:00",
+      "question": "Wie viele Hitzetage nach der Definition im Betriebshandbuch waren vom 19.02.2026 bis 04.03.2026 dabei?",
+      "params": {
+        "period": "2026-02-19..2026-03-04"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 0,
+      "unit": "count",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "heatwave_definition"
+          }
+        },
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "heatwave_definition"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T08-0004",
+      "template_id": "T08",
+      "language": "en",
+      "as_of": "2026-01-24T23:00:00+01:00",
+      "question": "Heatwave days per the operations manual, 2025-12-03..2025-12-16 — count?",
+      "params": {
+        "period": "2025-12-03..2025-12-16"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 0,
+      "unit": "count",
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "heatwave_definition"
+          }
+        },
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "heatwave_definition"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T09-0001",
+      "template_id": "T09",
+      "language": "en",
+      "as_of": "2026-01-24T23:00:00+01:00",
+      "question": "Will the soil moisture of the non-irrigated extensive green roof fall below 20 %θ over the next 6 days?",
+      "params": {
+        "roof": "non_irrigated_extensive",
+        "thr": 20,
+        "d": 6
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T09-0002",
+      "template_id": "T09",
+      "language": "de",
+      "as_of": "2026-03-19T23:00:00+01:00",
+      "question": "Fällt die Bodenfeuchte des unbewässerten Extensivdachs in den nächsten 2 Tagen unter 14 %θ?",
+      "params": {
+        "roof": "non_irrigated_extensive",
+        "thr": 14,
+        "d": 2
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T09-0003",
+      "template_id": "T09",
+      "language": "en",
+      "as_of": "2026-02-20T23:00:00+01:00",
+      "question": "irrigated_extensive: soil moisture below 10 %θ within 6 days?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "thr": 10,
+        "d": 6
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T09-0004",
+      "template_id": "T09",
+      "language": "de",
+      "as_of": "2026-01-24T23:00:00+01:00",
+      "question": "Geht das Intensivdach in den nächsten 6 Tagen unter 5 %θ Bodenfeuchte runter?",
+      "params": {
+        "roof": "semi_intensive",
+        "thr": 5,
+        "d": 6
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T10-0001",
+      "template_id": "T10",
+      "language": "de",
+      "as_of": "2025-12-19T23:00:00+01:00",
+      "question": "Welche minimale Bodenfeuchte wird für das bewässerte Extensivdach in den nächsten 4 Tagen vorhergesagt?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "d": 4
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 26.08,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T10-0002",
+      "template_id": "T10",
+      "language": "en",
+      "as_of": "2026-01-09T23:00:00+01:00",
+      "question": "What is the minimum soil moisture predicted for the semi-intensive green roof over the next 2 days?",
+      "params": {
+        "roof": "semi_intensive",
+        "d": 2
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 8.2,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T10-0003",
+      "template_id": "T10",
+      "language": "de",
+      "as_of": "2026-02-20T23:00:00+01:00",
+      "question": "Wie weit geht die Bodenfeuchte des bewässerten Extensivdachs in den nächsten 4 Tagen runter?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "d": 4
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 12.25,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T10-0004",
+      "template_id": "T10",
+      "language": "en",
+      "as_of": "2025-12-16T23:00:00+01:00",
+      "question": "semi_intensive: predicted minimum soil moisture, next 4 days?",
+      "params": {
+        "roof": "semi_intensive",
+        "d": 4
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 24.58,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T11-0001",
+      "template_id": "T11",
+      "language": "en",
+      "as_of": "2026-03-19T23:00:00+01:00",
+      "question": "Does the semi-intensive green roof need irrigation tomorrow?",
+      "params": {
+        "roof": "semi_intensive"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T11-0002",
+      "template_id": "T11",
+      "language": "de",
+      "as_of": "2025-07-16T23:00:00+02:00",
+      "question": "Muss das Intensivdach morgen bewässert werden?",
+      "params": {
+        "roof": "semi_intensive"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T11-0003",
+      "template_id": "T11",
+      "language": "en",
+      "as_of": "2026-01-27T23:00:00+01:00",
+      "question": "semi_intensive: irrigate tomorrow?",
+      "params": {
+        "roof": "semi_intensive"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T11-0004",
+      "template_id": "T11",
+      "language": "de",
+      "as_of": "2025-07-04T23:00:00+02:00",
+      "question": "Muss das bewässerte Extensivdach morgen gegossen werden?",
+      "params": {
+        "roof": "irrigated_extensive"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "calc_irrigation"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T12-0001",
+      "template_id": "T12",
+      "language": "de",
+      "as_of": "2026-04-06T23:00:00+02:00",
+      "question": "Lag der Rückhalt des Sumpfdachs vom 2025-09-21 bis 2025-09-23 über dem Zielwert des Betriebshandbuchs?",
+      "params": {
+        "roof": "wetland",
+        "event": "2025-09-21..2025-09-23"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "retention_target"
+          }
+        },
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "retention_target"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T12-0002",
+      "template_id": "T12",
+      "language": "en",
+      "as_of": "2026-03-04T23:00:00+01:00",
+      "question": "Was the retention of the wetland green roof during 2026-02-21 to 2026-02-24 above the target in the operations manual?",
+      "params": {
+        "roof": "wetland",
+        "event": "2026-02-21..2026-02-24"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "retention_target"
+          }
+        },
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "retention_target"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T12-0003",
+      "template_id": "T12",
+      "language": "de",
+      "as_of": "2026-01-30T23:00:00+01:00",
+      "question": "Hat das Sumpfdach vom 27.08.2025 bis 30.08.2025 mehr zurückgehalten, als das Betriebshandbuch vorgibt?",
+      "params": {
+        "roof": "wetland",
+        "event": "2025-08-27..2025-08-30"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "retention_target"
+          }
+        },
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "retention_target"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T12-0004",
+      "template_id": "T12",
+      "language": "en",
+      "as_of": "2026-04-24T23:00:00+02:00",
+      "question": "wetland retention over 2026-02-21..2026-02-24: above the manual's target?",
+      "params": {
+        "roof": "wetland",
+        "event": "2026-02-21..2026-02-24"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "retention_target"
+          }
+        },
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "retention_target"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T13-0001",
+      "template_id": "T13",
+      "language": "en",
+      "as_of": "2025-08-30T23:00:00+02:00",
+      "question": "Is more than 10 mm of rain expected in the next 4 days?",
+      "params": {
+        "thr": 10,
+        "d": 4
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T13-0002",
+      "template_id": "T13",
+      "language": "de",
+      "as_of": "2025-12-01T23:00:00+01:00",
+      "question": "Werden in den nächsten 2 Tagen mehr als 0.5 mm Regen erwartet?",
+      "params": {
+        "thr": 0.5,
+        "d": 2
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T13-0003",
+      "template_id": "T13",
+      "language": "en",
+      "as_of": "2025-11-28T23:00:00+01:00",
+      "question": "More than 2 mm of rain in the next 6 days — expected?",
+      "params": {
+        "thr": 2,
+        "d": 6
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T13-0004",
+      "template_id": "T13",
+      "language": "de",
+      "as_of": "2026-01-15T23:00:00+01:00",
+      "question": "Soll es in den nächsten 4 Tagen mehr als 10 mm regnen?",
+      "params": {
+        "thr": 10,
+        "d": 4
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T14-0001",
+      "template_id": "T14",
+      "language": "de",
+      "as_of": "2026-02-23T23:00:00+01:00",
+      "question": "Welche Höchsttemperatur ist für die nächsten 2 Tage vorhergesagt?",
+      "params": {
+        "d": 2
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 11.9,
+      "unit": "°C",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T14-0002",
+      "template_id": "T14",
+      "language": "en",
+      "as_of": "2026-03-31T23:00:00+02:00",
+      "question": "What is the highest temperature forecast for the next 4 days?",
+      "params": {
+        "d": 4
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 10.6,
+      "unit": "°C",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T14-0003",
+      "template_id": "T14",
+      "language": "de",
+      "as_of": "2025-06-25T23:00:00+02:00",
+      "question": "Wie warm soll es in den nächsten 4 Tagen maximal werden?",
+      "params": {
+        "d": 4
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 31.8,
+      "unit": "°C",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T14-0004",
+      "template_id": "T14",
+      "language": "en",
+      "as_of": "2025-08-09T23:00:00+02:00",
+      "question": "Highest forecast temperature, next 4 days?",
+      "params": {
+        "d": 4
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 29.4,
+      "unit": "°C",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T15a-0001",
+      "template_id": "T15a",
+      "language": "en",
+      "as_of": "2025-11-04T23:00:00+01:00",
+      "question": "How much rain fell from 2025-06-25 to 2025-07-01?",
+      "params": {
+        "past_period": "2025-06-25..2025-07-01"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 1.547,
+      "unit": "mm",
+      "tolerance": {
+        "kind": "rel",
+        "value": 0.02
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T15a-0002",
+      "template_id": "T15a",
+      "language": "de",
+      "as_of": "2026-01-15T23:00:00+01:00",
+      "question": "Wie viel Regen ist vom 2025-10-08 bis 2025-10-14 gefallen?",
+      "params": {
+        "past_period": "2025-10-08..2025-10-14"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 6.511,
+      "unit": "mm",
+      "tolerance": {
+        "kind": "rel",
+        "value": 0.02
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T15a-0003",
+      "template_id": "T15a",
+      "language": "en",
+      "as_of": "2025-11-13T23:00:00+01:00",
+      "question": "Rain total, 2025-11-07..2025-11-13?",
+      "params": {
+        "past_period": "2025-11-07..2025-11-13"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 0.952,
+      "unit": "mm",
+      "tolerance": {
+        "kind": "rel",
+        "value": 0.02
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T15a-0004",
+      "template_id": "T15a",
+      "language": "de",
+      "as_of": "2025-12-28T23:00:00+01:00",
+      "question": "Wie viel hat es vom 25.06.2025 bis 01.07.2025 eigentlich geregnet?",
+      "params": {
+        "past_period": "2025-06-25..2025-07-01"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 1.547,
+      "unit": "mm",
+      "tolerance": {
+        "kind": "rel",
+        "value": 0.02
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T15b-0001",
+      "template_id": "T15b",
+      "language": "de",
+      "as_of": "2025-11-16T23:00:00+01:00",
+      "question": "Wie viel Regen fällt in den nächsten 10 Tagen?",
+      "params": {
+        "d": 10
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 21.1,
+      "unit": "mm",
+      "tolerance": {
+        "kind": "rel",
+        "value": 0.02
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T15b-0002",
+      "template_id": "T15b",
+      "language": "en",
+      "as_of": "2025-11-13T23:00:00+01:00",
+      "question": "How much rain will fall in the next 5 days?",
+      "params": {
+        "d": 5
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 17.5,
+      "unit": "mm",
+      "tolerance": {
+        "kind": "rel",
+        "value": 0.02
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T15b-0003",
+      "template_id": "T15b",
+      "language": "de",
+      "as_of": "2025-09-17T23:00:00+02:00",
+      "question": "Wie viel soll es in den nächsten 3 Tagen regnen?",
+      "params": {
+        "d": 3
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 4.1,
+      "unit": "mm",
+      "tolerance": {
+        "kind": "rel",
+        "value": 0.02
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T15b-0004",
+      "template_id": "T15b",
+      "language": "en",
+      "as_of": "2025-12-28T23:00:00+01:00",
+      "question": "Rain total, next 5 days?",
+      "params": {
+        "d": 5
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 6.3,
+      "unit": "mm",
+      "tolerance": {
+        "kind": "rel",
+        "value": 0.02
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T16a-0001",
+      "template_id": "T16a",
+      "language": "en",
+      "as_of": "2026-01-09T23:00:00+01:00",
+      "question": "The semi-intensive green roof is at 4.5 %θ, 34 °C is expected over the next 48 h and 2.0 mm of rain over the coming week — what does the operations manual say, should we irrigate?",
+      "params": {
+        "roof": "semi_intensive",
+        "x": 4.5,
+        "tmax": 34,
+        "y": 2.0
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_rule"
+          }
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent",
+        "get_weather_forecast_tool",
+        "calc_irrigation"
+      ],
+      "gold_cards": [
+        "irrigation_rule",
+        "irrigation_threshold"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T16a-0002",
+      "template_id": "T16a",
+      "language": "de",
+      "as_of": "2026-04-15T23:00:00+02:00",
+      "question": "Das bewässerte Extensivdach steht bei 11.0 %θ, für die nächsten 48 h sind 22 °C angesagt und für die kommende Woche 0.0 mm Regen — was sagt das Betriebshandbuch, sollen wir bewässern?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "x": 11.0,
+        "tmax": 22,
+        "y": 0.0
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_rule"
+          }
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent",
+        "get_weather_forecast_tool",
+        "calc_irrigation"
+      ],
+      "gold_cards": [
+        "irrigation_rule",
+        "irrigation_threshold"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T16a-0003",
+      "template_id": "T16a",
+      "language": "en",
+      "as_of": "2026-02-05T23:00:00+01:00",
+      "question": "irrigated_extensive at 16.0 %θ, 16 °C over 48 h, 2.0 mm over the coming week — per the operations manual, irrigate?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "x": 16.0,
+        "tmax": 16,
+        "y": 2.0
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_rule"
+          }
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent",
+        "get_weather_forecast_tool",
+        "calc_irrigation"
+      ],
+      "gold_cards": [
+        "irrigation_rule",
+        "irrigation_threshold"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T16a-0004",
+      "template_id": "T16a",
+      "language": "de",
+      "as_of": "2026-01-03T23:00:00+01:00",
+      "question": "Das bewässerte Extensivdach ist bei 8.0 %θ, die nächsten 48 h 28 °C, die kommende Woche 2.0 mm Regen — was steht dazu im Betriebshandbuch, bewässern oder nicht?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "x": 8.0,
+        "tmax": 28,
+        "y": 2.0
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_rule"
+          }
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent",
+        "get_weather_forecast_tool",
+        "calc_irrigation"
+      ],
+      "gold_cards": [
+        "irrigation_rule",
+        "irrigation_threshold"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T17a-0001",
+      "template_id": "T17a",
+      "language": "de",
+      "as_of": "2025-06-04T23:00:00+02:00",
+      "question": "Ab welcher Windgeschwindigkeit muss die Bewässerung abgeschaltet werden?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_rule"
+          }
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "irrigation_rule"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T17a-0002",
+      "template_id": "T17a",
+      "language": "en",
+      "as_of": "2025-07-28T23:00:00+02:00",
+      "question": "What is the maximum wind speed at which irrigation must be shut off?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_rule"
+          }
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "irrigation_rule"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T17a-0003",
+      "template_id": "T17a",
+      "language": "de",
+      "as_of": "2026-04-06T23:00:00+02:00",
+      "question": "Bei wie viel Wind muss die Bewässerung eigentlich aus?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_rule"
+          }
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "irrigation_rule"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T17a-0004",
+      "template_id": "T17a",
+      "language": "en",
+      "as_of": "2025-10-05T23:00:00+02:00",
+      "question": "Wind cut-off for irrigation — what speed?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "lookup_reference",
+          "args": {
+            "topic": "irrigation_rule"
+          }
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [
+        "irrigation_rule"
+      ],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T18a-0001",
+      "template_id": "T18a",
+      "language": "en",
+      "as_of": "2026-04-03T23:00:00+02:00",
+      "question": "What will the temperature be in 28 days?",
+      "params": {
+        "ahead_days": 28
+      }
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T18a-0002",
+      "template_id": "T18a",
+      "language": "de",
+      "as_of": "2025-06-04T23:00:00+02:00",
+      "question": "Wie warm wird es in 42 Tagen?",
+      "params": {
+        "ahead_days": 42
+      }
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T18a-0003",
+      "template_id": "T18a",
+      "language": "en",
+      "as_of": "2025-07-07T23:00:00+02:00",
+      "question": "Temperature in 42 days?",
+      "params": {
+        "ahead_days": 42
+      }
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T18a-0004",
+      "template_id": "T18a",
+      "language": "de",
+      "as_of": "2026-02-05T23:00:00+01:00",
+      "question": "Was wird es denn in 28 Tagen für eine Temperatur?",
+      "params": {
+        "ahead_days": 28
+      }
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T19-0001",
+      "template_id": "T19",
+      "language": "de",
+      "as_of": "2025-07-04T23:00:00+02:00",
+      "question": "Wie stark lag das Bodenfeuchtemodell des Intensivdachs in den letzten 14 Tagen im Mittel daneben?",
+      "params": {
+        "roof": "semi_intensive",
+        "d": 14
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 0.46,
+      "unit": "pp",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool",
+          "args": {
+            "evaluate_against_measured": true,
+            "past_days": 14
+          }
+        }
+      ],
+      "must_not_tools": [
+        "get_weather_forecast_tool"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "station_derivation": "da6c872647ed04026a92d0127323cda5ce65002bc4fd077bb300463041109ae3",
+        "weather_source": [
+          "station"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T19-0002",
+      "template_id": "T19",
+      "language": "en",
+      "as_of": "2025-07-07T23:00:00+02:00",
+      "question": "How far off was the soil-moisture model for the irrigated extensive green roof over the last 3 days, on average?",
+      "params": {
+        "roof": "irrigated_extensive",
+        "d": 3
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 4.58,
+      "unit": "pp",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool",
+          "args": {
+            "evaluate_against_measured": true,
+            "past_days": 3
+          }
+        }
+      ],
+      "must_not_tools": [
+        "get_weather_forecast_tool"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "station_derivation": "da6c872647ed04026a92d0127323cda5ce65002bc4fd077bb300463041109ae3",
+        "weather_source": [
+          "station"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T19-0003",
+      "template_id": "T19",
+      "language": "de",
+      "as_of": "2025-09-26T23:00:00+02:00",
+      "question": "Wie weit war das Modell bei der Bodenfeuchte des Intensivdachs in den letzten 3 Tagen im Schnitt daneben?",
+      "params": {
+        "roof": "semi_intensive",
+        "d": 3
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 1.64,
+      "unit": "pp",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool",
+          "args": {
+            "evaluate_against_measured": true,
+            "past_days": 3
+          }
+        }
+      ],
+      "must_not_tools": [
+        "get_weather_forecast_tool"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "station_derivation": "da6c872647ed04026a92d0127323cda5ce65002bc4fd077bb300463041109ae3",
+        "weather_source": [
+          "station"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T19-0004",
+      "template_id": "T19",
+      "language": "en",
+      "as_of": "2026-03-07T23:00:00+01:00",
+      "question": "semi_intensive: mean soil-moisture model error over the last 14 days?",
+      "params": {
+        "roof": "semi_intensive",
+        "d": 14
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 3.85,
+      "unit": "pp",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool",
+          "args": {
+            "evaluate_against_measured": true,
+            "past_days": 14
+          }
+        }
+      ],
+      "must_not_tools": [
+        "get_weather_forecast_tool"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "station_derivation": "da6c872647ed04026a92d0127323cda5ce65002bc4fd077bb300463041109ae3",
+        "weather_source": [
+          "station"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T21-0001",
+      "template_id": "T21",
+      "language": "en",
+      "as_of": "2026-03-25T23:00:00+01:00",
+      "question": "If 50 mm of rain falls on day 2 of the next 4 days, what is the minimum soil moisture of the non-irrigated extensive green roof over that window?",
+      "params": {
+        "roof": "non_irrigated_extensive",
+        "d": 4,
+        "mm": 50,
+        "offset": 2
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 6.9,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "forcings.precip",
+          "op": "present"
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T21-0002",
+      "template_id": "T21",
+      "language": "de",
+      "as_of": "2025-10-20T23:00:00+02:00",
+      "question": "Wenn am Tag 4 der nächsten 6 Tage 30 mm Regen fallen, wie hoch ist dann die minimale Bodenfeuchte des unbewässerten Extensivdachs in diesem Zeitraum?",
+      "params": {
+        "roof": "non_irrigated_extensive",
+        "d": 6,
+        "mm": 30,
+        "offset": 4
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 15.48,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "forcings.precip",
+          "op": "present"
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T21-0003",
+      "template_id": "T21",
+      "language": "en",
+      "as_of": "2026-01-09T23:00:00+01:00",
+      "question": "non_irrigated_extensive, 10 mm forced on day 0 of 2: minimum soil moisture over the window?",
+      "params": {
+        "roof": "non_irrigated_extensive",
+        "d": 2,
+        "mm": 10,
+        "offset": 0
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 4.79,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "forcings.precip",
+          "op": "present"
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T21-0004",
+      "template_id": "T21",
+      "language": "de",
+      "as_of": "2025-12-13T23:00:00+01:00",
+      "question": "Angenommen, am Tag 0 der nächsten 2 Tage kommen 10 mm runter — wie tief geht die Bodenfeuchte des unbewässerten Extensivdachs in dem Zeitraum?",
+      "params": {
+        "roof": "non_irrigated_extensive",
+        "d": 2,
+        "mm": 10,
+        "offset": 0
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 18.15,
+      "unit": "%θ",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.1
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "forcings.precip",
+          "op": "present"
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T24a-0001",
+      "template_id": "T24a",
+      "language": "de",
+      "as_of": "2025-10-05T23:00:00+02:00",
+      "question": "Zeig mir, wie sich die Bodenfeuchte des bewässerten Extensivdachs und des Kiesdachs im Februar 2025 entwickelt hat.",
+      "params": {
+        "variant": "measured_pair",
+        "table": "swc",
+        "month": "2025-02",
+        "roof_a": "irrigated_extensive",
+        "roof_b": "gravel"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "plot_timeseries"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "plot_timeseries",
+          "path": "series.*.source",
+          "op": "set_eq",
+          "value": [
+            "measured"
+          ]
+        },
+        {
+          "tool": "plot_timeseries",
+          "path": "series.*.variable",
+          "op": "set_eq",
+          "value": [
+            "soil_moisture"
+          ]
+        },
+        {
+          "tool": "plot_timeseries",
+          "path": "series.*.roof",
+          "op": "set_eq",
+          "value": [
+            "gravel",
+            "irrigated_extensive"
+          ]
+        },
+        {
+          "tool": "plot_timeseries",
+          "path": "start_date",
+          "op": "eq",
+          "value": "2025-02-01",
+          "resolve": "window"
+        },
+        {
+          "tool": "plot_timeseries",
+          "path": "end_date",
+          "op": "eq",
+          "value": "2025-02-28",
+          "resolve": "window"
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T24a-0002",
+      "template_id": "T24a",
+      "language": "en",
+      "as_of": "2025-10-20T23:00:00+02:00",
+      "question": "Show me how much water ran off the non-irrigated extensive green roof and the irrigated extensive green roof in August 2025.",
+      "params": {
+        "variant": "measured_pair",
+        "table": "outflow",
+        "month": "2025-08",
+        "roof_a": "non_irrigated_extensive",
+        "roof_b": "irrigated_extensive"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "plot_timeseries"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "plot_timeseries",
+          "path": "series.*.source",
+          "op": "set_eq",
+          "value": [
+            "measured"
+          ]
+        },
+        {
+          "tool": "plot_timeseries",
+          "path": "series.*.variable",
+          "op": "set_eq",
+          "value": [
+            "outflow"
+          ]
+        },
+        {
+          "tool": "plot_timeseries",
+          "path": "series.*.roof",
+          "op": "set_eq",
+          "value": [
+            "irrigated_extensive",
+            "non_irrigated_extensive"
+          ]
+        },
+        {
+          "tool": "plot_timeseries",
+          "path": "start_date",
+          "op": "eq",
+          "value": "2025-08-01",
+          "resolve": "window"
+        },
+        {
+          "tool": "plot_timeseries",
+          "path": "end_date",
+          "op": "eq",
+          "value": "2025-08-31",
+          "resolve": "window"
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T24a-0003",
+      "template_id": "T24a",
+      "language": "de",
+      "as_of": "2026-01-27T23:00:00+01:00",
+      "question": "Zeig mal die gemessene Bodenfeuchte des unbewässerten Extensivdachs zusammen mit der Modellvorhersage für August 2024.",
+      "params": {
+        "variant": "model_overlay",
+        "month": "2024-08",
+        "roof": "non_irrigated_extensive"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "plot_timeseries"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "plot_timeseries",
+          "path": "series.*.source",
+          "op": "set_eq",
+          "value": [
+            "measured",
+            "model"
+          ]
+        },
+        {
+          "tool": "plot_timeseries",
+          "path": "series.*.variable",
+          "op": "set_eq",
+          "value": [
+            "soil_moisture",
+            "swc_pct"
+          ]
+        },
+        {
+          "tool": "plot_timeseries",
+          "path": "series.*.roof",
+          "op": "set_eq",
+          "value": [
+            "non_irrigated_extensive"
+          ]
+        },
+        {
+          "tool": "plot_timeseries",
+          "path": "series.*.roof",
+          "op": "present"
+        },
+        {
+          "tool": "plot_timeseries",
+          "path": "start_date",
+          "op": "eq",
+          "value": "2024-08-01",
+          "resolve": "window"
+        },
+        {
+          "tool": "plot_timeseries",
+          "path": "end_date",
+          "op": "eq",
+          "value": "2024-08-31",
+          "resolve": "window"
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T24a-0004",
+      "template_id": "T24a",
+      "language": "en",
+      "as_of": "2026-03-07T23:00:00+01:00",
+      "question": "Plot measured against modelled soil moisture, wetland, 2025-12.",
+      "params": {
+        "variant": "non_modellable_overlay",
+        "month": "2025-12",
+        "alias": "qwetland"
+      }
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "plot_timeseries"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "plot_timeseries",
+          "path": "series.*.source",
+          "op": "set_eq",
+          "value": [
+            "measured",
+            "model"
+          ]
+        },
+        {
+          "tool": "plot_timeseries",
+          "path": "series.*.variable",
+          "op": "set_eq",
+          "value": [
+            "soil_moisture",
+            "swc_pct"
+          ]
+        },
+        {
+          "tool": "plot_timeseries",
+          "path": "series.*.roof",
+          "op": "present"
+        },
+        {
+          "tool": "plot_timeseries",
+          "path": "start_date",
+          "op": "eq",
+          "value": "2025-12-01",
+          "resolve": "window"
+        },
+        {
+          "tool": "plot_timeseries",
+          "path": "end_date",
+          "op": "eq",
+          "value": "2025-12-31",
+          "resolve": "window"
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T24b-0001",
+      "template_id": "T24b",
+      "language": "en",
+      "as_of": "2025-09-05T23:00:00+02:00",
+      "question": "What was the mean soil-moisture difference between the two extensive roofs in April 2025?",
+      "params": {
+        "month": "2025-04"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 3.889,
+      "unit": "pp",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.2
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [
+        "plot_timeseries"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T24b-0002",
+      "template_id": "T24b",
+      "language": "de",
+      "as_of": "2025-10-17T23:00:00+02:00",
+      "question": "Wie groß war im April 2025 der mittlere Bodenfeuchteunterschied zwischen den beiden Extensivdächern?",
+      "params": {
+        "month": "2025-04"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 3.889,
+      "unit": "pp",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.2
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [
+        "plot_timeseries"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T24b-0003",
+      "template_id": "T24b",
+      "language": "en",
+      "as_of": "2026-01-30T23:00:00+01:00",
+      "question": "Mean soil-moisture gap, the two extensive roofs, 2024-12?",
+      "params": {
+        "month": "2024-12"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 7.164,
+      "unit": "pp",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.2
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [
+        "plot_timeseries"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T24b-0004",
+      "template_id": "T24b",
+      "language": "de",
+      "as_of": "2026-01-06T23:00:00+01:00",
+      "question": "Wie weit lagen die beiden Extensivdächer im Dezember 2025 bei der Bodenfeuchte im Schnitt auseinander?",
+      "params": {
+        "month": "2025-12"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": 8.834,
+      "unit": "pp",
+      "tolerance": {
+        "kind": "abs",
+        "value": 0.2
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "text_to_sql_agent"
+        }
+      ],
+      "must_not_tools": [
+        "plot_timeseries"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T25-0001",
+      "template_id": "T25",
+      "language": "de",
+      "as_of": "2026-04-15T23:00:00+02:00",
+      "question": "Wird es morgen wärmer als gestern?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "station_derivation": "da6c872647ed04026a92d0127323cda5ce65002bc4fd077bb300463041109ae3",
+        "weather_source": [
+          "archive",
+          "station"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T25-0002",
+      "template_id": "T25",
+      "language": "en",
+      "as_of": "2025-07-19T23:00:00+02:00",
+      "question": "Will tomorrow be warmer than yesterday?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "station_derivation": "da6c872647ed04026a92d0127323cda5ce65002bc4fd077bb300463041109ae3",
+        "weather_source": [
+          "archive",
+          "station"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T25-0003",
+      "template_id": "T25",
+      "language": "de",
+      "as_of": "2025-12-01T23:00:00+01:00",
+      "question": "Wird es morgen wärmer als gestern, oder eher nicht?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "station_derivation": "da6c872647ed04026a92d0127323cda5ce65002bc4fd077bb300463041109ae3",
+        "weather_source": [
+          "archive",
+          "station"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T25-0004",
+      "template_id": "T25",
+      "language": "en",
+      "as_of": "2025-11-19T23:00:00+01:00",
+      "question": "Tomorrow warmer than yesterday?",
+      "params": {}
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "get_weather_forecast_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "station_derivation": "da6c872647ed04026a92d0127323cda5ce65002bc4fd077bb300463041109ae3",
+        "weather_source": [
+          "archive",
+          "station"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T27-0001",
+      "template_id": "T27",
+      "language": "en",
+      "as_of": "2026-03-31T23:00:00+02:00",
+      "question": "What is the minimum soil moisture predicted for the gravel roof over the next 6 days?",
+      "params": {
+        "variant": "predicted_minimum",
+        "alias": "kiesdach",
+        "d": 6
+      }
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T27-0002",
+      "template_id": "T27",
+      "language": "de",
+      "as_of": "2025-09-20T23:00:00+02:00",
+      "question": "Muss das Sumpfdach morgen bewässert werden?",
+      "params": {
+        "variant": "irrigation",
+        "alias": "sumpf2"
+      }
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T27-0003",
+      "template_id": "T27",
+      "language": "en",
+      "as_of": "2026-02-05T23:00:00+01:00",
+      "question": "wetland, 30 mm forced tomorrow: minimum soil moisture over 6 days?",
+      "params": {
+        "variant": "forced_rain",
+        "alias": "sumpf2",
+        "d": 6,
+        "mm": 30
+      }
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T27-0004",
+      "template_id": "T27",
+      "language": "de",
+      "as_of": "2025-07-31T23:00:00+02:00",
+      "question": "Wie weit geht die Bodenfeuchte des Sumpfdachs in den nächsten 2 Tagen runter?",
+      "params": {
+        "variant": "predicted_minimum",
+        "alias": "wetland",
+        "d": 2
+      }
+    },
+    "expectations": {
+      "status": "not_available",
+      "answer": null,
+      "unit": null,
+      "answer_metric": "skipped",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [
+        "text_to_sql_agent"
+      ],
+      "gold_cards": [],
+      "argument_checks": [],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
+      }
+    }
+  }
+]

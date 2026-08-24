@@ -25,3 +25,16 @@ pins-canary:
 # are pinned elsewhere and are not checked here — `just pins` carries them.
 cards-check:
     uv run python scripts/check_cards.py
+
+# The cases are generated and never hand-edited: the same seed against the same
+# pinned surfaces rewrites the same bytes, so a diff in eval/cases/ is a change in
+# the catalog, the record or a pinned surface, and never in the emitter. Both
+# recipes need the GR2L service up, because the model families' oracles call it.
+
+# Regenerate eval/cases/{train,test_seen,test_unseen}.json from the catalog
+cases:
+    uv run python scripts/generate_cases.py
+
+# Byte stability as an exit code: regenerate, diff against what is committed, write nothing
+cases-check:
+    uv run python scripts/generate_cases.py --check

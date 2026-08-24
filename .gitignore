@@ -224,3 +224,9 @@ data/timeseries
 *duckdb
 # Frontend lib/ dir — the bare Python `lib/` rule above must not swallow it
 !web/lib/
+
+# Generation's own response cache (scripts/generate_cases.py).
+# Deliberately NOT eval/cache/, which is the replay cache T116 captures and
+# commits: a generation run fetches for every draw it rejected as well, and
+# committing those would be responses no case will ever ask for.
+.generation-cache/

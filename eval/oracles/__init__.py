@@ -26,6 +26,12 @@ the abstention the third variant is scored on
 """
 
 from eval.oracles.base import Oracle, OracleAnswer, OracleInputError
+from eval.oracles.counterfactual import (
+    t21_forced_rain_minimum,
+    t22_albedo_override,
+    t23_state_override,
+    t26_composed_override,
+)
 from eval.oracles.hybrid import (
     t08_heatwave_days,
     t12_retention_above_target,
@@ -90,9 +96,13 @@ ORACLES: dict[str, Oracle] = {
     "T18b": t18b_missing_variable,
     "T19": t19_model_deviation,
     "T20": t20_forecast_heatwave,
+    "T21": t21_forced_rain_minimum,
+    "T22": t22_albedo_override,
+    "T23": t23_state_override,
     "T24a": t24a_plot_request,
     "T24b": t24b_extensive_gap,
     "T25": t25_tomorrow_warmer_than_yesterday,
+    "T26": t26_composed_override,
 }
 """Template id → the oracle that answers it.
 
@@ -129,7 +139,11 @@ __all__ = [
     "t18b_missing_variable",
     "t19_model_deviation",
     "t20_forecast_heatwave",
+    "t21_forced_rain_minimum",
+    "t22_albedo_override",
+    "t23_state_override",
     "t24a_plot_request",
     "t24b_extensive_gap",
     "t25_tomorrow_warmer_than_yesterday",
+    "t26_composed_override",
 ]

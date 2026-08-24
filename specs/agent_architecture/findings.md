@@ -665,6 +665,64 @@ code every time. The rung-4 boundary is the roof's deficit to capacity: at
 *Verified:* `t16a_manual_on_stated_values`, `t16b_calculator_on_stated_values` and
 `make_irrigation_tool(ctx)` over the same eight draws. *Date:* 2026-08-24.
 
+**The served GR2L accepts `albedo` and ignores it, which leaves T22 with no
+measurable answer.** Six albedos — 0.0, 0.05, 0.2, 0.5, 0.8, 1.0 — posted with an
+otherwise identical request return **one byte-identical response**: same `ET_PM`
+(8.5882 mm/day on the probe window), same `Ssub` series, same everything. The
+argument does reach the request — `resolve_roof_parameters` sets
+`parameters.albedo` to each value and the client sends it — so this is the
+service discarding it, not the wrapper dropping it. That the parameter is
+load-bearing in the physics is checkable against our own port of the same R
+convention: `et0_for_row` over that window gives 10.0276 / 8.5882 / 6.4291 /
+2.8306 mm at albedo 0.0 / 0.2 / 0.5 / 1.0, a 3.5× range, and the served value
+equals the local one at **0.2** exactly — the figure the R checkout hard-codes at
+`:68`. The newer build added `albedo` to the API surface without wiring it into
+the ET routine.
+
+Consequences, and they are the reason this is recorded rather than filed:
+`t22_albedo_override` would return the un-overridden prediction on every draw, so
+the answer metric would be satisfied by a candidate that never passed the
+argument at all — the one failure a counterfactual template cannot absorb. The
+oracle therefore raises `InertOverrideError`, measured per draw against the
+roof's own default rather than hard-coded, so T22 begins materializing unchanged
+on the day the service wires the parameter up. T26(i) composes `albedo` with a
+forcing and stays answerable, because the rain still moves it; half of its claim
+is not measurable meanwhile, and (iii) is the variant the compositional headline
+should rest on. `forcings` and `initial_soil_moisture_pct` are unaffected — both
+demonstrably move the model.
+*Verified:* six `run_gr2l` calls over one four-day forcing at
+`theta_01 = 14.0 mm`, responses compared as canonical JSON; `et_fao56.et0_for_row`
+over the same rows at four albedos. *Date:* 2026-08-24.
+
+**GR2L forgets a counterfactual seed, and how fast depends on the weather.**
+T23's override only means something while the run still remembers it. Sweeping a
+5 %θ against a 20 %θ seed on the non-irrigated extensive roof and reading the
+window's last day: at `as_of` 2026-04-20, a wet week, the two agree from **d = 2**
+onward (both 22.02 %θ, the store saturated), differing only at d = 1 by 5.92 pp;
+over a dry August window they separate by 9.84 / 6.39 / 4.25 / 1.75 pp at
+d = 1 / 2 / 3 / 5 and converge on the 1.29 %θ floor by **d = 7**; over a drier
+October window they still differ by 6.29 pp at **d = 10**. So there is no safe
+horizon to write into the template: the same *d* is informative in October and
+vacuous in April. `t23_state_override` measures it per draw instead, running a
+probe seed at whichever end of the roof's own `Ssubmin`/`Ssubmax` range is
+further from the stated value and refusing the draw when the two land on the same
+last day.
+*Verified:* `modelled_run` with `initial_soil_moisture_pct` at both seeds, three
+`as_of` days × six horizons, against the live service. *Date:* 2026-08-24.
+
+**Family G's forcing reaches the model, checked on the answer rather than on the
+request.** At `as_of` 2026-04-20 the non-irrigated extensive roof's three-day
+baseline minimum is 12.33 %θ (T10). Forcing 50 mm onto 2026-04-21 moves the
+series to 20.14 / 18.49 / 13.99 %θ and produces **48.1 mm of runoff on the forced
+day**, so the minimum becomes 13.99 %θ — the model computed the counterfactual,
+rather than the wrapper adjusting a baseline afterwards. T26's cross-roof variants
+over the same 30 mm forcing separate the roofs cleanly: irrigated extensive ends
+at 23.39 %θ against non-irrigated's 13.99, and semi-intensive at 25.94 against the
+same 13.99.
+*Verified:* `t21_forced_rain_minimum` and `t26_composed_override` against the live
+service through `make_case_context(..., allow_live=True)`, one event loop.
+*Date:* 2026-08-24.
+
 **T19 is the only GR2L window in the catalog that can reach the station.** It
 follows from the forward-window finding above rather than being a separate
 measurement: every other model template (T09, T10, T21, T22, T26) resolves a

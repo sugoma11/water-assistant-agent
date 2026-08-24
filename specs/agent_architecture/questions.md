@@ -528,25 +528,48 @@ decision.
 ### G. Counterfactuals
 
 **T21 — forcing override**
-Q: "If 50 mm of rain falls tomorrow, what is the minimum soil moisture of the {roof} roof over the
-next 48 h?" · roof ∈ P2
+Q: "If {mm} mm of rain falls on day {offset} of the next {d} days, what is the minimum soil moisture
+of the {roof} roof over that window?" · roof ∈ P2
 A: numeric (%θ, ±0.1 abs) · Traj: {predict_green_roof_water_balance_tool(forcings=…)}
 · Split: train+seen
 Oracle: `run_gr2l` with `precip` overridden on the named day, sparse per architecture §3.4.
-Note: a prior weather fetch is a free extra call — fetch-then-substitute is a valid route.
+Note: a prior weather fetch is a free extra call — fetch-then-substitute is a valid route. The forced
+day is a **`{offset}` counting today as 0** rather than a date, so it cannot fall outside a window
+sampled independently of it. **The override reaches the model, measured on the answer**: 50 mm forced
+onto one day moves the three-day minimum from 12.33 to 13.99 %θ and books 48.1 mm of runoff to the
+forced day (`findings.md`), so GR2L computed the counterfactual rather than the wrapper adjusting a
+baseline — which is the property the whole family probes.
 
 **T22 — parameter override**
 Q: "Under the current forecast but with albedo {a}, what soil moisture is predicted for the {roof}
 roof tomorrow?" · roof ∈ P2
 A: numeric (%θ, ±0.1 abs) · Traj: {predict_green_roof_water_balance_tool(albedo=…)} · Split: unseen
 Oracle: the same call with the flat `albedo` scalar set.
+Note: **not materializable against the GR2L build serving this deployment, and the oracle refuses
+rather than emitting a baseline** (T110). The service accepts `albedo` and ignores it — six values
+from 0.0 to 1.0 return one byte-identical response, where our own port of the same R convention spans
+10.03 mm to 2.83 mm of ET0 over that range (`findings.md`). Every answer would therefore equal the
+un-overridden prediction, and a candidate that never passed the argument would score full marks on
+the answer metric. The refusal is computed per draw against the roof's own default, so T22 begins
+materializing unchanged the day the service wires the parameter up; **until then this template
+contributes no instances, and §1.7's holdout ledger is short by one template.** Its trajectory claim
+— that the agent issues a plausible `albedo` — is unaffected and needs no answer, but nothing scores
+it while the template emits nothing.
 
 **T23 — state override**
-Q: "If soil moisture had been 20 %θ last Monday, where would it be now?" · roof ∈ P2
+Q: "If the {roof} roof's soil moisture had been {x} %θ {d} days ago, where would it be now?"
+· roof ∈ P2
 A: numeric (%θ, ±0.1 abs) · Traj:
 {predict_green_roof_water_balance_tool(initial_soil_moisture_pct=…)} · Must-not:
 `get_weather_forecast_tool` · Split: unseen
-Oracle: the same call over the window since Monday.
+Oracle: the same call over the window since that day, **refusing a window whose store has saturated**.
+Note: "last Monday" is repaired to `{d}` days for the reason `decisions.md § Forward horizons are
+counted in days` gives — a named weekday denotes a different date depending on when it is read. The
+saturation guard is the second validity condition that entry now carries: GR2L's memory of an initial
+condition is finite and its length depends on the weather, so a 5 %θ and a 20 %θ seed land on the same
+last day from `d = 2` at a wet April `as_of`, from `d = 7` over a dry August window, and still differ
+by 6.29 pp at `d = 10` in October (`findings.md`). There is no safe `{d}` to write here, so the oracle
+probes each draw.
 
 **T26 — compositional**
 Q variants: (i) "If albedo were {a} **and** 30 mm fell tomorrow, would the {roof} roof stay above the
@@ -556,7 +579,13 @@ irrigation threshold?" — adds `lookup_reference` to Traj and `irrigation_thres
 A: bool / numeric · Traj: union of the composed calls, argument-checked · Split: unseen
 Note: the compositional-generalization headline, with train-side parents T21, T06 and T09/T10.
 Variant (i) composes `albedo`, whose axis is itself holdout, so it is interpretable only where T22
-passes and is reported conditionally; variant (iii) keeps the headline off double transfer.
+passes and is reported conditionally; variant (iii) keeps the headline off double transfer. **Since
+T22 does not pass against the current service build** — the model ignores `albedo` — (i) is
+answerable and *half inert*: the rain moves its answer and the albedo cannot, so it composes one live
+axis with one dead one. It is not refused, because the case still probes composing a forcing with a
+card lookup, but **(iii) is the variant the headline should rest on** meanwhile. The comparison
+variants run both roofs over one window with one overlay, so the roof is the only thing that differs,
+and a tie is refused rather than broken.
 
 ### H. Presentation intent
 

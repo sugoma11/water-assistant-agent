@@ -834,6 +834,32 @@ and plausibility of these arguments, never on the tool result — possible only
 because the arguments are flat, named after the fields they replace, and echoed
 back unchanged.
 
+**Second validity condition, and it binds on the answer rather than the
+trajectory: an override must be able to move the number.** A counterfactual case
+whose answer equals the un-overridden prediction is one a candidate earns in full
+by ignoring the argument the template exists to probe, so the answer metric would
+report as evidence of counterfactual reasoning something that is evidence of
+nothing. T110 found both ways this happens. `initial_soil_moisture_pct` stops
+mattering once the store saturates and forgets its initial condition, which is a
+property of the *draw* and is resampled away. `albedo` stops mattering because
+the served GR2L accepts the parameter and discards it, which is a property of the
+*service* and cannot be resampled away at all (`findings.md`). The oracles
+therefore measure the dependence per draw — a probe run against the baseline —
+and refuse rather than emit, which is the same rule §1.6 already applies to an
+answer sitting within tolerance of its own threshold. Refusing is what keeps the
+failure visible: a T22 that quietly materialized would look like a passing
+template.
+
+**Rejected here too:**
+
+- *Hard-coding the albedo template as retired.* The refusal is computed from the
+  service's own behaviour, so T22 starts materializing again the day the
+  parameter is wired up, with no edit. A retirement would have to be noticed and
+  undone by hand.
+- *Choosing a "safe" window length for T23 instead of probing.* Measured, the
+  safe length does not exist: the seed survives ten days in October and two in a
+  wet April week.
+
 ---
 
 ## Model pinning

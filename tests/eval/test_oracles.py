@@ -36,6 +36,14 @@ from zoneinfo import ZoneInfo
 
 from eval.oracles import ORACLES
 from eval.oracles.base import OracleInputError
+from eval.oracles.counterfactual import (
+    InertOverrideError,
+    rain_forcing,
+    t21_forced_rain_minimum,
+    t22_albedo_override,
+    t23_state_override,
+    t26_composed_override,
+)
 from eval.oracles.hybrid import (
     heatwave_days,
     heatwave_definition_card,
@@ -103,7 +111,10 @@ from water_assistant_agent.assistant.context import ScenarioContext
 from water_assistant_agent.assistant.irrigation import Regime
 from water_assistant_agent.assistant.rules_constants import rules_for
 from water_assistant_agent.assistant.tools import gr2l as gr2l_module
-from water_assistant_agent.assistant.tools.gr2l import make_green_roof_balance_tool
+from water_assistant_agent.assistant.tools.gr2l import (
+    FORCEABLE_FIELDS,
+    make_green_roof_balance_tool,
+)
 from water_assistant_agent.assistant.tools.gr2l_client import ROOF_PRESETS
 from water_assistant_agent.assistant.tools.irrigation import make_irrigation_tool
 from water_assistant_agent.assistant.tools.roofs import ROOFS
@@ -2131,6 +2142,446 @@ def test_t11_refuses_a_roof_the_rule_declines(tmp_path: Path):
         asyncio.run(t11_needs_irrigation_tomorrow(_inputs("T11", roof="Sumpfdach"), ctx))
 
 
+# --- T21, T22, T23, T26: family G, the counterfactuals (T110) ------------------
+
+
+class ForcingAwareGr2l:
+    """A model that responds to its forcing, its seed and its albedo.
+
+    The stub the family needs: an override the fake ignored would let an oracle
+    that dropped the argument pass every test here. Storage rises with the day's
+    rain, falls at a rate the albedo throttles, and starts at ``theta_01``.
+    """
+
+    def __init__(self, *, albedo_matters: bool = True) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self._albedo_matters = albedo_matters
+
+    async def __call__(
+        self, rows: list[DailyWeatherRow], parameters: Any, **_: Any
+    ) -> list[Gr2lResultRow]:
+        self.calls.append(
+            {"albedo": parameters.albedo, "theta_01": parameters.theta_01,
+             "precip": [row.precip for row in rows]}
+        )
+        drying = 3.0 * (1.0 - parameters.albedo) if self._albedo_matters else 2.4
+        store = parameters.theta_01
+        out = []
+        for index, row in enumerate(rows):
+            if index:
+                store = min(store + row.precip - drying, parameters.Ssubmax)
+            out.append(
+                Gr2lResultRow(
+                    Date=row.Date,
+                    ET_PM=1.0,
+                    Ssub=max(store, parameters.Ssubmin),
+                    Sret=0.0,
+                    Qdown=None if index == 0 else 0.0,
+                    Qup=None if index == 0 else 0.0,
+                    OUT=None if index == 0 else 0.0,
+                    ET=0.8,
+                )
+            )
+        return out
+
+
+def _swc(mm: float, roof: str = MODELLABLE) -> float:
+    """*mm* of substrate storage as the %θ ``_to_days`` would report."""
+    return round(mm_to_theta_pct(mm, float(ROOF_PRESETS[roof]["SH"])), 2)
+
+
+def test_t21_forces_one_day_and_leaves_the_rest_as_fetched(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """The overlay is sparse: one day named, the other two keep the fetched 0 mm.
+
+    Seeded at 20.14 %θ (14.1 mm) and drying 2.4 mm a day, a dry three-day window
+    ends at 9.3 mm. Forcing 50 mm onto day 2 caps the store at ``Ssubmax`` = 16 mm
+    and leaves 13.6 mm on day 3, so the minimum moves from 9.3 mm to 13.6 mm —
+    which is the direction rain moves a roof, and the arithmetic is visible.
+    """
+    model = ForcingAwareGr2l(albedo_matters=False)
+    monkeypatch.setattr(gr2l_module, "run_gr2l", model)
+    ctx = _context(
+        db=_seed_db(tmp_path / "t21.duckdb", MODELLABLE, 20.14), weather=StubWeather()
+    )
+
+    answer = asyncio.run(
+        t21_forced_rain_minimum(
+            _inputs("T21", roof=MODELLABLE, d=3, mm=50.0, offset=1), ctx
+        )
+    )
+
+    assert model.calls[-1]["precip"] == [0.0, 50.0, 0.0]
+    assert answer.answer == _swc(13.6)
+    assert answer.unit == "%θ"
+    assert answer.detail["forcings"] == {"precip": {"2026-04-21": 50.0}}
+
+
+def test_t21_keys_the_forcing_by_the_rows_own_field_name(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """``precip``, not ``precip_mm``, and the name is read off the row model.
+
+    One vocabulary for the forcing and the row it replaces
+    (``decisions.md`` § GR2L argument surface). A second name here would be the
+    translation table that entry rejects, in the one place nothing would catch
+    it.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", ForcingAwareGr2l())
+    ctx = _context(
+        db=_seed_db(tmp_path / "t21v.duckdb", MODELLABLE, 20.0), weather=StubWeather()
+    )
+
+    answer = asyncio.run(
+        t21_forced_rain_minimum(
+            _inputs("T21", roof=MODELLABLE, d=3, mm=20.0, offset=0), ctx
+        )
+    )
+
+    assert set(answer.detail["forcings"]) == {"precip"}
+    assert "precip" in FORCEABLE_FIELDS
+    assert rain_forcing(date(2026, 4, 20), 5.0) == {"precip": {"2026-04-20": 5.0}}
+
+
+def test_t21_refuses_a_forced_day_outside_its_own_window(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """An override reaching no row would silently do nothing, so it is a fault here.
+
+    ``normalize_forcings`` raises too, but several frames in and after a weather
+    fetch; a template whose forced day falls outside its window should name
+    itself.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", ForcingAwareGr2l())
+    ctx = _context(
+        db=_seed_db(tmp_path / "t21out.duckdb", MODELLABLE, 20.0), weather=StubWeather()
+    )
+
+    with pytest.raises(OracleInputError, match="outside the window"):
+        asyncio.run(
+            t21_forced_rain_minimum(
+                _inputs("T21", roof=MODELLABLE, d=3, mm=20.0, offset=5), ctx
+            )
+        )
+
+
+def test_t22_answers_where_the_model_responds_to_albedo(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """Against a model that uses the parameter, T22 materializes and reads tomorrow.
+
+    Drying is ``3 · (1 − albedo)``, so at 0.6 the roof loses 1.2 mm and ends
+    tomorrow at 12.9 mm where the default 0.2 would have lost 2.4 mm. The answer
+    is **tomorrow's day row**, not the window's minimum, which is what separates
+    T22 from T21 more than the argument does.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", ForcingAwareGr2l(albedo_matters=True))
+    ctx = _context(
+        db=_seed_db(tmp_path / "t22.duckdb", MODELLABLE, 20.14), weather=StubWeather()
+    )
+
+    answer = asyncio.run(t22_albedo_override(_inputs("T22", roof=MODELLABLE, a=0.6), ctx))
+
+    assert answer.answer == _swc(12.9)
+    assert answer.detail["albedo"] == 0.6
+    assert answer.detail["default_albedo"] == 0.2
+    assert answer.detail["day"] == "2026-04-21"
+
+
+def test_t22_refuses_where_the_model_ignores_albedo(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """The served build's behaviour, and the refusal it forces.
+
+    Six albedos from 0.0 to 1.0 return one byte-identical response from the real
+    service (``findings.md``), so every T22 answer would equal the un-overridden
+    prediction and a candidate that never passed the argument would score full
+    marks. The check is **measured against the roof's own default rather than
+    hard-coded**, which is what lets T22 start materializing again the day the
+    service wires the parameter up.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", ForcingAwareGr2l(albedo_matters=False))
+    ctx = _context(
+        db=_seed_db(tmp_path / "t22inert.duckdb", MODELLABLE, 20.14),
+        weather=StubWeather(),
+    )
+
+    with pytest.raises(InertOverrideError, match="does not depend on the argument"):
+        asyncio.run(t22_albedo_override(_inputs("T22", roof=MODELLABLE, a=0.6), ctx))
+
+
+def test_t22_refuses_the_roofs_own_default_as_a_counterfactual(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """Stating the default is the baseline wearing an argument, and probes nothing."""
+    monkeypatch.setattr(gr2l_module, "run_gr2l", ForcingAwareGr2l())
+    ctx = _context(
+        db=_seed_db(tmp_path / "t22def.duckdb", MODELLABLE, 20.0), weather=StubWeather()
+    )
+    default = float(ROOF_PRESETS[MODELLABLE]["albedo"])
+
+    with pytest.raises(OracleInputError, match="own default albedo"):
+        asyncio.run(
+            t22_albedo_override(_inputs("T22", roof=MODELLABLE, a=default), ctx)
+        )
+
+
+def test_t23_reads_the_last_day_from_the_stated_seed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """Started at 20 %θ two days ago and drying 2.4 mm a day, the roof is at 9.2 mm now.
+
+    20 %θ on a 7 cm roof is 14.0 mm; two drying steps leave 9.2 mm. The answer is
+    the window's **last** day — "where would it be now" — where T21's is the
+    minimum.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", ForcingAwareGr2l(albedo_matters=False))
+    ctx = _context(
+        db=_seed_db(tmp_path / "t23.duckdb", MODELLABLE, 5.0), weather=StubWeather()
+    )
+
+    answer = asyncio.run(
+        t23_state_override(_inputs("T23", roof=MODELLABLE, x=20.0, d=2), ctx)
+    )
+
+    assert answer.answer == _swc(9.2)
+    assert answer.unit == "%θ"
+    assert answer.detail["seed_source"] == "caller"
+    assert answer.detail["window"] == "2026-04-18..2026-04-20"
+
+
+def test_t23_refuses_a_window_that_has_forgotten_its_seed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """Enough rain and the store saturates, so the answer stops depending on *x*.
+
+    Both the stated seed and the probe land on ``Ssubmax``, which is the shape the
+    real service shows from ``d = 2`` at a wet April ``as_of`` and from ``d = 7``
+    over a dry August window (``findings.md``). There is no safe horizon to write
+    into the template, so the oracle probes each draw.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", ForcingAwareGr2l(albedo_matters=False))
+    ctx = _context(
+        db=_seed_db(tmp_path / "t23wet.duckdb", MODELLABLE, 5.0),
+        weather=StubWeather(precip=40.0),
+    )
+
+    with pytest.raises(InertOverrideError, match="forgotten its initial condition"):
+        asyncio.run(t23_state_override(_inputs("T23", roof=MODELLABLE, x=20.0, d=3), ctx))
+
+
+def test_t23_probes_from_the_far_end_of_the_roofs_own_range(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """The probe is whichever extreme is further, so it is the strongest test available.
+
+    ``Ssubmin`` and ``Ssubmax`` restated in %θ are the range the store actually
+    moves in; a probe outside it would be clipped and would report a false loss
+    of memory. At a stated 20 %θ the further end is the 0.9 mm floor.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", ForcingAwareGr2l(albedo_matters=False))
+    ctx = _context(
+        db=_seed_db(tmp_path / "t23probe.duckdb", MODELLABLE, 5.0), weather=StubWeather()
+    )
+
+    answer = asyncio.run(
+        t23_state_override(_inputs("T23", roof=MODELLABLE, x=20.0, d=2), ctx)
+    )
+
+    assert answer.detail["probe_seed_swc_pct"] == _swc(
+        float(ROOF_PRESETS[MODELLABLE]["Ssubmin"])
+    )
+
+
+def test_t26_composes_a_forcing_with_the_cards_threshold(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """Variant (i): stays above the **dry** threshold, not the wilting point.
+
+    T06's reason — the question asks whether the roof stays above the level
+    irrigation is triggered at, and the wilting rung waters whatever the weather
+    is doing. The card is read for the ground and the constant for the number.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", ForcingAwareGr2l())
+    ctx = _context(
+        db=_seed_db(tmp_path / "t26i.duckdb", MODELLABLE, 20.14), weather=StubWeather()
+    )
+
+    answer = asyncio.run(
+        t26_composed_override(
+            _inputs(
+                "T26", variant="albedo_and_rain", roof=MODELLABLE,
+                a=0.6, mm=30.0, offset=1, d=3,
+            ),
+            ctx,
+        )
+    )
+
+    assert answer.detail["dry_threshold_pct"] == rules_for(MODELLABLE).dry_pct
+    assert answer.answer is (answer.detail["min_swc_pct"] > 10.0)
+    assert answer.unit is None
+
+
+def test_t26_compares_two_roofs_under_one_forcing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """Variants (ii) and (iii): one window, one overlay, and the roof is the difference.
+
+    Answered as the winning roof's canonical name rather than as a gap, because
+    the question names roofs and a signed difference would need a convention
+    about which way round it is written.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", ForcingAwareGr2l(albedo_matters=False))
+    column = ROOFS[IRRIGABLE].columns["swc"]
+    other = ROOFS[MODELLABLE].columns["swc"]
+    ctx = _context(
+        db=_executor(
+            tmp_path / "t26ii.duckdb",
+            f"CREATE TABLE swc (timestamp TIMESTAMP, {column} DOUBLE, {other} DOUBLE);"
+            f"INSERT INTO swc VALUES (TIMESTAMP '2026-04-19 12:00:00', 28.0, 12.0);",
+        ),
+        weather=StubWeather(),
+    )
+
+    answer = asyncio.run(
+        t26_composed_override(
+            _inputs(
+                "T26", variant="rain_cross_roof", roof_a=IRRIGABLE, roof_b=MODELLABLE,
+                mm=10.0, offset=1, d=3,
+            ),
+            ctx,
+        )
+    )
+
+    assert answer.answer == IRRIGABLE
+    assert answer.detail["final_swc_pct"][IRRIGABLE] > (
+        answer.detail["final_swc_pct"][MODELLABLE]
+    )
+
+
+def test_t26_refuses_a_roof_compared_with_itself(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """One roof drawn twice is not a comparison, and it is caught before any run."""
+    monkeypatch.setattr(gr2l_module, "run_gr2l", ForcingAwareGr2l(albedo_matters=False))
+    ctx = _context(
+        db=_seed_db(tmp_path / "t26same.duckdb", MODELLABLE, 20.0), weather=StubWeather()
+    )
+
+    with pytest.raises(OracleInputError, match="compares two roofs"):
+        asyncio.run(
+            t26_composed_override(
+                _inputs(
+                    "T26", variant="train_taught", roof_a=MODELLABLE,
+                    roof_b="  Non_Irrigated_Extensive ", mm=10.0, offset=1, d=3,
+                ),
+                ctx,
+            )
+        )
+
+
+def test_t26_refuses_a_tie_rather_than_breaking_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """Two roofs ending the window level give "which is wetter" two answers.
+
+    Both extensive roofs are 7 cm deep, so equal seeds under a forcing small
+    enough to cap neither store end equal — and §1.6 discards a question with
+    more than one defensible reading rather than letting ``max`` pick whichever
+    roof came first. The forcing has to stay under both caps for the tie to
+    exist at all: the two roofs' ``Ssubmax`` differ (22.8 mm against 16.0 mm), so
+    a downpour separates them on the clamp alone.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", ForcingAwareGr2l(albedo_matters=False))
+    column = ROOFS[IRRIGABLE].columns["swc"]
+    other = ROOFS[MODELLABLE].columns["swc"]
+    ctx = _context(
+        db=_executor(
+            tmp_path / "t26tie.duckdb",
+            f"CREATE TABLE swc (timestamp TIMESTAMP, {column} DOUBLE, {other} DOUBLE);"
+            f"INSERT INTO swc VALUES (TIMESTAMP '2026-04-19 12:00:00', 20.0, 20.0);",
+        ),
+        weather=StubWeather(),
+    )
+
+    with pytest.raises(OracleInputError, match="two defensible answers"):
+        asyncio.run(
+            t26_composed_override(
+                _inputs(
+                    "T26", variant="train_taught", roof_a=IRRIGABLE,
+                    roof_b=MODELLABLE, mm=1.0, offset=1, d=3,
+                ),
+                ctx,
+            )
+        )
+
+
+def test_t26_refuses_an_unknown_variant(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """The variant axis is a closed set; an unknown one is a generation fault."""
+    monkeypatch.setattr(gr2l_module, "run_gr2l", ForcingAwareGr2l())
+    ctx = _context(
+        db=_seed_db(tmp_path / "t26v.duckdb", MODELLABLE, 20.0), weather=StubWeather()
+    )
+
+    with pytest.raises(OracleInputError, match="unknown T26 variant"):
+        asyncio.run(
+            t26_composed_override(
+                _inputs("T26", variant="albedo_only", roof=MODELLABLE, mm=1.0, offset=0, d=3),
+                ctx,
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "oracle_and_params",
+    [
+        (t21_forced_rain_minimum, {"d": 3, "mm": 10.0, "offset": 0}),
+        (t22_albedo_override, {"a": 0.6}),
+        (t23_state_override, {"x": 20.0, "d": 2}),
+    ],
+)
+def test_every_counterfactual_refuses_a_roof_outside_pool_p2(
+    oracle_and_params: tuple[Any, dict], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """One scope table for the whole family, and it is the tool's own.
+
+    The gravel roof and the wetland are family I's subject; a counterfactual
+    answered for either would record as answerable a request every modelling
+    route declines.
+    """
+    oracle, params = oracle_and_params
+    monkeypatch.setattr(gr2l_module, "run_gr2l", ForcingAwareGr2l())
+    ctx = _context(
+        db=_seed_db(tmp_path / f"cf{oracle.__name__}.duckdb", MODELLABLE, 20.0),
+        weather=StubWeather(),
+    )
+
+    with pytest.raises(OracleInputError, match="P2"):
+        asyncio.run(oracle(_inputs("Tcf", roof="Kiesdach", **params), ctx))
+
+
+def test_counterfactual_pins_carry_the_canary_and_the_source(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """A modelled counterfactual is truth relative to the build that computed it."""
+    monkeypatch.setattr(gr2l_module, "run_gr2l", ForcingAwareGr2l(albedo_matters=False))
+    ctx = _context(
+        db=_seed_db(tmp_path / "cfpins.duckdb", MODELLABLE, 20.14),
+        weather=StubWeather(source="archive"),
+    )
+
+    pins = asyncio.run(
+        t21_forced_rain_minimum(
+            _inputs("T21", roof=MODELLABLE, d=3, mm=10.0, offset=1), ctx
+        )
+    ).pins
+
+    assert len(pins["gr2l_canary"]) == 64
+    assert pins["weather_source"] == ["archive"]
+    assert "station_derivation" not in pins
+
+
 # --- T16a, T16b: family F, the given-values controls (T110) --------------------
 
 # One draw per rung of the ladder, on the irrigated extensive roof: wilting 5 %θ,
@@ -2576,9 +3027,13 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
         "T18b",
         "T19",
         "T20",
+        "T21",
+        "T22",
+        "T23",
         "T24a",
         "T24b",
         "T25",
+        "T26",
     ]
     assert ORACLES["T01"] is t01_total_outflow
     assert ORACLES["T02"] is t02_hot_day_count
@@ -2606,4 +3061,8 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
     assert ORACLES["T20"] is t20_forecast_heatwave
     assert ORACLES["T24a"] is t24a_plot_request
     assert ORACLES["T24b"] is t24b_extensive_gap
+    assert ORACLES["T21"] is t21_forced_rain_minimum
+    assert ORACLES["T22"] is t22_albedo_override
+    assert ORACLES["T23"] is t23_state_override
     assert ORACLES["T25"] is t25_tomorrow_warmer_than_yesterday
+    assert ORACLES["T26"] is t26_composed_override

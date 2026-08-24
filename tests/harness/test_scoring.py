@@ -515,6 +515,29 @@ def test_a_present_check_wants_the_value_to_exist_and_be_plausible() -> None:
     assert score_trajectory(run({"roof_type": "extensive"}), exp).value == 0.0
 
 
+def test_a_present_check_on_a_wildcard_that_collects_nothing_fails() -> None:
+    """A wildcard returns ``[]``, not ``_MISSING``, when no member carries it.
+
+    Left as an absence only for ``_MISSING``/``None``, ``present`` over a wildcard
+    would be a check no call could fail: it would pass for any call that merely
+    passed a list, which the tool already requires.
+    """
+    check = {"tool": "plot_timeseries", "path": "series.*.roof", "op": "present"}
+    exp = expectations(
+        expected_tool_calls=[{"name": "plot_timeseries"}], argument_checks=[check]
+    )
+
+    def run(series: list[dict[str, object]]) -> CaseResult:
+        return result(trajectory=(ToolCall("plot_timeseries", {"series": series}),))
+
+    roofless = run([{"source": "weather", "variable": "precip"}])
+    carried = run([{"source": "measured", "roof": "gravel"}])
+
+    assert score_trajectory(roofless, exp).value == 0.0
+    assert "no member of the list carries it" in score_trajectory(roofless, exp).rationale
+    assert score_trajectory(carried, exp).value == 1.0
+
+
 def test_a_check_passes_where_any_call_satisfies_it() -> None:
     """An extra call with other arguments must not fail a check the run met."""
     run = result(
@@ -539,6 +562,140 @@ def test_a_check_passes_where_any_call_satisfies_it() -> None:
     )
 
     assert score.value == 1.0
+
+
+def test_a_fumble_repaired_on_a_later_call_still_passes() -> None:
+    """The reason the quantifier is existential over calls at all.
+
+    The pilot's own plotting rollouts grope: a wrong variable name, an
+    ``invalid_argument`` rejection, then the right call. That is a self-repair and
+    ``decisions.md`` § Trajectory scoring and routing probes makes it free.
+    """
+    run = result(
+        trajectory=(
+            ToolCall(
+                "plot_timeseries",
+                {"series": [{"variable": "soil_moisture_pct", "roof": "gravel"}]},
+            ),
+            ToolCall(
+                "plot_timeseries",
+                {"series": [{"variable": "soil_moisture", "roof": "gravel"}]},
+            ),
+        )
+    )
+    score = score_trajectory(
+        run,
+        expectations(
+            expected_tool_calls=[{"name": "plot_timeseries"}],
+            argument_checks=[
+                {
+                    "tool": "plot_timeseries",
+                    "path": "series.*.variable",
+                    "op": "set_eq",
+                    "value": ["soil_moisture"],
+                },
+                {
+                    "tool": "plot_timeseries",
+                    "path": "series.*.roof",
+                    "op": "set_eq",
+                    "value": ["gravel"],
+                },
+            ],
+        ),
+    )
+
+    assert score.value == 1.0
+
+
+def test_a_pass_cannot_be_assembled_from_fragments_of_two_calls() -> None:
+    """One call must satisfy every check of its group — no correct call, no pass.
+
+    Per-check search over the trajectory would score this run 1: the roof check
+    finds its call, the variable check finds the other, and the candidate never
+    made the call the case is about. On the plotting family the argument checks
+    are the whole scored surface (§7), and on T26(i) the same hole would pass the
+    compositional holdout on ``albedo`` set in one call and ``forcings`` in
+    another.
+    """
+    run = result(
+        trajectory=(
+            ToolCall(
+                "plot_timeseries",
+                {
+                    "series": [
+                        {"variable": "soil_moisture", "roof": "semi_intensive"}
+                    ]
+                },
+            ),
+            ToolCall(
+                "plot_timeseries",
+                {"series": [{"variable": "runoff", "roof": "gravel"}]},
+            ),
+        )
+    )
+    score = score_trajectory(
+        run,
+        expectations(
+            expected_tool_calls=[{"name": "plot_timeseries"}],
+            argument_checks=[
+                {
+                    "tool": "plot_timeseries",
+                    "path": "series.*.variable",
+                    "op": "set_eq",
+                    "value": ["soil_moisture"],
+                },
+                {
+                    "tool": "plot_timeseries",
+                    "path": "series.*.roof",
+                    "op": "set_eq",
+                    "value": ["gravel"],
+                },
+            ],
+        ),
+    )
+
+    assert score.value == 0.0
+    assert "no single call satisfied all 2 checks" in score.rationale
+
+
+def test_a_group_lets_a_template_ask_for_two_calls_to_one_tool() -> None:
+    """T26(ii) compares two roofs, which is two runs and cannot be one call.
+
+    Without the group key the tightened rule would make a cross-roof comparison
+    unsatisfiable — the two ``roof_type`` checks would contradict each other
+    inside one call — so the fix would have closed a hole by voiding a template.
+    """
+    tool = "predict_green_roof_water_balance_tool"
+    run = result(
+        trajectory=(
+            ToolCall(tool, {"roof_type": "irrigated_extensive", "albedo": 0.3}),
+            ToolCall(tool, {"roof_type": "non_irrigated_extensive", "albedo": 0.3}),
+        )
+    )
+    checks = [
+        {"tool": tool, "group": "a", "path": "roof_type", "op": "eq",
+         "value": "irrigated_extensive"},
+        {"tool": tool, "group": "a", "path": "albedo", "op": "present",
+         "plausible": {"min": 0.0, "max": 1.0}},
+        {"tool": tool, "group": "b", "path": "roof_type", "op": "eq",
+         "value": "non_irrigated_extensive"},
+        {"tool": tool, "group": "b", "path": "albedo", "op": "present",
+         "plausible": {"min": 0.0, "max": 1.0}},
+    ]
+    exp = expectations(
+        expected_tool_calls=[{"name": tool}], argument_checks=checks
+    )
+
+    assert score_trajectory(run, exp).value == 1.0
+
+    # The second roof never ran: its group has no satisfying call, and the
+    # rationale names the group rather than the tool alone.
+    half = result(
+        trajectory=(ToolCall(tool, {"roof_type": "irrigated_extensive", "albedo": 0.3}),)
+    )
+    score = score_trajectory(half, exp)
+    assert score.value == 0.0
+    assert f"{tool}[b]" in score.rationale
 
 
 def test_a_relative_window_scores_identically_to_the_dates_it_denotes() -> None:

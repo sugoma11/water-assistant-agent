@@ -690,6 +690,31 @@ the only two channels MLflow delivers (`findings.md`). Consequences:
   the agent-supplied half of the spec. The `op` vocabulary carries `eq`, `set_eq` (a
   series selection is a set match) and `present` (a candidate-chosen value that must
   merely exist and be plausible).
+- **A `path` addresses one call's arguments, and a `*` segment collects one field
+  across a list.** `series.*.roof` is the roofs of every series that carries one,
+  which is how "a set match over the selection" is written without inventing an
+  order the request does not have: an index would impose one, and `set_eq` over
+  `series` itself compares whole declarations and so fails a candidate that added
+  an optional key it was entitled to add. Four properties, all load-bearing —
+  members lacking the field are **skipped**, so a `weather` series with no roof
+  does not break a roof check; the wildcard is **list-only**, `forcings` being a
+  mapping; `set_eq` over it **collapses duplicates**, so it constrains *which*
+  values were drawn and never how many series carry them, cardinality being the
+  `series.*.source` check's to constrain; and collecting nothing is an **absence**
+  for `present`, which would otherwise be a check no call could fail.
+- **Checks sharing a call are satisfied by one call.** Ungrouped checks on one
+  tool describe a single call and are scored against a single call — some call to
+  that tool must satisfy all of them. Existential over calls, because a fumble
+  repaired on a later call costs nothing (`decisions.md § Trajectory scoring and
+  routing probes`); universal over the group, because per-check search lets a run
+  assemble a pass out of fragments — one call with the right roofs and the wrong
+  variable, another with the right variable and the wrong roofs, and no correct
+  call anywhere. That is the whole scored surface of the plotting family, and on
+  T26(i) it would let the compositional holdout pass by setting `albedo` on one
+  call and `forcings` on another without ever composing them. Where a template
+  genuinely needs *two* calls to one tool — T26(ii)'s cross-roof comparison — an
+  optional `group` splits the checks, and each group is then satisfied
+  independently.
 - Two schema validators, not conventions: **`gold_cards` non-empty implies
   `lookup_reference` in `expected_tool_calls`**, and **`answer_metric: "skipped"`
   implies `answer: null`**.

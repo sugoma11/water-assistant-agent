@@ -219,13 +219,18 @@
       "properties": {
         "tool": { "$ref": "#/$defs/tool_name" },
         "path": {
-          "description": "Dotted path into one call's argument object, e.g. `forcings.precip.2026-03-15` or `series.0.source`. It addresses arguments only; there is no path into a tool result.",
+          "description": "Dotted path into one call's argument object, e.g. `forcings.precip.2026-03-15` or `series.0.source`. It addresses arguments only; there is no path into a tool result. A `*` segment collects one field across a LIST — `series.*.roof` is the roofs of every series that carries one — which is how a set match over a selection is written without inventing an order an index would impose. Members lacking the field are skipped, so a weather series with no roof does not break a roof check; the wildcard is list-only (`forcings.*` matches nothing, forcings being a mapping); `set_eq` over it collapses duplicates, so it constrains WHICH values were drawn and never how many series carry them; and collecting nothing is an absence for `present`, which would otherwise be a check no call could fail.",
           "type": "string",
           "minLength": 1
         },
         "op": {
           "description": "`eq` exact match; `set_eq` a set match, for a series selection whose order carries no meaning; `present` a candidate-chosen value that must merely exist and be plausible.",
           "enum": ["eq", "set_eq", "present"]
+        },
+        "group": {
+          "description": "Which single call this check describes. Checks sharing a (tool, group) must ALL be satisfied by ONE call, so a pass cannot be assembled from fragments of different calls; different groups are satisfied independently. Omit it in the common case — ungrouped checks on one tool share that tool's default group, which is the tight reading a plot's source/variable/roof/window want. Name it only where a template genuinely needs two calls to the same tool, as T26(ii)'s cross-roof comparison does.",
+          "type": "string",
+          "minLength": 1
         },
         "value": {
           "description": "The expected value for `eq` / `set_eq`. Absent for `present`."

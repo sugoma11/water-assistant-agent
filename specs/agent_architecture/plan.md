@@ -97,8 +97,12 @@ ones belong in `findings.md` and are recorded there by T004.
   `25×4 + 24×5 + 7×8 = 276`; all eight category counts; 43 abstention instances
   split 12 / 15 / 16. Nothing in §1.7 needs re-deriving except what §2.1 settles —
   which it since has: T007 returned T12 to test_seen, so the ledger is
-  `25×4 + 25×5 + 7×8 = 281` and the abstention split is 12 / 15 / 16 of
-  100 / 125 / 56 (`questions.md` §1.7).
+  `25×4 + 25×5 + 7×8 = 281`. Abstention has since moved once more, on §2.1's own
+  terms rather than the ledger's: Q4 below made T24a's series spec a sampled
+  variant, whose non-modellable arm abstains, so the split is **13 / 16 / 16 of
+  100 / 125 / 56 = 45/281 = 16.0 %** (`questions.md` §1.7). The ledger arithmetic
+  is unchanged — the two new abstentions are instances of an existing template, not
+  a new one.
 
 ### 1.3 Constraints
 
@@ -123,9 +127,11 @@ convention living only in this file.
 share against a 7–10 % target, and category shares up to 8.6 pp from the eight
 figures named before the set settled. **`n = templates × m` stays the derivation
 rule**; the derived table becomes the suite's stated composition, and §1.6's band
-is rewritten to the value the five-template abstention set produces. Per-template
+is rewritten to the value the abstention set produces. Per-template
 `m` is rejected: it makes `n` unverifiable against the product, which is the
-property §1.7 exists to hold.
+property §1.7 exists to hold. §8's Q4 is the first case decided under this rule
+after the fact: authoring an abstaining variant moved the share, and the share was
+restated rather than the variant trimmed to protect a number.
 
 Two of §4's remaining items are computations, not preferences, and are scheduled
 rather than decided: **T12's qualifying-event count** (the area blocker is gone,
@@ -185,7 +191,7 @@ served id, endpoint, decoding parameters and canary **before** any search run
 The layering is architecture §1's and is not restated. What this plan adds is
 where each piece lands in the tree:
 
-```
+```text
 src/water_assistant_agent/assistant/
   context.py            ScenarioContext, connect_asof            [P1]
   cache.py              ResponseCache (request-keyed)            [P1]
@@ -383,11 +389,29 @@ a model case completes with entries and no live call.
   entry, on the T16a/T16b ground: the phrasing cues the route, and naming both
   routes gold — T25's shape — stays available if the pilot shows candidates
   taking the weather route.
-- **Q4 — family H's roof pools are notional.** §1.8 assigns H to P1, P1f and P2,
-  but T24a fixes both roofs and draws only a `measured` swc series, so no case
-  exercises a `model` series or the plot tool's `not_available`. Either an H
-  variant is authored or the pool rows are marked notional; P7's capture surface
-  differs between the two.
+- ~~**Q4 — family H's roof pools are notional.**~~ Settled in the catalog by
+  **sampling T24a's series spec** rather than by marking the rows notional: the
+  template gains a `variant` axis in T27's style — measured pair / model overlay /
+  non-modellable overlay — so the three pools are drawn by the variants that reach
+  them (`questions.md` §2's T24a entry, §1.8's rows). No template is added and
+  §1.7's ledger is untouched: T24a stays one entry at m = 4/5, and the variant mix
+  is stratified within each split (train 2/1/1, test_seen 2/2/1) exactly as the
+  language and bool balances already are. Three things the suite could not reach
+  now have a case: the `model` source, §3.6's mixed-resolution rule — `swc` is
+  half-hourly, GR2L daily, so the measured half aggregates to calendar days — and
+  the plot tool's own `not_available` trigger, whose oracle is single-valued
+  because the request names the model side and so cannot be answered by plotting
+  the measured half alone. Two consequences are accepted rather than absorbed:
+  **abstention moves to 45/281 = 16.0 %** (13.0 / 12.8 / 28.6 by split), restated
+  in `questions.md` §1.6 and §1.7 on the same stated-not-steered terms as before;
+  and **P7's capture surface grows** by the GR2L month-window runs the overlay
+  variant needs — 3 instances at one run each, the non-modellable variant adding
+  none, since a `not_available` never reaches the service. That growth reconciles
+  rather than extends §1.2's GR2L bullet, which already listed "the model-bearing
+  half of E and **H**" among the capture passes needing the service and had no such
+  half to point at. The one gap left open is disclosed, not closed: §3.6's
+  `weather` source still has no case, so it stays covered by P5's exit criterion
+  alone.
 
 ---
 

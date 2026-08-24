@@ -426,15 +426,44 @@ tool's contract mandates.
   instruction is itself optimizable, so the probe still fails whichever
   candidate deleted the clause — measuring compliance with a convention rather
   than routing judgment.
+- *Letting each argument check hunt the trajectory for its own satisfying call.*
+  The obvious reading of "the argument checks pass", and the one held until the
+  pilot showed candidates make several calls to one tool before getting it right.
+  It lets a run assemble a pass out of fragments — one plot call with the right
+  roofs and the wrong variable, another with the right variable and the wrong
+  roofs, and no correct call anywhere. That is not a hypothetical margin: on the
+  plotting family the argument checks are the *entire* scored surface, since the
+  answer metric skips a null answer and the gold and must-not sets are satisfied
+  by any candidate that reaches for the tool at all. On T26(i) the same hole
+  would pass the compositional holdout — the thesis's headline transfer claim —
+  on `albedo` set in one call and `forcings` in another, never composed. The rule
+  is instead existential over calls of the *conjunction*: some one call satisfies
+  every check in its group.
+- *Per-tool conjunction without a group key,* which is the same rule stated one
+  notch too coarsely. It would have voided T26(ii): a cross-roof comparison is
+  genuinely two model runs, so `roof_type` cannot equal both roofs inside one
+  call and the template becomes unsatisfiable. The fix would have closed one hole
+  in the holdout by breaking another. An optional `group` splits the checks a
+  template means to spread across calls; omitting it — the common case — gives
+  the tight reading a single plot spec wants.
+- *Requiring every call to satisfy the checks.* The universal reading closes the
+  same hole and costs the self-repair that `invalid_argument` is designed to
+  make free: a candidate that fumbles a variable name, reads the rejection and
+  repairs it made the right call, and charging it for the fumble reintroduces the
+  extra-call penalty rejected at the top of this entry.
 
 **Accepted risks, stated plainly:**
 
 - A shotgun candidate that calls every tool scores perfect trajectory on any
-  template without a must-not. The mitigation is coverage: every tool holds at
-  least one distractor slot inside train, so a call-everything policy hard-fails
-  those templates and cannot win overall. A step cap would bound the excess
-  physically, but no cap is set today, so the claim currently rests on
-  distractor coverage alone.
+  template without a must-not. Two mitigations, and both are in place. Coverage:
+  every tool holds at least one distractor slot inside train, so a
+  call-everything policy hard-fails those templates and cannot win overall. And
+  the step cap bounds the excess physically — `MAX_TOOL_STEPS = 6` for a rollout,
+  which is six tool calls to spend across a suite whose gold sets run to three.
+  The cap became load-bearing rather than incidental once the argument checks
+  were tightened below: a candidate cannot buy a pass by emitting calls until one
+  of them happens to satisfy every check, because six is the whole budget and an
+  exhausted cap leaves no final message to parse.
 - A candidate that looks the rule up before calculating fails the
   calculator-routing template, though the behaviour is defensible. Accepted
   because the pair probes routing only through symmetric must-nots — which is
@@ -464,10 +493,18 @@ tool's contract mandates.
   trajectory satisfiable by either tool and drop it from the templates on which
   the database route is sole-necessary.
 
-**Validity condition:** the shotgun mitigation is void unless every registered
-tool holds a must-not slot **inside train**. A distractor slot living only in
-the holdout leaves the search free to learn the shotgun policy and reveals it
-only afterwards.
+**Validity conditions:**
+
+- The shotgun mitigation is void unless every registered tool holds a must-not
+  slot **inside train**. A distractor slot living only in the holdout leaves the
+  search free to learn the shotgun policy and reveals it only afterwards.
+- The plotting family and the counterfactual families measure what they claim
+  only while a group's checks are evaluated **against one call**. Both families
+  are scored on arguments alone — plotting because its answer is a null artifact
+  deliverable, the counterfactuals because their arguments are scored on presence
+  and plausibility and never on the tool result — so a per-check search does not
+  weaken those metrics, it removes their content. A candidate need never have
+  made the call the case is about.
 
 ---
 

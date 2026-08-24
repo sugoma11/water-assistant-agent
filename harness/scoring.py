@@ -238,8 +238,15 @@ def score_trajectory(
     ]
     failures = [
         failure
-        for check in expectations.get("argument_checks") or ()
-        if (failure := _check_failure(check, result.trajectory, as_of)) is not None
+        for (tool, group), checks in _checks_by_call(
+            expectations.get("argument_checks") or ()
+        ).items()
+        if (
+            failure := _group_check_failure(
+                tool, group, checks, result.trajectory, as_of
+            )
+        )
+        is not None
     ]
 
     if not (missing or forbidden or failures):
@@ -656,30 +663,75 @@ def _describe(tolerance: Mapping[str, Any]) -> str:
     return "an exact match"
 
 
-def _check_failure(
-    check: Mapping[str, Any],
+def _checks_by_call(
+    checks: Iterable[Mapping[str, Any]],
+) -> dict[tuple[str, str | None], list[Mapping[str, Any]]]:
+    """Group the checks that must hold **of one call**, in declaration order.
+
+    The key is the tool plus the check's optional ``group``. Ungrouped checks on
+    one tool share a group, which is the common case and the tight one: a plot's
+    source, variable, roof and window describe a single call, so they are scored
+    against a single call. A template that genuinely needs *two* calls to one
+    tool — the cross-roof comparison of T26(ii), one run per roof — tags them
+    into two groups, and each group is then satisfied independently.
+    """
+    grouped: dict[tuple[str, str | None], list[Mapping[str, Any]]] = {}
+    for check in checks:
+        key = (str(check.get("tool", "")), check.get("group"))
+        grouped.setdefault(key, []).append(check)
+    return grouped
+
+
+def _group_check_failure(
+    tool: str,
+    group: str | None,
+    checks: Sequence[Mapping[str, Any]],
     trajectory: Sequence[ToolCall],
     as_of: datetime | str | None,
 ) -> str | None:
-    """``None`` if some call to the named tool satisfies *check*, else why not.
+    """``None`` if **one** call to *tool* satisfies **every** check, else why not.
 
-    **Existential over the calls**, because an extra call costs nothing: a
-    candidate that named the right source on one call did name it, and failing
-    the check on a second, redundant call would reintroduce the extra-call
-    penalty ``decisions.md`` rejects through the back door.
+    Existential over the calls, universal over the group's checks — and the
+    quantifier order is the whole point. Existential over calls, because an extra
+    call costs nothing: a candidate that fumbled a variable name and repaired it
+    did make the right call, and failing the check on the fumble would
+    reintroduce the extra-call penalty ``decisions.md`` § Trajectory scoring and
+    routing probes rejects through the back door. Universal over the group's
+    checks, because the alternative — each check hunting the trajectory for its
+    own satisfying call — lets a run assemble a pass out of fragments: one call
+    with the right roofs and the wrong variable, another with the right variable
+    and the wrong roofs, and no correct call anywhere. On the plotting family
+    that is the *entire* scored surface (§7), and on T26(i) it would let the
+    compositional holdout pass by setting ``albedo`` on one call and ``forcings``
+    on another, never composing them.
+
+    The rationale names the closest call rather than every call, since it is
+    GEPA's reflective signal and a list of near-misses per call teaches nothing.
+    Ties go to the later call: that is the candidate's most recent attempt.
     """
-    tool = str(check.get("tool", ""))
     calls = [call for call in trajectory if call.name == tool]
+    where = f"{tool}[{group}]" if group else tool
     if not calls:
-        return f"{tool}.{check.get('path')} — {tool} was never called"
-    reasons: list[str] = []
+        paths = ", ".join(str(check.get("path")) for check in checks)
+        return f"{where}.{{{paths}}} — {tool} was never called"
+    closest: list[str] | None = None
     for call in calls:
-        reason = _call_check_failure(check, call, as_of)
-        if reason is None:
+        reasons = [
+            f"{check.get('path')} — {reason}"
+            for check in checks
+            if (reason := _call_check_failure(check, call, as_of)) is not None
+        ]
+        if not reasons:
             return None
-        if reason not in reasons:
-            reasons.append(reason)
-    return f"{tool}.{check.get('path')} — {'; '.join(reasons)}"
+        if closest is None or len(reasons) <= len(closest):
+            closest = reasons
+    assert closest is not None
+    if len(checks) == 1:
+        return f"{where}.{'; '.join(closest)}"
+    return (
+        f"{where} — no single call satisfied all {len(checks)} checks; "
+        f"the closest missed {len(closest)}: {'; '.join(closest)}"
+    )
 
 
 def _call_check_failure(
@@ -696,6 +748,12 @@ def _call_check_failure(
     if op == "present":
         if value is _MISSING or value is None:
             return "no such argument"
+        if "*" in path.split(".") and not value:
+            # A wildcard collects, so it returns `[]` rather than `_MISSING` when
+            # no member carries the field — and `[]` is neither missing nor None,
+            # which would make `present` on a wildcard a check that cannot fail:
+            # it would pass for any call that merely passed a list.
+            return "no member of the list carries it"
         bounds = check.get("plausible")
         if not bounds:
             return None
@@ -788,6 +846,13 @@ def _at_path(args: Any, path: str) -> Any:
     ``set_eq`` is then a statement about the series that carry the field, which
     is what makes ``series.*.roof`` meaningful on a chart whose weather series
     legitimately has no roof.
+
+    The wildcard is **list-only** (``forcings.*`` is ``_MISSING``, since forcings
+    is a mapping) and it **collapses duplicates** under ``set_eq``, so
+    ``series.*.roof`` constrains which roofs were drawn and never how many series
+    carry them — cardinality is ``series.*.source``'s to constrain. Collecting
+    nothing yields ``[]``, not ``_MISSING``; :func:`_call_check_failure` reads
+    that as an absence for ``present`` and as an empty set for ``set_eq``.
     """
     return _walk(args, path.split("."))
 

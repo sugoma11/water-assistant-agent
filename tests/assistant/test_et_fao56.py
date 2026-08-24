@@ -51,26 +51,39 @@ DAYS = [
 ]
 
 # `ET_PM` as `POST /predict_gr2l` returned it for exactly those four rows, at
-# this site's geometry and `albedo=0.2` — the value the R hard-codes. Captured
-# 2026-08-20 against the same endpoint `gr2l_canary_response_sha256` is pinned
+# this site's geometry and `albedo=0.2` — the R's own default. **Re-captured
+# 2026-08-24** against the same endpoint `gr2l_canary_response_sha256` is pinned
 # against (`findings.md` § External sources on this machine). The service rounds
 # to four decimals, which is the tolerance below.
+#
+# The previous capture, taken 2026-08-20, read 5.6745 / 0.3936 / 2.1606 / 7.6684.
+# Both the endpoint and this port moved between the two, and they moved together:
+# upstream `3e7405a` corrected the R's `Rnl` to kelvin and the port followed. The
+# old values are kept here because a fixture that silently changes number is a
+# fixture that cannot be argued with — these four are the size of the correction,
+# 0.19 to 0.45 mm/day, and the direction is *up* because the still-missing `Gsc`
+# leaves `Rnl` acting as a gain.
 SERVED_ET_PM = {
-    "2025-06-10": 5.6745,
-    "2025-12-21": 0.3936,
-    "2026-03-15": 2.1606,
-    "2025-08-01": 7.6684,
+    "2025-06-10": 6.0318,
+    "2025-12-21": 0.5819,
+    "2026-03-15": 2.4564,
+    "2025-08-01": 8.1012,
 }
 SERVICE_ROUNDING = 5e-5
 
 
 def _r_routine(row: DailyWeatherRow, day_of_year: int, albedo: float) -> dict[str, float]:
-    """A second transcription of ``GR2L_function.R:35-71``, read off the R again.
+    """A second transcription of ``GR2L_function.R:34-74``, read off the R again.
 
     Deliberately not sharing a line with the module under test: it names the
-    R's own variables, keeps its two-step radiation conversion and its
-    departures from FAO-56 (238 in ``es``, no ``Gsc`` in ``R_a``, ``Rnl`` in
-    °C with ``tn**4`` alone halved), and computes nothing the R does not.
+    R's own variables and keeps its departures from FAO-56 (238 in ``es``, no
+    ``Gsc`` in ``R_a``), and computes nothing the R does not.
+
+    Re-read after upstream ``3e7405a``, which moved ``Rnl`` to kelvin and
+    averaged both fourth powers. The R's own two-step ``Rs`` conversion became
+    one statement in the same commit with no change to the arithmetic; it is
+    written here as the R now writes it, for the same reason every other line
+    is — this transcription is only evidence if it is read off the current file.
     """
     tm, tx, tn, rf, w, gs = row.tm, row.tx, row.tn, row.rf, row.w, row.gs
     es = 0.6108 * math.exp(17.27 * tm / (238 + tm))
@@ -82,8 +95,7 @@ def _r_routine(row: DailyWeatherRow, day_of_year: int, albedo: float) -> dict[st
     lambda_ = 2.45 * 10**6
     gamma = c_p * pressure / (epsilon * lambda_)
     delta = (4098 * (0.6108 * math.exp(17.27 * tm / (tm + 237.3)))) / (tm + 237.3) ** 2
-    rs = gs / 8.64
-    rs = rs / 1e6 * 86400
+    rs = gs / 8.64 / 1e6 * 86400
     sigma_mj = 4.903 * 10 ** (-9)
     z_nn = SITE_ELEVATION_M
     phi = math.pi / 180 * SITE_LATITUDE
@@ -104,7 +116,7 @@ def _r_routine(row: DailyWeatherRow, day_of_year: int, albedo: float) -> dict[st
     rso = (0.75 + 2 * 10 ** (-5) * z_nn) * r_a
     rnl = (
         sigma_mj
-        * (tx**4 + tn**4 / 2)
+        * (((tx + 273.16) ** 4 + (tn + 273.16) ** 4) / 2)
         * (0.34 - 0.14 * (ea) ** (1 / 2))
         * (1.35 * (rs / rso) - 0.35)
     )

@@ -7,7 +7,7 @@ The deployed controller holds its store in %VWC and adds millimetres of rain and
 
 **Method.** Each day of the catalog's `as_of` band is decided twice over the same 7-day window — the refill horizon, the tool's own window — with the same station rows, the same `et_fao56` ET0, the same measured seed and the same trigger levels. The only difference is the unit the store is held in. Both arms are read back in %θ, where the two regimes' thresholds are the same numbers, so a flip is a trajectory and never a threshold. The window is forced by what the station actually recorded, not by the forecast the site would have had, so forecast error is not part of the comparison.
 
-**19 of 930 decisions flip** (2.0%) across 310 days and 3 roofs over 2025-06-01 → 2026-04-24: the millimetre balance irrigates on 8 where the deployed one does not, and declines on 11 where it does.
+**20 of 930 decisions flip** (2.2%) across 310 days and 3 roofs over 2025-06-01 → 2026-04-24: the millimetre balance irrigates on 10 where the deployed one does not, and declines on 10 where it does.
 
 Days the comparison could not cover, for the same reasons the tool itself abstains — an uncovered window, or no trustworthy seed: 18 — window not covered by the station record.
 
@@ -17,33 +17,34 @@ Days the comparison could not cover, for the same reasons the tool itself abstai
 
 | Date | Roof | Deployed (%VWC store) | Corrected (mm store) | seed %θ | min %θ deployed | min %θ mm | wilting / dry %θ | max tx °C | refill dep / mm |
 |---|---|---|---|---:|---:|---:|---:|---:|---|
-| 2025-06-05 | semi intensive | **irrigate** (below_wilting_point) | no (no_heat_no_stress) | 10.4 | 9.9 | 10.1 | 10 / 16 | 23.0 | F / F |
-| 2025-06-17 | irrigated extensive | no (sufficient_moisture) | **irrigate** (cooling_requested) | 12.6 | 10.1 | 9.1 | 5 / 10 | 28.6 | F / F |
-| 2025-06-18 | irrigated extensive | no (sufficient_moisture) | **irrigate** (cooling_requested) | 12.7 | 10.0 | 8.9 | 5 / 10 | 28.6 | F / F |
-| 2025-08-01 | irrigated extensive | **irrigate** (cooling_requested) | no (refill_forecast) | 8.6 | 7.7 | 7.3 | 5 / 10 | 24.2 | F / T |
-| 2025-08-02 | irrigated extensive | **irrigate** (cooling_requested) | no (refill_forecast) | 10.0 | 9.9 | 9.8 | 5 / 10 | 24.2 | F / T |
-| 2025-08-02 | non irrigated extensive | **irrigate** (cooling_requested) | no (refill_forecast) | 8.7 | 8.7 | 8.7 | 4 / 10 | 24.2 | F / T |
+| 2025-06-08 | non irrigated extensive | no (no_heat_no_stress) | **irrigate** (below_wilting_point) | 4.4 | 4.1 | 4.0 | 4 / 10 | 19.5 | F / F |
+| 2025-08-01 | irrigated extensive | **irrigate** (cooling_requested) | no (refill_forecast) | 8.6 | 7.6 | 7.2 | 5 / 10 | 24.2 | F / T |
+| 2025-08-02 | irrigated extensive | **irrigate** (cooling_requested) | no (refill_forecast) | 10.0 | 9.7 | 9.6 | 5 / 10 | 24.2 | F / T |
+| 2025-08-02 | non irrigated extensive | **irrigate** (cooling_requested) | no (refill_forecast) | 8.7 | 8.5 | 8.5 | 4 / 10 | 24.2 | F / T |
 | 2025-08-03 | irrigated extensive | **irrigate** (cooling_requested) | no (refill_forecast) | 8.4 | 8.4 | 8.4 | 5 / 10 | 26.3 | F / T |
 | 2025-08-03 | non irrigated extensive | **irrigate** (cooling_requested) | no (refill_forecast) | 7.4 | 7.4 | 7.4 | 4 / 10 | 26.3 | F / T |
-| 2025-08-06 | non irrigated extensive | no (sufficient_moisture) | **irrigate** (cooling_requested) | 12.6 | 10.3 | 9.3 | 4 / 10 | 27.6 | F / F |
-| 2025-08-08 | irrigated extensive | no (sufficient_moisture) | **irrigate** (cooling_requested) | 12.8 | 10.5 | 9.5 | 5 / 10 | 31.6 | F / F |
-| 2025-08-24 | semi intensive | **irrigate** (below_wilting_point) | no (no_heat_no_stress) | 11.7 | 9.9 | 10.5 | 10 / 16 | 23.7 | F / F |
-| 2025-08-25 | irrigated extensive | **irrigate** (cooling_requested) | no (refill_forecast) | 8.7 | 7.5 | 6.9 | 5 / 10 | 25.9 | F / T |
-| 2025-08-25 | semi intensive | no (refill_forecast) | **irrigate** (cooling_requested) | 13.4 | 11.3 | 12.0 | 10 / 16 | 25.9 | T / F |
-| 2025-09-08 | semi intensive | **irrigate** (cooling_requested) | no (sufficient_moisture) | 17.3 | 15.7 | 16.2 | 10 / 16 | 24.7 | F / F |
+| 2025-08-06 | non irrigated extensive | no (sufficient_moisture) | **irrigate** (cooling_requested) | 12.6 | 10.1 | 9.0 | 4 / 10 | 27.6 | F / F |
+| 2025-08-08 | irrigated extensive | no (sufficient_moisture) | **irrigate** (cooling_requested) | 12.8 | 10.3 | 9.2 | 5 / 10 | 31.6 | F / F |
+| 2025-08-13 | irrigated extensive | no (sufficient_moisture) | **irrigate** (cooling_requested) | 14.7 | 11.3 | 9.9 | 5 / 10 | 35.4 | F / F |
+| 2025-08-20 | irrigated extensive | no (sufficient_moisture) | **irrigate** (cooling_requested) | 13.5 | 10.9 | 9.8 | 5 / 10 | 25.8 | F / F |
+| 2025-08-24 | semi intensive | **irrigate** (below_wilting_point) | no (no_heat_no_stress) | 11.7 | 9.7 | 10.4 | 10 / 16 | 23.7 | F / F |
+| 2025-08-25 | irrigated extensive | **irrigate** (cooling_requested) | no (refill_forecast) | 8.7 | 7.3 | 6.7 | 5 / 10 | 25.9 | F / T |
+| 2025-08-25 | semi intensive | no (refill_forecast) | **irrigate** (cooling_requested) | 13.4 | 11.1 | 11.8 | 10 / 16 | 25.9 | T / F |
+| 2025-09-07 | irrigated extensive | no (sufficient_moisture) | **irrigate** (cooling_requested) | 12.4 | 10.6 | 9.8 | 5 / 10 | 24.7 | F / F |
+| 2025-09-08 | semi intensive | **irrigate** (cooling_requested) | no (sufficient_moisture) | 17.3 | 15.4 | 16.0 | 10 / 16 | 24.7 | F / F |
 | 2025-09-12 | non irrigated extensive | no (no_heat_no_stress) | **irrigate** (below_wilting_point) | 4.3 | 4.0 | 3.9 | 4 / 10 | 22.8 | F / F |
 | 2025-09-17 | non irrigated extensive | **irrigate** (cooling_requested) | no (refill_forecast) | 7.0 | 7.0 | 7.0 | 4 / 10 | 26.1 | F / T |
 | 2025-09-17 | semi intensive | no (refill_forecast) | **irrigate** (cooling_requested) | 14.2 | 14.2 | 14.2 | 10 / 16 | 26.1 | T / F |
-| 2025-09-18 | non irrigated extensive | **irrigate** (cooling_requested) | no (refill_forecast) | 6.3 | 5.7 | 5.4 | 4 / 10 | 28.4 | F / T |
-| 2025-09-18 | semi intensive | no (refill_forecast) | **irrigate** (cooling_requested) | 13.1 | 11.4 | 12.0 | 10 / 16 | 28.4 | T / F |
+| 2025-09-18 | non irrigated extensive | **irrigate** (cooling_requested) | no (refill_forecast) | 6.3 | 5.6 | 5.3 | 4 / 10 | 28.4 | F / T |
+| 2025-09-18 | semi intensive | no (refill_forecast) | **irrigate** (cooling_requested) | 13.1 | 11.2 | 11.9 | 10 / 16 | 28.4 | T / F |
 
 ## Flips per roof
 
 | Roof | Decisions | Flips | Share |
 |---|---:|---:|---:|
-| irrigated extensive | 310 | 7 | 2.3% |
-| non irrigated extensive | 310 | 6 | 1.9% |
-| semi intensive | 310 | 6 | 1.9% |
+| irrigated extensive | 310 | 8 | 2.6% |
+| non irrigated extensive | 310 | 7 | 2.3% |
+| semi intensive | 310 | 5 | 1.6% |
 
 ## Which rung gives way to which
 
@@ -52,11 +53,11 @@ The pair of reason codes on each side of a flip. A pair that dominates is the se
 | Deployed | Corrected | Flips |
 |---|---|---:|
 | cooling_requested | refill_forecast | 8 |
-| sufficient_moisture | cooling_requested | 4 |
+| sufficient_moisture | cooling_requested | 5 |
 | refill_forecast | cooling_requested | 3 |
-| below_wilting_point | no_heat_no_stress | 2 |
+| no_heat_no_stress | below_wilting_point | 2 |
+| below_wilting_point | no_heat_no_stress | 1 |
 | cooling_requested | sufficient_moisture | 1 |
-| no_heat_no_stress | below_wilting_point | 1 |
 
 ## What this list bounds
 

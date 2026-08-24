@@ -131,14 +131,17 @@ only variable — and commits every flip to
 `specs/agent_architecture/irrigation_decision_diff.md`. The list is the
 deliverable, not the run.
 
-**19 of 930 decisions flip, 2.0 %**, over 2025-06-01 → 2026-04-24 on the three
-substrate roofs: the millimetre balance waters on 8 the deployed one does not
-and declines on 11 it does. The dominant pair is `cooling_requested` giving way
-to `refill_forecast` — 8 of the 19, all on the extensive roofs, where rain the
-deployed balance did not think would refill a shallow roof now does. The
-semi-intensive roof moves the other way at 0.67×, three flips of
+**20 of 930 decisions flip, 2.2 %**, over 2025-06-01 → 2026-04-24 on the three
+substrate roofs: the millimetre balance waters on 10 the deployed one does not
+and declines on 10 it does. The dominant pair is `cooling_requested` giving way
+to `refill_forecast` — 8 of the 20, all on the extensive roofs, where rain the
+deployed balance did not think would refill a shallow roof now does — followed by
+5 of `sufficient_moisture → cooling_requested` and 3 the other way,
 `refill_forecast → cooling_requested`. Deep roofs become harder to move and
 shallow ones easier: the physics the fix restores, seen in decisions.
+(Recomputed 2026-08-24 against the corrected ET0; it was 19 flips, 8 up and 11
+down, before. Both arms share one ET0 by construction, so what moved is the
+forcing both were read against, not the comparison.)
 
 Both arms are reported in %θ, where the two regimes' thresholds are the same
 numbers, so a flip is always a trajectory and never a threshold that moved. That
@@ -271,18 +274,24 @@ Two choices worth stating:
 - **Albedo 0.23**, the FAO-56 reference-crop value, not the roof's own. Roof
   albedo belongs to the stress coefficient's job, not the ET0 term's, and 0.23
   is what makes the result comparable to the ICON figure the controller used.
-- The implementation is a **verbatim port of GR2L's R block**, including the four
+- The implementation is a **verbatim port of GR2L's R block**, including the
   places that routine departs from FAO-56: the fixed `Pressure = 100 kPa`
   (under 1 % of ET0 at this site's 142 m), an `R_a` that omits the solar constant
-  and runs ~12× large, a 238 where eq. 11 has 237.3, and fourth powers taken in
-  °C where eq. 39 uses kelvin. Together they make this ET0 **1.17× to 1.38× a
-  textbook FAO-56** (`findings.md` § External sources on this machine), and none
-  is repaired. Carrying them keeps this ET0 numerically identical to the one GR2L
-  computes, so the two water-balance tools cannot disagree about evaporative
-  demand for a reason no case is asking about — and the site's trigger levels
-  were tuned against this convention's ET, so a "correct" ET0 here would silently
-  retune the controller. The deviation from textbook FAO-56 is a stated scope
-  limit (architecture §8).
+  and runs ~12× large, and a 238 where eq. 11 has 237.3. Carrying them keeps this
+  ET0 numerically identical to the one GR2L computes, so the two water-balance
+  tools cannot disagree about evaporative demand for a reason no case is asking
+  about. The deviation from textbook FAO-56 is a stated scope limit
+  (architecture §8).
+- **A fourth departure was corrected upstream on 2026-08-24 and this port
+  followed.** `Rnl` took its fourth powers in °C, halving `tn**4` alone, where
+  eq. 39 averages both in kelvin; the R fixed it and the port was changed to
+  match at the site's direction. Because the surviving `R_a` fault pins the
+  cloudiness factor negative, `Rnl` acts as a *gain*, so the correction **raised**
+  ET0 — by a median 1.223× over the band — rather than lowering it. It moved
+  4 of 921 roof-days' decisions (`findings.md`). The trigger levels were **not**
+  re-derived to absorb it, per `decisions.md § No fitted correction between the
+  instrument and the oracle`: the same site thresholds are now read against a
+  larger ET, and whether to re-tune is the site's call.
 
 ## Deviations from the deployed controller
 
@@ -290,9 +299,11 @@ Every one of these is deliberate, and together they mean this tool's answer can
 differ from what the roof's own controller did on a given day.
 
 1. **Millimetres** (the unit fix), rescaling response to rain by `100 / SH_mm`
-   per roof (`decisions.md` § The irrigation calculator). Measured: 19 of 930
+   per roof (`decisions.md` § The irrigation calculator). Measured: 20 of 930
    decisions over the `as_of` band, listed date by date in
-   *The decisions this moves*.
+   *The decisions this moves*. (19 before the ET correction above; the harness
+   holds ET0 fixed across its two arms, so the count moved because both arms
+   moved, not because the comparison changed.)
 2. **Daily step** here; the site runs hourly. `max(tx)` over 2 days replaces the
    hourly maximum of `temperature_2m` over 48 h.
 3. **ET0 computed** via FAO-56 rather than taken from ICON/Open-Meteo.

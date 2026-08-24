@@ -33,28 +33,30 @@ sources** (radiation is not calibrated against the on-site pyranometers) and
 **The irrigation calculator** (thresholds are not re-derived after the unit
 fix).
 
-**Open, and deliberately not settled here: whether `et_fao56.py` follows the R's
-corrected `Rnl`.** Upstream commit `3e7405a` moved `GR2L_function.R` to absolute
-temperature in the net-longwave term on 2026-08-24; our port still implements the
-previous line, and the two now disagree by 0.19–0.45 mm/day of ET0 depending on
-the day (`findings.md`). The port's whole purpose is that the two languages
-agree, so the divergence is not a resting state — but closing it is a choice
-between two things this rule cares about, not a bug fix:
+**Settled 2026-08-24: `et_fao56.py` follows the R's corrected `Rnl`, at the
+site's direction.** Upstream commit `3e7405a` moved `GR2L_function.R` to absolute
+temperature in the net-longwave term; the port followed, and the endpoint and the
+calculator compute one ET again. The alternative — holding the port at the old
+convention so families E and F stayed comparable with what had already been
+measured — was rejected: it would have left a port that no longer ports, and two
+ET conventions to disambiguate at every citation, in exchange for comparability
+with a pilot the GR2L canary move had already broken on the model side.
 
-- **Follow the R.** The port goes back to being a port, and the endpoint and the
-  calculator compute one ET again. It moves the gold answers of four templates
-  (T07, T11, T16a, T16b) and shifts the decision-diff harness's baseline, and it
-  does so against trigger thresholds the site tuned while the *old* ET was what
-  its controller saw.
-- **Hold the port.** Families E and F stay comparable with everything measured so
-  far, at the cost of a port that no longer ports — and of a second convention to
-  explain every time either is cited.
+**What this rule contributed is the shape of the change, not the choice.** The
+correction raises ET0 by a median 1.223× and flips 4 of 921 roof-days
+(`findings.md`), and the trigger levels in `rules_constants.py` were **not
+re-derived to absorb it** — they are the site's, carried verbatim, and the same
+thresholds are now compared against a larger ET. That is the third option this
+rule forbids and the reason the decision belonged to the site rather than to this
+repository: re-tuning is a change to the deployed controller's policy, made
+against the decision-diff evidence, not a way of keeping a testbed's numbers
+still.
 
-Neither is a fitted correction, so this rule does not decide it; what the rule
-does forbid is a third option, of splitting the difference or re-deriving the
-thresholds so the answers stay put. The site owns the thresholds, and whether its
-controller should see the corrected ET is the site's call, made against the
-decision-diff evidence.
+**Validity condition for what this leaves:** the port and the R must be checked
+against each other whenever either moves, because nothing in the pin list covers
+the ET core (`findings.md`). The port's own test carries the endpoint's served
+values as a fixture for exactly this — it is the only artefact in the repository
+that would have noticed.
 
 ---
 

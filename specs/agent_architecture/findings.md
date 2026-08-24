@@ -743,6 +743,42 @@ the reason the `Gsc` entry below already gives: the missing solar constant leave
 raises `Rn` and raises ET. The two bugs interact, and reasoning about either
 alone gives the wrong sign.
 
+**The port followed the R, and the correction is worth 22 % of ET0 and four
+decisions.** At the site's direction `et_fao56.py` now computes `Rnl` the way
+`3e7405a` does, and the endpoint and the port agree again to within the service's
+rounding: the four fixture days re-captured live read 6.0318 / 0.5819 / 2.4564 /
+8.1012 mm against a port giving 6.031849 / 0.581907 / 2.456362 / 8.101166, all
+within 5e-5. The previous capture read 5.6745 / 0.3936 / 2.1606 / 7.6684.
+
+Over the 2149 station days the band covers, ET0 rises everywhere: **median
+1.223×**, range 1.067× to 5.682× — the tail being winter days where the old value
+was near zero, so a large ratio is a small absolute change. The effect on the
+decision the tool actually returns is much smaller than that, because the ladder's
+top rung is a temperature test and its third is a threshold most days clear:
+replaying every band day through both ET conventions with everything else held
+fixed flips **4 of 921 roof-days (0.4 %)** — 3 on the irrigated extensive roof,
+1 on the semi-intensive, 0 on the non-irrigated. Families E's T07 and T11 are
+what move; family F does not, because the stated path takes no ET0 at all.
+The decision-diff report was regenerated against the new ET and its headline
+moves from 19 to **20 of 930 flips** (2.0 % → 2.2 %), still comparing the two unit
+regimes against each other rather than against this change.
+*Verified:* `run_roof` over the band at both ET conventions, same station rows,
+same seeds, same thresholds; the four fixture days re-POSTed to the endpoint;
+`scripts/irrigation_decision_diff.py` re-run. *Date:* 2026-08-24.
+
+**Nothing in the repository pins the ET routine, and this change proves it
+matters.** `rules_constants_version` covers the trigger levels and `roofs_version`
+the roof identities, but the ET core is in neither, and no pin recomputes it — so
+a change that moved every irrigation answer in the suite would have passed
+`just pins` silently. It was caught here only because it was made deliberately.
+The four irrigation templates are as pin-exposed as the model families were before
+the GR2L canary existed; a `et_fao56_version` or a hash over the module would
+close it. Not added here — the pin list is architecture §5's and adding to it is
+a specification change — but recorded so the gap is a decision rather than an
+oversight.
+*Verified:* read from `eval/pins.json` and `scripts/check_pins.py`.
+*Date:* 2026-08-24.
+
 **Two of the four departures are fixed upstream and two survive**, so the R is
 closer to FAO-56 without being it: `Gsc` is still defined and never used
 (`Ra` 505.00 against eq. 21's 41.41), and `es` still divides by 238 where eq. 11

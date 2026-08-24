@@ -3243,6 +3243,33 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   the suite hermetic, so all 1089 passed against a changed service. The canary is
   the only thing in the repository that was ever going to catch it, which is the
   argument for it.
+  **The R moved too, and the port followed it (2026-08-24).** Comparing
+  `et_fao56.py` against the checkout showed the upstream commit `3e7405a` had
+  changed four things, not one: the albedo wiring, a rewritten `Rs` with identical
+  arithmetic, the `open_water` arm — and `Rnl` moved to kelvin, correcting both the
+  Celsius fourth powers and a precedence slip that halved `tn**4` alone.
+  Transcribing that one line onto the port reproduces the served `ET_PM` to 5e-5
+  on five test days, so the whole offset was that line. **At the site's direction
+  the port was corrected to match**, which closes the divergence
+  `decisions.md § No fitted correction` had recorded as open. Cost, measured:
+  ET0 rises by a median 1.223× over the band and **4 of 921 roof-days flip**
+  (3 irrigated extensive, 1 semi-intensive, 0 non-irrigated), so T07 and T11 move
+  where family F does not — its stated path takes no ET0. The decision-diff report
+  was regenerated (19 → 20 of 930) and the four served values in
+  `test_et_fao56.py` re-captured live, with the old ones kept beside them.
+  **One correction to this row's own earlier reasoning.** It said more ET "rules
+  out the Celsius `Rnl`, whose correction would lower it". That holds in a
+  textbook FAO-56 and fails here: the still-missing `Gsc` leaves `Ra` 12.2× large,
+  pinning the cloudiness factor at −0.2506, so `Rnl` enters as a *gain* and
+  enlarging it raises ET. The two faults interact and either alone gives the wrong
+  sign.
+  **A pin gap this exposed and did not close.** Nothing in `eval/pins.json` covers
+  the ET routine — `rules_constants_version` has the thresholds, `roofs_version`
+  the identities, neither the core — so a change that moved every irrigation
+  answer would pass `just pins` in silence. It was caught because it was
+  deliberate. Recorded in `findings.md` rather than fixed: the pin list is
+  architecture §5's, and adding to it is a specification change rather than this
+  row's.
 - [ ] T111 Template instantiation with the §1.6 generation filters, evaluated
   **through the as-of view** and anchored at `seed_at` for seed-bearing families:
   coverage, per-column plausibility, and the frozenness run test applied to state

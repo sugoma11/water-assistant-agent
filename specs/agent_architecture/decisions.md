@@ -33,6 +33,29 @@ sources** (radiation is not calibrated against the on-site pyranometers) and
 **The irrigation calculator** (thresholds are not re-derived after the unit
 fix).
 
+**Open, and deliberately not settled here: whether `et_fao56.py` follows the R's
+corrected `Rnl`.** Upstream commit `3e7405a` moved `GR2L_function.R` to absolute
+temperature in the net-longwave term on 2026-08-24; our port still implements the
+previous line, and the two now disagree by 0.19–0.45 mm/day of ET0 depending on
+the day (`findings.md`). The port's whole purpose is that the two languages
+agree, so the divergence is not a resting state — but closing it is a choice
+between two things this rule cares about, not a bug fix:
+
+- **Follow the R.** The port goes back to being a port, and the endpoint and the
+  calculator compute one ET again. It moves the gold answers of four templates
+  (T07, T11, T16a, T16b) and shifts the decision-diff harness's baseline, and it
+  does so against trigger thresholds the site tuned while the *old* ET was what
+  its controller saw.
+- **Hold the port.** Families E and F stay comparable with everything measured so
+  far, at the cost of a port that no longer ports — and of a second convention to
+  explain every time either is cited.
+
+Neither is a fitted correction, so this rule does not decide it; what the rule
+does forbid is a third option, of splitting the difference or re-deriving the
+thresholds so the answers stay put. The site owns the thresholds, and whether its
+controller should see the corrected ET is the site's call, made against the
+decision-diff evidence.
+
 ---
 
 ## Arbitration and naming

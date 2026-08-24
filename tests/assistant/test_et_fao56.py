@@ -3,9 +3,19 @@
 Two independent standards of evidence, because a port can fail in two ways.
 Term by term against a second transcription of ``GR2L_function.R:35-71``, which
 catches a slipped constant that the final number might absorb; and against
-``ET_PM`` as the **running GR2L service** returned it, committed here as a
-fixture, which catches a reading of the R that is internally consistent and
-still wrong.
+``ET_PM`` as the GR2L service returned it, committed here as a fixture, which
+catches a reading of the R that is internally consistent and still wrong.
+
+**The fixture is a historical capture, and since 2026-08-24 it is no longer what
+the service returns.** Upstream commit ``3e7405a`` moved the R's ``Rnl`` line to
+absolute temperature and the deployed build followed it; this port did not, so it
+remains faithful to the checkout as it stood when these four values were served
+(``findings.md`` § External sources on this machine). Both assertions below
+therefore still hold and still mean what they say — the port reproduces *that* R,
+term by term and end to end. What they no longer establish is agreement with the
+endpoint today, and whether the port should follow the R is an open decision
+rather than a bug (``decisions.md`` § No fitted correction between the instrument
+and the oracle).
 
 The served values are a fixture rather than a live call on purpose: the endpoint
 is not part of this suite (``agent_architecture.md`` §3.5 — irrigation is fully

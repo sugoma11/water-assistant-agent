@@ -704,18 +704,55 @@ over the same rows at four albedos. *Date:* 2026-08-24.
 
 **The albedo fix landed, and it carried a second change nobody asked for.** The
 same six-albedo sweep now returns **six distinct responses**, and `ET_PM` tracks
-albedo with the slope our port predicts — the difference between served and local
-is a *constant* 0.4489 mm/day across 0.0 → 1.0, so the albedo term is now applied
-identically on both sides. But that constant is new: before the fix, served
-`ET_PM` at albedo 0.2 was 8.5882 mm on this window and our port gave 8.5882 to
-4e-5. It is now 9.0371 against the same 8.5882. So the fix did not only wire the
-parameter through; some other term in the endpoint's ET moved with it, and the
-endpoint no longer reproduces `GR2L_function.R` as checked out. A constant offset
-rules out an albedo relabelling — a different albedo would change the slope, not
-the intercept — and the direction is *more* ET, which rules out the three
-departures whose correction would lower it (the `Gsc` omission, the Celsius `Rnl`,
-the fixed pressure). It is not diagnosed further here: what this repository needs
-from the endpoint is a pinned contract, not an explanation.
+albedo with the slope our port predicts — the served-minus-local difference is
+*constant in albedo* (0.4489 mm/day across 0.0 → 1.0 on a July window), which is
+what says the albedo term is now applied identically on both sides. But that
+constant is new, and it is not constant across days: before the fix, served
+`ET_PM` at albedo 0.2 matched our port to 4e-5 on every day tried; it is now
+higher by 0.4489 / 0.3573 / 0.1883 / 0.2958 / 0.4328 mm/day on five test days.
+So the fix did not only wire the parameter through.
+*Verified:* six `run_gr2l` calls per day over five days. *Date:* 2026-08-24.
+
+**The second change is the `Rnl` Kelvin fix, and it is diagnosed exactly rather
+than inferred.** `GR2L_function.R` in the checkout has itself moved: one upstream
+commit, `3e7405a` "add albedo, open_water flag to the GR2L model", changed four
+things at once —
+
+1. `albedo` and `open_water` became arguments and `Rn <- Rs * (1 - albedo)`
+   replaced a hard-coded `(1 - 0.2)`. This is the requested fix.
+2. **`Rnl` moved to absolute temperature**, `(tx^4 + tn^4 / 2)` →
+   `((tx + 273.16)^4 + (tn + 273.16)^4) / 2`, which corrects two faults in one
+   line: the Celsius fourth powers *and* a precedence slip that had been halving
+   `tn^4` alone instead of averaging the pair.
+3. `Rs` was rewritten from two statements into one, with no change to the
+   arithmetic.
+4. `et_factor` / `open_water` gives an open-water surface the potential rate.
+
+Transcribing only (2) on top of our port reproduces the served `ET_PM` **to
+within 5e-5 — the service's own rounding — on all five test days**, including the
+four `tests/assistant/test_et_fao56.py` holds as a fixture. So the endpoint's ET
+is now the checkout's ET again, and the offset is entirely that one line.
+
+**The earlier reading of the direction, recorded here on 2026-08-24, was wrong
+and is corrected.** It said more ET "rules out the Celsius `Rnl`, whose
+correction would lower it". That is true in a textbook FAO-56 and false here, for
+the reason the `Gsc` entry below already gives: the missing solar constant leaves
+`Ra` 12.2× too large, which pins the cloudiness factor `1.35·(Rs/Rso) − 0.35` at
+−0.2506 on this window — *negative*, so `Rnl` enters `Rn = Rs(1−α) − Rnl` as a
+**gain** rather than a loss. Enlarging the Stefan-Boltzmann term ~6400× therefore
+raises `Rn` and raises ET. The two bugs interact, and reasoning about either
+alone gives the wrong sign.
+
+**Two of the four departures are fixed upstream and two survive**, so the R is
+closer to FAO-56 without being it: `Gsc` is still defined and never used
+(`Ra` 505.00 against eq. 21's 41.41), and `es` still divides by 238 where eq. 11
+has 237.3 (−0.451 % on `es`), alongside the fixed `Pressure <- 100` kPa where
+eq. 7 gives 99.63 at this site.
+*Verified:* the upstream commit read from
+`/home/shpilevo/work/ufz/weinbau-api-v1-internal/gr2l_model` (submodule
+`3e7405a`, branch `feat/smart_irrigation_algo_func`); a transcription of the new
+`Rnl` line over our port compared against five live `run_gr2l` responses.
+*Date:* 2026-08-24.
 
 **The GR2L canary moved with it, and was deliberately re-pinned.**
 `0c39f945…` → `c8f51c82…`, with the canary's `ET_PM` going 2.0901 → 2.2879 and its
@@ -888,15 +925,25 @@ ET routine did not. Those four rows and their served values are committed as a
 fixture in `tests/assistant/test_et_fao56.py`.
 *Verified:* one live POST to the endpoint in `.env:56`, the same one the GR2L
 canary is pinned against. *Date:* 2026-08-20.
-**Re-checked 2026-08-24 after the albedo fix: the equality no longer holds**, by a
-constant 0.4489 mm/day on a probe window (see the albedo entry above). What this
-does *not* move is the irrigation half: `et_fao56.py` is a port of
-`GR2L_function.R` **as checked out**, `calc_irrigation` runs it locally, and the
-R checkout has not changed — so families E and F answer exactly as before, and
-the fixture test still passes because it holds the port to the R rather than to
-the endpoint. What it moves is the claim's tense: the endpoint and the checkout
-have diverged, and any future statement that "the service runs our ET" needs
-re-measuring rather than citing this entry.
+**Re-checked 2026-08-24 after the albedo fix: the equality no longer holds**, by
+0.19–0.45 mm/day depending on the day (see the two albedo entries above). The
+endpoint and our port have diverged **because the R moved and the port did
+not** — `3e7405a` corrected the `Rnl` line — so what this entry now records is a
+port that is faithful to the *previous* checkout. The four served values above
+are still exactly what our port produces, which is why the fixture test still
+passes; they are simply no longer what the endpoint serves.
+
+**Nothing measured has moved on the irrigation side, and that is a fact about
+scope rather than luck.** `et_fao56.py` is reached only by `calc_irrigation`,
+which runs it locally, so families E and F answer exactly as before and the
+decision-diff harness's baseline is untouched. GR2L computes its own ET
+server-side and never calls the port, so the families that moved (D, G, and H's
+model overlay) moved through the service alone. The open question this leaves is
+not a defect but a choice — whether the port follows the R to the corrected
+`Rnl` — and it is recorded as such in
+`decisions.md § No fitted correction between the instrument and the oracle`,
+because re-porting would move four templates' gold answers and the site's trigger
+thresholds were tuned against the old convention's ET.
 
 **`GR2L_function.R` ends in a top-level demo block, lines 112–129, and
 `plumber.R:11` sources the file** — so building a random 365-day data frame,

@@ -639,6 +639,32 @@ run of seven, the 18th–25th a run of eight, and the 10th, 11th, 13th, 14th and
 *Verified:* both oracles through `make_case_context(2026-04-24 23:00)` against the
 pinned database. *Date:* 2026-08-24.
 
+**T16a's answer depended on a roof its question did not name, on 27 % of draws.**
+The irrigation trigger levels are per segment — 10 %θ dry on both extensive roofs
+against 16 %θ on the semi-intensive — so a question stating a soil moisture and a
+rain total without naming a roof can have two answers. Over a grid of 900 draws
+(soil moisture 2.0–24.0 %θ in 0.5 steps × five temperatures × four rain totals)
+the three roofs disagree on **240**, and the disagreement spans the whole
+4.5–16.0 %θ range rather than sitting at one edge. The catalog's own stated
+values were inside it: at 12 %θ, 28 °C and 2 mm the two extensive roofs answer
+*no* (`sufficient_moisture`) and the semi-intensive answers *yes*
+(`cooling_requested`). T16a's sketch now names a roof, as T16b's already did.
+*Verified:* `irrigation_decision` over `features_from_stated_values` for the three
+roofs across the grid. *Date:* 2026-08-24.
+
+**Family F reaches all five rungs and agrees with the tool on each.** On the
+irrigated extensive roof: 4.0 %θ with heat is `below_wilting_point` (rung 1,
+irrigate); 12.0 %θ at 15 °C is `no_heat_no_stress` (rung 2); 12.0 %θ at 30 °C is
+`sufficient_moisture` (rung 3); 8.0 %θ at 30 °C with 20 mm forecast is
+`refill_forecast` (rung 4) and with 2 mm is `cooling_requested` (rung 5,
+irrigate). Each draw was run through both oracles and through `calc_irrigation`'s
+stated path on one context, and the three agree on the boolean and on the reason
+code every time. The rung-4 boundary is the roof's deficit to capacity: at
+15.4 mm capacity and 8.0 %θ (5.6 mm) the deficit is 9.8 mm, so 20 mm refills and
+2 mm does not.
+*Verified:* `t16a_manual_on_stated_values`, `t16b_calculator_on_stated_values` and
+`make_irrigation_tool(ctx)` over the same eight draws. *Date:* 2026-08-24.
+
 **T19 is the only GR2L window in the catalog that can reach the station.** It
 follows from the forward-window finding above rather than being a separate
 measurement: every other model template (T09, T10, T21, T22, T26) resolves a

@@ -485,8 +485,8 @@ correct, so the oracle computes both readings and discards the draw when they di
 ### F. Given-values controls
 
 **T16a — rule applied to stated values**
-Q: "Soil moisture is at 12 %θ and only 2 mm of rain is forecast — **what does the operations manual
-say**, should we irrigate?"
+Q: "The {roof} roof is at {x} %θ, {tmax} °C is expected over the next 48 h and {y} mm of rain over
+the coming week — **what does the operations manual say**, should we irrigate?" · roof ∈ P2
 A: bool (balanced) · Traj: {lookup_reference} · Must-not: `text_to_sql_agent`,
 `get_weather_forecast_tool`, `calc_irrigation` · Cards: `irrigation_rule`, `irrigation_threshold`
 · Split: train+seen · Oracle: the rule on the stated values.
@@ -495,11 +495,27 @@ slots. The two cards must between them state the ladder *and* the per-roof numbe
 of the probe is unanswerable by construction (architecture §3.2). The documentary reference is the
 whole cue (§1.6) and is now explicit rather than a trailing "per the manual", since it is what makes
 the `calc_irrigation` must-not fair against T16b's identical inputs.
+**The roof is named here, and it had to be** (T110). The earlier sketch fixed 12 %θ and 2 mm and named
+no roof, but the trigger levels are per segment — the `irrigation_threshold` card says so in as many
+words — and at exactly those values the two extensive roofs answer *no* while the semi-intensive
+answers *yes*, because its dry threshold is 16 %θ against their 10 %θ. Across a plausible grid the
+three roofs disagree on **27 %** of draws, over the whole 4.5–16.0 %θ span (`findings.md`). A question
+with no roof in it therefore had three answers, and the oracle would have had to pick one. Naming the
+roof also makes the pair's claim exact rather than approximate: T16a and T16b now supply the *same*
+parameters and differ in one thing, which is the phrasing §1.6 says is the discriminator.
 
 **T16b — calculator isolation**
-Q: "The {roof} roof is at {x} %θ with {y} mm of rain forecast for the next 48 h — should we
-irrigate?" · roof ∈ P2; stated values are soil moisture in %θ, max air temperature and 48 h
-forecast rain, per architecture §3.5
+Q: "The {roof} roof is at {x} %θ, {tmax} °C is expected over the next 48 h and {y} mm of rain over
+the coming week — should we irrigate?" · roof ∈ P2; stated values are soil moisture in %θ, the
+maximum air temperature over the **decision** horizon and the rain total over the **refill** horizon,
+per architecture §3.5
+Note on the horizons: the earlier sketch called `{y}` "48 h forecast rain", which is the wrong
+window for it — the stated rain fills the refill conjunct, which the ladder reads over 168 h, and
+48 h is the decision horizon the stated *temperature* is read over (`irrigation_tool.md` § The rule).
+Both sides always passed the same number, so nothing was scored wrongly; the question described it as
+something the rule does not treat it as. `{tmax}` is also written out rather than left implicit,
+because the three stated arguments are all-or-none: two of them is an `invalid_argument`, not a
+partial answer.
 A: bool (balanced) · Traj: {calc_irrigation} · Must-not: `lookup_reference` · Split: unseen
 Oracle: `calc_irrigation` on the stated values.
 Note: identical inputs to T16a with symmetric must-nots, so the probe binds in both directions —

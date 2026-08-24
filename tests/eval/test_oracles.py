@@ -48,6 +48,8 @@ from eval.oracles.hybrid import (
 from eval.oracles.irrigation import (
     t07_needs_irrigation_now,
     t11_needs_irrigation_tomorrow,
+    t16a_manual_on_stated_values,
+    t16b_calculator_on_stated_values,
 )
 from eval.oracles.model_chain import (
     forecast_days_for,
@@ -2129,6 +2131,187 @@ def test_t11_refuses_a_roof_the_rule_declines(tmp_path: Path):
         asyncio.run(t11_needs_irrigation_tomorrow(_inputs("T11", roof="Sumpfdach"), ctx))
 
 
+# --- T16a, T16b: family F, the given-values controls (T110) --------------------
+
+# One draw per rung of the ladder, on the irrigated extensive roof: wilting 5 %θ,
+# dry 10 %θ, capacity 22 %θ (15.4 mm at 7 cm). Rung 4's boundary is the deficit to
+# capacity — at 8 %θ the store is 5.6 mm and the deficit 9.8 mm, so 20 mm refills
+# the roof and 2 mm does not.
+_LADDER = [
+    (4.0, 30.0, 0.0, True, "below_wilting_point"),
+    (12.0, 15.0, 0.0, False, "no_heat_no_stress"),
+    (12.0, 30.0, 0.0, False, "sufficient_moisture"),
+    (8.0, 30.0, 20.0, False, "refill_forecast"),
+    (8.0, 30.0, 2.0, True, "cooling_requested"),
+]
+
+
+@pytest.mark.parametrize(("x", "tmax", "y", "expected", "reason"), _LADDER)
+def test_t16_walks_every_rung_and_agrees_with_the_calculator(
+    x: float, tmax: float, y: float, expected: bool, reason: str
+):
+    """Five draws, five rungs, and the tool reached on each.
+
+    Both oracles and ``calc_irrigation``'s stated path over one context. The
+    boolean alone would not be enough — two rungs say yes and three say no, so a
+    ladder walked in the wrong order can agree on the answer while stopping
+    somewhere else — which is why the reason code is asserted too.
+    """
+    ctx = make_case_context(AS_OF)
+    params = {"roof": IRRIGABLE, "x": x, "tmax": tmax, "y": y}
+
+    a = asyncio.run(t16a_manual_on_stated_values(_inputs("T16a", **params), ctx))
+    b = asyncio.run(t16b_calculator_on_stated_values(_inputs("T16b", **params), ctx))
+    tool = asyncio.run(
+        make_irrigation_tool(ctx)(
+            IRRIGABLE, soil_moisture_pct=x, max_temperature_c=tmax, forecast_precip_mm=y
+        )
+    )
+
+    assert tool["status"] == "success"
+    assert tool["inputs"] == "stated"
+    assert a.answer is b.answer is expected is tool["irrigate"]
+    assert a.detail["reason"] == b.detail["reason"] == reason == tool["reason"]
+
+
+def test_t16a_and_t16b_answer_identically_because_the_inputs_are_identical():
+    """The pair compares two routes to one answer, not two quantities.
+
+    T16a asks what the manual says and T16b asks for a decision, over the same
+    stated values. If the oracles differed the pair would be measuring something
+    other than the route, and the symmetric must-nots would be unfair in one
+    direction.
+    """
+    ctx = make_case_context(AS_OF)
+    params = {"roof": IRRIGABLE, "x": 8.0, "tmax": 30.0, "y": 2.0}
+
+    a = asyncio.run(t16a_manual_on_stated_values(_inputs("T16a", **params), ctx))
+    b = asyncio.run(t16b_calculator_on_stated_values(_inputs("T16b", **params), ctx))
+
+    assert a.expectations() == b.expectations()
+
+
+def test_t16_needs_the_roof_because_the_thresholds_are_per_roof():
+    """12 %θ and 2 mm answers no on the extensive roofs and yes on the semi-intensive.
+
+    The dry threshold is 10 %θ on both extensive roofs and 16 %θ on the
+    semi-intensive, so this draw sits above the gate on two roofs and below it on
+    the third. It is the catalog's own stated example, and it is why T16a's
+    sketch names a roof: without one the question has two answers, and across a
+    plausible grid the three roofs disagree on 27 % of draws (``findings.md``).
+    """
+    ctx = make_case_context(AS_OF)
+    answers = {
+        roof: asyncio.run(
+            t16a_manual_on_stated_values(
+                _inputs("T16a", roof=roof, x=12.0, tmax=28.0, y=2.0), ctx
+            )
+        ).answer
+        for roof in ("irrigated_extensive", "non_irrigated_extensive", "semi_intensive")
+    }
+
+    assert answers == {
+        "irrigated_extensive": False,
+        "non_irrigated_extensive": False,
+        "semi_intensive": True,
+    }
+    assert rules_for("semi_intensive").dry_pct == 16.0
+    assert rules_for(IRRIGABLE).dry_pct == 10.0
+
+
+def test_t16_fetches_nothing_at_all():
+    """The stated path is pure: no database, no weather, no simulation.
+
+    Asserted with a context whose database and weather client both raise, which
+    is what makes family F the shape that replays with **zero** cache entries
+    (``irrigation_tool.md`` § The tool surface). An oracle that computed an ET0
+    to be thorough would also have broken the tool's own documented difference
+    between the two paths — the stated one takes the rain at face value.
+    """
+
+    class Exploding:
+        def execute_query(self, *_: Any, **__: Any) -> Any:
+            raise AssertionError("the stated path must not read the database")
+
+        async def fetch(self, **_: Any) -> Any:
+            raise AssertionError("the stated path must not fetch weather")
+
+    ctx = _context(db=Exploding(), weather=Exploding())
+
+    answer = asyncio.run(
+        t16b_calculator_on_stated_values(
+            _inputs("T16b", roof=IRRIGABLE, x=8.0, tmax=30.0, y=2.0), ctx
+        )
+    )
+
+    assert answer.answer is True
+    assert set(answer.pins) == {"duckdb_sha256"}
+
+
+@pytest.mark.parametrize(
+    ("params", "match"),
+    [
+        ({"roof": IRRIGABLE, "x": 5.0, "tmax": 30.0, "y": 2.0}, "the wilting point"),
+        ({"roof": IRRIGABLE, "x": 10.0, "tmax": 30.0, "y": 2.0}, "the dry threshold"),
+        ({"roof": IRRIGABLE, "x": 8.0, "tmax": 24.0, "y": 2.0}, "heat threshold"),
+    ],
+)
+def test_t16_refuses_a_value_sitting_exactly_on_a_rung(params: dict, match: str):
+    """A tie is decided by the card's wording, so it measures the wrong thing.
+
+    The card says "reaches it or drops below it" and "a store above it", so each
+    tie has an answer — but a case sitting on one measures whether a candidate
+    read the tie-break convention, where the template exists to measure whether
+    it applied the rule at all. §1.6 discards an answer within tolerance of its
+    own threshold for the same reason.
+    """
+    ctx = make_case_context(AS_OF)
+
+    with pytest.raises(OracleInputError, match=match):
+        asyncio.run(t16a_manual_on_stated_values(_inputs("T16a", **params), ctx))
+
+
+def test_t16_refuses_a_soil_moisture_the_tool_would_reject():
+    """101 %θ is an ``invalid_argument`` at the tool, so it is a template fault here."""
+    ctx = make_case_context(AS_OF)
+
+    with pytest.raises(OracleInputError, match="between 0 and 100"):
+        asyncio.run(
+            t16a_manual_on_stated_values(
+                _inputs("T16a", roof=IRRIGABLE, x=101.0, tmax=30.0, y=2.0), ctx
+            )
+        )
+
+
+def test_t16_refuses_a_roof_outside_the_rules_scope():
+    """Pool P2 again, and the same table: the calculator declines the same two roofs."""
+    ctx = make_case_context(AS_OF)
+
+    with pytest.raises(OracleInputError, match="T16b's pool is P2"):
+        asyncio.run(
+            t16b_calculator_on_stated_values(
+                _inputs("T16b", roof="Kiesdach", x=8.0, tmax=30.0, y=2.0), ctx
+            )
+        )
+
+
+def test_t16_needs_all_three_stated_values():
+    """Two of the three is an ``invalid_argument`` at the tool, not a partial answer.
+
+    The oracle refuses at the parameter for the same reason
+    :func:`~eval.oracles.base.required_params` exists: a missing value read as
+    ``None`` would fail several frames into the ladder.
+    """
+    ctx = make_case_context(AS_OF)
+
+    with pytest.raises(OracleInputError, match="tmax"):
+        asyncio.run(
+            t16a_manual_on_stated_values(
+                _inputs("T16a", roof=IRRIGABLE, x=8.0, y=2.0), ctx
+            )
+        )
+
+
 # --- T24a, T24b: family H (T110) -----------------------------------------------
 
 
@@ -2385,6 +2568,8 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
         "T14",
         "T15a",
         "T15b",
+        "T16a",
+        "T16b",
         "T17a",
         "T17b",
         "T18a",
@@ -2416,6 +2601,8 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
     assert ORACLES["T08"] is t08_heatwave_days
     assert ORACLES["T11"] is t11_needs_irrigation_tomorrow
     assert ORACLES["T12"] is t12_retention_above_target
+    assert ORACLES["T16a"] is t16a_manual_on_stated_values
+    assert ORACLES["T16b"] is t16b_calculator_on_stated_values
     assert ORACLES["T20"] is t20_forecast_heatwave
     assert ORACLES["T24a"] is t24a_plot_request
     assert ORACLES["T24b"] is t24b_extensive_gap

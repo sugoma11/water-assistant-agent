@@ -35,6 +35,8 @@ from eval.oracles.hybrid import (
 from eval.oracles.irrigation import (
     t07_needs_irrigation_now,
     t11_needs_irrigation_tomorrow,
+    t16a_manual_on_stated_values,
+    t16b_calculator_on_stated_values,
 )
 from eval.oracles.model_chain import (
     t09_falls_below_threshold,
@@ -80,6 +82,8 @@ ORACLES: dict[str, Oracle] = {
     "T14": t14_forecast_max_temperature,
     "T15a": t15a_past_rain,
     "T15b": t15b_future_rain,
+    "T16a": t16a_manual_on_stated_values,
+    "T16b": t16b_calculator_on_stated_values,
     "T17a": t17a_absent_constant,
     "T17b": t17b_scope_near_miss,
     "T18a": t18a_unservable_window,
@@ -117,6 +121,8 @@ __all__ = [
     "t14_forecast_max_temperature",
     "t15a_past_rain",
     "t15b_future_rain",
+    "t16a_manual_on_stated_values",
+    "t16b_calculator_on_stated_values",
     "t17a_absent_constant",
     "t17b_scope_near_miss",
     "t18a_unservable_window",

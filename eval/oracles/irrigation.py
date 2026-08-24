@@ -42,11 +42,21 @@ from typing import Any
 
 from water_assistant_agent.assistant.context import ScenarioContext
 from water_assistant_agent.assistant.et_fao56 import et0_for_row
-from water_assistant_agent.assistant.irrigation import RoofRun, run_roof
+from water_assistant_agent.assistant.irrigation import (
+    Decision,
+    DecisionFeatures,
+    RoofRun,
+    features_from_stated_values,
+    irrigation_decision,
+    run_roof,
+)
 from water_assistant_agent.assistant.rules_constants import (
+    HEAT_THRESHOLD_C,
     REFILL_HORIZON_HOURS,
     ROOF_RULES,
+    RoofRules,
     horizon_rows,
+    rules_for,
 )
 from water_assistant_agent.assistant.tools.gr2l_client import normalize_roof_type
 from water_assistant_agent.assistant.tools.irrigation import DAY_HOURS, _measured_seed
@@ -215,3 +225,180 @@ async def t11_needs_irrigation_tomorrow(
     roof_type = irrigable_roof(roof_name, "T11")
     run, seed, source = await _decide_from_the_roofs_own_data(roof_type, ctx)
     return _decision_answer(run, seed, source, roof_type, ctx)
+
+
+# --- Family F: the rule on values the question already supplied ----------------
+
+
+def _stated_decision(
+    inputs: Mapping[str, Any], template: str
+) -> tuple[str, RoofRules, DecisionFeatures, Decision]:
+    """The ladder over four stated parameters, through the tool's pure path.
+
+    ``features_from_stated_values`` and ``irrigation_decision`` are the two
+    functions ``calc_irrigation`` calls when all three stated arguments are
+    supplied, and calling them is the whole of the computation: **no database, no
+    weather, no simulation, and no ET0**. That last one is not an omission. The
+    stated path takes the rain at face value where the modelled path spends part
+    of it on evaporation first, which is a documented difference between the two
+    paths (``irrigation_tool.md`` § One ladder, two entry points) and not a step
+    this oracle may add back.
+
+    Shared by T16a and T16b because the two supply **identical inputs**
+    (``questions.md`` §2 F). What separates them is the route cue and the
+    must-nots, and neither is an oracle's to own.
+    """
+    roof_name, moisture, temperature, rain = required_params(
+        inputs, "roof", "x", "tmax", "y"
+    )
+    roof_type = irrigable_roof(roof_name, template)
+    rules = rules_for(roof_type)
+
+    moisture, temperature, rain = float(moisture), float(temperature), float(rain)
+    if not 0.0 <= moisture <= 100.0:
+        raise OracleInputError(
+            f"x is a percentage water content and must be between 0 and 100, got "
+            f"{moisture}; the tool would answer invalid_argument."
+        )
+    if rain < 0.0:
+        raise OracleInputError(f"y is a rain total and cannot be negative, got {rain}.")
+    _off_the_rungs(rules, moisture, temperature, template)
+
+    features = features_from_stated_values(
+        rules,
+        soil_moisture_pct=moisture,
+        max_temperature_c=temperature,
+        forecast_precip_mm=rain,
+    )
+    return roof_type, rules, features, irrigation_decision(features, rules)
+
+
+def _off_the_rungs(
+    rules: RoofRules, moisture: float, temperature: float, template: str
+) -> None:
+    """Refuse a stated value sitting exactly on a rung's level.
+
+    The card states each comparison's direction — "reaches it or drops below it"
+    for the wilting point, "a store above it" for the dry threshold, "stays below"
+    for the heat threshold — so a tie is decided rather than ambiguous. It is
+    still a case that measures whether a candidate read the tie-break convention
+    off a card, where the template exists to measure whether it applied the rule
+    at all, and §1.6 discards an answer sitting on its own threshold for that
+    reason. Both roofs and both thresholds are checked, because the levels differ
+    per roof and a value that is a tie on one is comfortably clear of the other.
+    """
+    ties = {
+        "the wilting point": rules.wilting_pct,
+        "the dry threshold": rules.dry_pct,
+    }
+    for name, level in ties.items():
+        if moisture == level:
+            raise OracleInputError(
+                f"{template} states {moisture} %θ, which is exactly {name} for the "
+                f"{rules.roof} roof; the answer would turn on a tie-break rather than "
+                "on the rule (questions.md §1.6)."
+            )
+    if temperature == HEAT_THRESHOLD_C:
+        raise OracleInputError(
+            f"{template} states {temperature} °C, exactly the heat threshold; the "
+            "answer would turn on a tie-break (questions.md §1.6)."
+        )
+
+
+def _stated_answer(
+    roof_type: str,
+    rules: RoofRules,
+    features: DecisionFeatures,
+    decision: Decision,
+    inputs: Mapping[str, Any],
+) -> OracleAnswer:
+    """One stated-value decision, and enough of the ladder to hand-check it."""
+    params = inputs.get("params") or {}
+    return OracleAnswer(
+        answer=decision.irrigate,
+        unit=None,
+        # `duckdb_sha256` alone, and here it really is the schema's floor: this
+        # answer reads no table, no weather and no model. `pins.py`'s rule is
+        # stamped-where-read, and nothing but the constants was read.
+        pins=stamp(),
+        detail={
+            "roof": roof_type,
+            "reason": decision.reason.value,
+            "stated": {
+                "soil_moisture_pct": float(params["x"]),
+                "max_temperature_c": float(params["tmax"]),
+                "forecast_precip_mm": float(params["y"]),
+            },
+            "wilting_pct": rules.wilting_pct,
+            "dry_pct": rules.dry_pct,
+            "capacity_pct": rules.capacity_pct,
+            "will_reach_capacity": features.will_reach_capacity,
+        },
+    )
+
+
+async def t16a_manual_on_stated_values(
+    inputs: Mapping[str, Any], ctx: ScenarioContext
+) -> OracleAnswer:
+    """T16a — the values are given; what does the operations manual say?
+
+    The docs half of the pair, and the template that carries three of train's six
+    distractor slots: with soil moisture, the temperature and the forecast rain
+    all supplied, a candidate that queries the database, fetches the weather or
+    calls the calculator has fetched something it was handed.
+
+    **The answer is the manual's ladder, and the manual's ladder is
+    ``irrigation_decision``.** The ``irrigation_rule`` card states the rung order
+    and the ``irrigation_threshold`` card the per-roof levels, and both are
+    ``rendered`` — their ``values:`` blocks are held equal to
+    :mod:`..rules_constants` by the drift test (T068). So reading the constants is
+    reading what the cards must say, which is T06's argument and the one thing
+    that keeps an oracle from agreeing with a drifted card. Between them the two
+    cards state the ladder *and* the numbers, without which the docs half of the
+    probe would be unanswerable by construction (``agent_architecture.md`` §3.2).
+
+    **The documentary reference is the whole cue and it is explicit**
+    (``questions.md`` §1.6): T16b asks the identical question of the calculator,
+    the must-nots are symmetric, and phrasing is the only discriminator. A
+    paraphrase that dropped "what does the operations manual say" would move this
+    case onto T16b's gold trajectory while keeping T16a's must-nots — a defect in
+    the paraphrase, not a hard case.
+
+    Params:
+        roof: any spelling ``normalize_roof_type`` accepts; pool P2.
+        x: the stated soil moisture, %θ.
+        tmax: the stated maximum air temperature over the next 48 h, °C.
+        y: the stated rain forecast over the coming week, mm.
+    """
+    roof_type, rules, features, decision = _stated_decision(inputs, "T16a")
+    return _stated_answer(roof_type, rules, features, decision, inputs)
+
+
+async def t16b_calculator_on_stated_values(
+    inputs: Mapping[str, Any], ctx: ScenarioContext
+) -> OracleAnswer:
+    """T16b — the same values, asked as a decision rather than as a question about docs.
+
+    The holdout half, and the transfer target: T16a trains the docs direction and
+    T16b tests that the calculator direction survives it, which T07 and T11 keep
+    teaching in train. Its ``lookup_reference`` must-not is what makes the probe
+    bind in both directions.
+
+    **Its answer is T16a's, and that is the point rather than a shortcut.** The
+    two questions supply identical inputs; if the oracles differed, the pair
+    would be comparing two quantities instead of two routes to one. So both reach
+    :func:`_stated_decision`, and what the case scores differently is the
+    trajectory.
+
+    **The stated rain is the coming week's, not the next 48 hours'**, and the
+    catalog said 48 h until this packet. The value fills the refill conjunct,
+    which the ladder reads over its 168 h horizon (``irrigation_tool.md``
+    § The rule); the 48 h belongs to the stated *temperature*, which is read over
+    the decision horizon. Both sides passed the same number under the old
+    phrasing, so nothing was scored wrongly — but the question described the
+    number as something the rule does not treat it as.
+
+    Params: T16a's, exactly.
+    """
+    roof_type, rules, features, decision = _stated_decision(inputs, "T16b")
+    return _stated_answer(roof_type, rules, features, decision, inputs)

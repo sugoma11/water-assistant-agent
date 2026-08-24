@@ -28,6 +28,9 @@ Usage::
     just pins           # verify (exit 1 on a moved pin)
     just pins-write     # re-pin deliberately, then review the diff
     just pins-canary    # capture the GR2L canary live and pin its response hash
+    uv run python scripts/check_pins.py --capture-gr2l-canary --accept-moved
+                        # ... and accept a canary that has moved, for a service
+                        #     that was changed deliberately
 """
 
 from __future__ import annotations
@@ -294,7 +297,7 @@ def _short(value: Any) -> str:
     return text if len(text) <= 72 else f"{text[:69]}..."
 
 
-def capture_gr2l_canary() -> int:
+def capture_gr2l_canary(*, accept_moved: bool = False) -> int:
     """Send the canary probe to the live GR2L service and pin its response hash.
 
     The one pin that needs the service standing up. It goes out through
@@ -304,6 +307,15 @@ def capture_gr2l_canary() -> int:
     entry. A service that answers differently afterwards is a hard failure by
     design, which is the whole point of committing this (``agent_architecture.md``
     §5, ``decisions.md`` § The response cache).
+
+    *accept_moved* is the deliberate way through that failure, for the case the
+    refusal cannot distinguish on its own: the service was **changed on purpose**
+    and the new build is the one to measure against. It is a separate flag rather
+    than a prompt because re-pinning a moved canary invalidates every result
+    captured against the old one, so it should appear in a shell history and in a
+    commit message. What it does not do is clean up after itself — cache entries
+    recorded from the old build are still the old build's, and the flag prints
+    that rather than deleting anything.
     """
     import asyncio
 
@@ -326,14 +338,50 @@ def capture_gr2l_canary() -> int:
     if previous is not None and previous != digest:
         print(f"MOVED    gr2l_canary_response_sha256\n           committed {previous}")
         print(f"           served    {digest}")
-        print("\nThe service has moved under the pin. Results captured before and")
-        print("after are not comparable; resolve that before re-pinning.")
-        return 1
+        if not accept_moved:
+            print("\nThe service has moved under the pin. Results captured before and")
+            print("after are not comparable; resolve that before re-pinning.")
+            print("If the move was deliberate, re-run with --accept-moved.")
+            return 1
+        print("\n--accept-moved: re-pinning to the served build.")
+        print("Everything measured against the committed hash is now incomparable:")
+        _report_stale_gr2l_artifacts(previous)
 
     committed["gr2l_canary_response_sha256"] = digest
     _write(committed, committed)
     print(f"Pinned   gr2l_canary_response_sha256: {digest}")
     return 0
+
+
+def _report_stale_gr2l_artifacts(previous: str) -> None:
+    """Name what the old canary still stands behind, without touching any of it.
+
+    Deleting would be the wrong reflex twice over: the cache is ``T116``'s to own
+    and the committed cases are a record of a measurement that really was taken.
+    What re-pinning owes the reader is the list, so the inconsistency is a
+    decision someone makes rather than one they discover.
+    """
+    cache_dir = REPO_ROOT / "eval" / "cache"
+    entries = [
+        path
+        for path in sorted(cache_dir.glob("*.json"))
+        if "Ssub" in path.read_text(encoding="utf-8")[:4096]
+    ]
+    print(f"  - {len(entries)} GR2L response(s) in eval/cache/, recorded from the old build")
+
+    cases_dir = REPO_ROOT / "eval" / "cases"
+    for path in sorted(cases_dir.glob("*.json")):
+        cases = json.loads(path.read_text(encoding="utf-8"))
+        stale = [
+            case["inputs"]["case_id"]
+            for case in cases
+            if case.get("expectations", {}).get("pins", {}).get("gr2l_canary") == previous
+        ]
+        if stale:
+            print(
+                f"  - {len(stale)} case(s) in {path.relative_to(REPO_ROOT)} pinned to it: "
+                + ", ".join(stale)
+            )
 
 
 def main() -> int:
@@ -348,10 +396,19 @@ def main() -> int:
         action="store_true",
         help="probe the live GR2L service and pin its canary response hash",
     )
+    parser.add_argument(
+        "--accept-moved",
+        action="store_true",
+        help=(
+            "with --capture-gr2l-canary: re-pin even though the canary moved, for a "
+            "service that was changed on purpose. Invalidates everything captured "
+            "against the old hash; the run prints what."
+        ),
+    )
     args = parser.parse_args()
 
     if args.capture_gr2l_canary:
-        return capture_gr2l_canary()
+        return capture_gr2l_canary(accept_moved=args.accept_moved)
 
     computed = compute_pins()
     if args.write:

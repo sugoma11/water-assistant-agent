@@ -575,20 +575,27 @@ over one `make_case_context` at `as_of` 2026-04-20, in
 `tests/eval/test_oracles.py`.
 *Date:* 2026-08-24.
 
-**Family D against the live model, hand-checked.** At `as_of` 2026-04-20 12:00
-on the non-irrigated extensive roof, T10 over three days runs
-2026-04-20..2026-04-22 seeded at 20.14 %θ (the `QEx2` reading at 10:00, inside
-the cut) and returns substrate storage 14.10 / 11.4089 / 8.6292 mm, so the
-minimum is `8.6292 / 70 × 100 = 12.33 %θ` on the 22nd — the conversion the tool's
-own `_to_days` performs at `SH = 7 cm`, checkable without re-running the model.
-T19 over seven complete past days runs 2026-04-13..2026-04-19 seeded at
-13.69 %θ, with daily |predicted − measured| of 1.04, 1.081, 1.381, 2.029, 2.997,
-4.975 and 4.664 pp: mean `18.167 / 7 = 2.595 → 2.6 pp`, largest 4.97 pp. The two
-windows resolve to **different sources** — the forward one to the Archive, the
-retrospective week to the station — so T10 stamps three pins and T19 four.
+**Family D against the live model, hand-checked — re-taken on the post-fix
+build.** At `as_of` 2026-04-20 12:00 on the non-irrigated extensive roof, T10
+over three days runs 2026-04-20..2026-04-22 seeded at 20.14 %θ (the `QEx2`
+reading at 10:00, inside the cut) and returns substrate storage 14.10 / 11.1883 /
+8.2852 mm, so the minimum is `8.2852 / 70 × 100 = 11.84 %θ` on the 22nd — the
+conversion the tool's own `_to_days` performs at `SH = 7 cm`, checkable without
+re-running the model. T19 over seven complete past days runs
+2026-04-13..2026-04-19 seeded at 13.69 %θ, with daily absolute deviations of
+1.04, 0.671, 2.051, 2.899, 3.917, 3.755 and 4.174 pp: mean `18.507 / 7 = 2.644 →
+2.64 pp`, largest 4.17 pp. The two windows resolve to **different sources** — the
+forward one to the Archive, the retrospective week to the station — so T10 stamps
+three pins and T19 four.
+**The pre-fix numbers were 12.33 %θ and 2.6 pp**, against storage of 14.10 /
+11.4089 / 8.6292 mm and deviations of 1.04 / 1.081 / 1.381 / 2.029 / 2.997 /
+4.975 / 4.664. Both moved in the direction the ET change predicts: the new build
+evapotranspires more, so the roof dries faster and every modelled minimum falls.
+They are recorded because the difference between the two is the clearest
+statement of what re-pinning the canary cost.
 *Verified:* both oracles through `make_case_context(as_of, allow_live=True)`
 against the live GR2L service and the pinned database, one event loop, a scratch
-cache directory. *Date:* 2026-08-24.
+cache directory emptied between the two runs. *Date:* 2026-08-24 (both).
 
 **T08's month pool does not survive its own boundary guard; a period pool does.**
 A heatwave run crossing the edge of the window the question names gives the count
@@ -665,8 +672,9 @@ code every time. The rung-4 boundary is the roof's deficit to capacity: at
 *Verified:* `t16a_manual_on_stated_values`, `t16b_calculator_on_stated_values` and
 `make_irrigation_tool(ctx)` over the same eight draws. *Date:* 2026-08-24.
 
-**The served GR2L accepts `albedo` and ignores it, which leaves T22 with no
-measurable answer.** Six albedos — 0.0, 0.05, 0.2, 0.5, 0.8, 1.0 — posted with an
+**The served GR2L accepted `albedo` and ignored it — fixed 2026-08-24, and the
+fix moved the whole ET routine. SUPERSEDED as a blocker; kept because it is what
+the T22 guard was built against.** Six albedos — 0.0, 0.05, 0.2, 0.5, 0.8, 1.0 — posted with an
 otherwise identical request return **one byte-identical response**: same `ET_PM`
 (8.5882 mm/day on the probe window), same `Ssub` series, same everything. The
 argument does reach the request — `resolve_roof_parameters` sets
@@ -694,14 +702,73 @@ demonstrably move the model.
 `theta_01 = 14.0 mm`, responses compared as canonical JSON; `et_fao56.et0_for_row`
 over the same rows at four albedos. *Date:* 2026-08-24.
 
+**The albedo fix landed, and it carried a second change nobody asked for.** The
+same six-albedo sweep now returns **six distinct responses**, and `ET_PM` tracks
+albedo with the slope our port predicts — the difference between served and local
+is a *constant* 0.4489 mm/day across 0.0 → 1.0, so the albedo term is now applied
+identically on both sides. But that constant is new: before the fix, served
+`ET_PM` at albedo 0.2 was 8.5882 mm on this window and our port gave 8.5882 to
+4e-5. It is now 9.0371 against the same 8.5882. So the fix did not only wire the
+parameter through; some other term in the endpoint's ET moved with it, and the
+endpoint no longer reproduces `GR2L_function.R` as checked out. A constant offset
+rules out an albedo relabelling — a different albedo would change the slope, not
+the intercept — and the direction is *more* ET, which rules out the three
+departures whose correction would lower it (the `Gsc` omission, the Celsius `Rnl`,
+the fixed pressure). It is not diagnosed further here: what this repository needs
+from the endpoint is a pinned contract, not an explanation.
+
+**The GR2L canary moved with it, and was deliberately re-pinned.**
+`0c39f945…` → `c8f51c82…`, with the canary's `ET_PM` going 2.0901 → 2.2879 and its
+`ET` 1.045 → 1.144. The response is still a real model run rather than an error
+body that returned 200: `ET = ET_PM · kg · Ssub/Ssubmax = 2.2879 × 1 × 8.0/16.0 =
+1.14395`, to the digit, and `Ssub` is still the `theta_01` the probe sends. Two
+consequences worth stating plainly. **`just pins` does not catch this** — the
+canary is a `LIVE_ONLY_PIN`, reported as "captured live" and never re-fetched, so
+the offline check said "0 moved" throughout; only `pins-canary` sees it. And
+**the test suite does not catch it either**, by design: every oracle test drives a
+stub, which is what makes them hermetic, so all 1089 passed against a service that
+had changed underneath them. The canary is the only thing in the repository that
+was ever going to notice.
+*Verified:* `fetch_canary()` against the pinned base URL, twice; the arithmetic
+checked by hand against the probe's own `theta_01`. *Date:* 2026-08-24.
+
+**What the moved build invalidates, listed rather than cleaned up.** Eleven GR2L
+responses in `eval/cache/` were recorded from the old build, and three committed
+pilot cases (`T09-0001`…`0003` in `eval/cases/pilot.json`) carry the old canary in
+their pins — so T107's pilot measurement of T09 was taken against a model that no
+longer exists. Nothing here was deleted: the cache is T116's to own and the
+committed cases are the record of a measurement that really was taken. A replay
+of those three is still internally consistent (the cache holds the old build's
+answers and never reaches the service), but its pins no longer match the
+repository's, which is precisely the mismatch `expectations.pins` exists to make
+visible. `check_pins.py --accept-moved` prints this list every time it re-pins.
+*Verified:* the re-pin run's own output. *Date:* 2026-08-24.
+
+**T22 materializes against the fixed build, and the override is monotone.** On
+the non-irrigated extensive roof at `as_of` 2026-04-20, tomorrow's predicted soil
+moisture is 15.46 / 17.39 / 18.44 %θ at albedo 0.05 / 0.6 / 0.9 against a default
+of 0.2 — rising with albedo, which is the direction the physics requires: a
+higher albedo reflects more energy away, so less of it drives evapotranspiration
+and the roof stays wetter. The guard that refused every draw before the fix now
+passes without any change to it, because it was written to compare the override
+against the roof's own default rather than to assert a known-bad service. T26(i)
+moves with it: its window minimum goes 13.99 → 16.38 %θ at albedo 0.6, so the
+variant that was half inert now composes two live axes.
+*Verified:* `t22_albedo_override` and `t26_composed_override` through
+`make_case_context(as_of, allow_live=True)` against the live service.
+*Date:* 2026-08-24.
+
 **GR2L forgets a counterfactual seed, and how fast depends on the weather.**
 T23's override only means something while the run still remembers it. Sweeping a
 5 %θ against a 20 %θ seed on the non-irrigated extensive roof and reading the
 window's last day: at `as_of` 2026-04-20, a wet week, the two agree from **d = 2**
-onward (both 22.02 %θ, the store saturated), differing only at d = 1 by 5.92 pp;
-over a dry August window they separate by 9.84 / 6.39 / 4.25 / 1.75 pp at
+onward (both 21.7 %θ, the store saturated), differing only at d = 1 by 5.83 pp;
+over a dry August window they separate by 9.52 / 5.94 / 3.79 / 1.27 pp at
 d = 1 / 2 / 3 / 5 and converge on the 1.29 %θ floor by **d = 7**; over a drier
-October window they still differ by 6.29 pp at **d = 10**. So there is no safe
+October window they still differ by 5.14 pp at **d = 10**. Re-measured on the
+post-fix build and the shape is unchanged — the same convergence days, magnitudes
+a little smaller — which is what makes the per-draw probe the right mechanism
+rather than a constant chosen from one sweep. So there is no safe
 horizon to write into the template: the same *d* is informative in October and
 vacuous in April. `t23_state_override` measures it per draw instead, running a
 probe seed at whichever end of the roof's own `Ssubmin`/`Ssubmax` range is
@@ -712,13 +779,15 @@ last day.
 
 **Family G's forcing reaches the model, checked on the answer rather than on the
 request.** At `as_of` 2026-04-20 the non-irrigated extensive roof's three-day
-baseline minimum is 12.33 %θ (T10). Forcing 50 mm onto 2026-04-21 moves the
-series to 20.14 / 18.49 / 13.99 %θ and produces **48.1 mm of runoff on the forced
-day**, so the minimum becomes 13.99 %θ — the model computed the counterfactual,
+baseline minimum is 11.84 %θ (T10). Forcing 50 mm onto 2026-04-21 moves the
+series to 20.14 / 18.14 / 13.43 %θ and produces **48.1 mm of runoff on the forced
+day**, so the minimum becomes 13.43 %θ — the model computed the counterfactual,
 rather than the wrapper adjusting a baseline afterwards. T26's cross-roof variants
 over the same 30 mm forcing separate the roofs cleanly: irrigated extensive ends
-at 23.39 %θ against non-irrigated's 13.99, and semi-intensive at 25.94 against the
-same 13.99.
+at 22.78 %θ against non-irrigated's 13.43, and semi-intensive at 25.63 against the
+same 13.43. (Pre-fix the same three were 13.99, 23.39 and 25.94; the runoff figure
+is unchanged, since it is set by the forcing and the store's capacity rather than
+by ET.)
 *Verified:* `t21_forced_rain_minimum` and `t26_composed_override` against the live
 service through `make_case_context(..., allow_live=True)`, one event loop.
 *Date:* 2026-08-24.
@@ -804,7 +873,11 @@ two languages agree rather than each being right on its own terms.
 textbook FAO-56 written for the comparison; pressure sensitivity by re-running
 the same days with eq. 7's 99.63 kPa. *Date:* 2026-08-20.
 
-**The deployed endpoint's ET routine still matches the checked-out one.** The
+**The deployed endpoint's ET routine matched the checked-out one until
+2026-08-24, when the albedo fix moved it. SUPERSEDED — the four served values
+below are still the fixture `tests/assistant/test_et_fao56.py` holds the port to,
+and they are still what that build served; they are no longer what the endpoint
+serves.** The
 checkout's `run_GR2L` takes no `albedo` argument and the service does, so the
 running build is newer than `/home/shpilevo/work/ufz/weinbau-api-v1-internal`.
 Posting four days to `POST /predict_gr2l` at `albedo=0.2` — the value the
@@ -815,6 +888,15 @@ ET routine did not. Those four rows and their served values are committed as a
 fixture in `tests/assistant/test_et_fao56.py`.
 *Verified:* one live POST to the endpoint in `.env:56`, the same one the GR2L
 canary is pinned against. *Date:* 2026-08-20.
+**Re-checked 2026-08-24 after the albedo fix: the equality no longer holds**, by a
+constant 0.4489 mm/day on a probe window (see the albedo entry above). What this
+does *not* move is the irrigation half: `et_fao56.py` is a port of
+`GR2L_function.R` **as checked out**, `calc_irrigation` runs it locally, and the
+R checkout has not changed — so families E and F answer exactly as before, and
+the fixture test still passes because it holds the port to the R rather than to
+the endpoint. What it moves is the claim's tense: the endpoint and the checkout
+have diverged, and any future statement that "the service runs our ET" needs
+re-measuring rather than citing this entry.
 
 **`GR2L_function.R` ends in a top-level demo block, lines 112–129, and
 `plumber.R:11` sources the file** — so building a random 365-day data frame,

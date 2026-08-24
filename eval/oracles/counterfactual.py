@@ -113,10 +113,13 @@ class InertOverrideError(OracleInputError):
     anyway would put a number in the gold set that a candidate ignoring the
     override earns in full.
 
-    Both causes occur here and they are told apart by which template raises. T23
-    hits it on a draw whose window is long or wet enough that the store saturates
-    and forgets its own initial condition; T22 hits it on every draw, because the
-    served GR2L accepts ``albedo`` and does nothing with it (``findings.md``).
+    Both causes have occurred here and they are told apart by which template
+    raises. T23 hits it on a draw whose window is long or wet enough that the
+    store saturates and forgets its own initial condition — a property of the
+    draw, resampled away. T22 hit it on **every** draw while the served GR2L
+    accepted ``albedo`` and did nothing with it, which no resample could fix;
+    that was repaired in the service on 2026-08-24 and T22 now answers
+    (``findings.md``).
     """
 
 
@@ -225,20 +228,20 @@ async def t22_albedo_override(
     and leaves the roof wetter; the direction is monotone in the physics and is
     what would make a sampled *a* interpretable.
 
-    **Against the GR2L build serving this deployment it is not interpretable at
-    all, and the oracle refuses rather than emitting the baseline.** The service
-    accepts ``albedo`` and ignores it: six values from 0.0 to 1.0 return one
-    byte-identical response, where the same FAO-56 core running locally spans
-    10.03 mm to 2.83 mm of ET0 over that range (``findings.md``). So every T22
-    answer would equal the un-overridden prediction, and a candidate that never
-    passed the argument would score full marks on the answer metric — which is
-    the one failure a counterfactual template cannot tolerate. The refusal is
-    :class:`InertOverrideError` and it is **measured per draw rather than
-    assumed**: the oracle runs the override against the roof's own default and
-    compares, so the day the service wires the parameter up, T22 begins
-    materializing with no change here.
+    **The service ignored the parameter until 2026-08-24, and the guard that
+    caught it is still the guard that runs.** Six values from 0.0 to 1.0 returned
+    one byte-identical response, so every answer equalled the un-overridden
+    prediction and a candidate that never passed the argument would have scored
+    full marks on the answer metric — the one failure a counterfactual template
+    cannot tolerate. The oracle raised :class:`InertOverrideError` instead, and it
+    did so **measured per draw rather than assumed**: it runs the override
+    against the roof's own default and compares. That is why the repair needed no
+    edit here — the service was fixed and T22 began materializing on the next run,
+    now reading 15.46 / 17.39 / 18.44 %θ at albedo 0.05 / 0.6 / 0.9 (monotone, as
+    the physics requires). The check stays because it is what would catch the
+    regression a second time.
 
-    What survives meanwhile is the half the schema actually scores: ``albedo``'s
+    What survived meanwhile was the half the schema actually scores: ``albedo``'s
     presence and plausibility in the call's arguments
     (``decisions.md`` § GR2L argument surface). That is a trajectory claim, and
     it does not need an answer.
@@ -431,14 +434,13 @@ async def t26_composed_override(
       the roof stays above its irrigation threshold — which adds
       ``lookup_reference`` to the trajectory and ``irrigation_threshold`` to the
       cards. It composes ``albedo``, whose axis is itself holdout, so it is
-      interpretable only where T22 passes and is reported conditionally — and
-      against the current service build T22 never passes, because the model
-      ignores the parameter (:func:`t22_albedo_override`). So (i) is **still
-      answerable and half inert**: the rain moves the answer and the albedo
-      cannot, which makes it a composition of one live axis with one dead one.
-      It is not refused here — the case does probe composing a forcing with a
-      card lookup — but the ``albedo`` half of its claim is not measurable today,
-      and (iii) is the variant the headline should rest on meanwhile.
+      interpretable only where T22 passes and is reported conditionally. It was
+      **half inert** while the served model ignored ``albedo``
+      (:func:`t22_albedo_override`) — the rain moved the answer and the albedo
+      could not — and composes two live axes again since that was fixed. It was
+      never refused, because the case probes composing a forcing with a card
+      lookup either way, and the conditional-reporting rule is what covers the
+      gap when the albedo axis is not measurable.
     * **(ii)** ``forcings`` plus a cross-roof comparison: which of two roofs ends
       the window wetter under the same forced rain.
     * **(iii)** the same comparison with no ``albedo`` anywhere, so the headline

@@ -545,16 +545,18 @@ Q: "Under the current forecast but with albedo {a}, what soil moisture is predic
 roof tomorrow?" · roof ∈ P2
 A: numeric (%θ, ±0.1 abs) · Traj: {predict_green_roof_water_balance_tool(albedo=…)} · Split: unseen
 Oracle: the same call with the flat `albedo` scalar set.
-Note: **not materializable against the GR2L build serving this deployment, and the oracle refuses
-rather than emitting a baseline** (T110). The service accepts `albedo` and ignores it — six values
-from 0.0 to 1.0 return one byte-identical response, where our own port of the same R convention spans
-10.03 mm to 2.83 mm of ET0 over that range (`findings.md`). Every answer would therefore equal the
-un-overridden prediction, and a candidate that never passed the argument would score full marks on
-the answer metric. The refusal is computed per draw against the roof's own default, so T22 begins
-materializing unchanged the day the service wires the parameter up; **until then this template
-contributes no instances, and §1.7's holdout ledger is short by one template.** Its trajectory claim
-— that the agent issues a plausible `albedo` — is unaffected and needs no answer, but nothing scores
-it while the template emits nothing.
+Note: **blocked between T110 and 2026-08-24 and now materializing.** The served GR2L accepted
+`albedo` and ignored it — six values from 0.0 to 1.0 returned one byte-identical response — so every
+answer would have equalled the un-overridden prediction and a candidate that never passed the
+argument would have scored full marks on the answer metric. The oracle refused rather than emitting
+a baseline, **computing the refusal per draw against the roof's own default rather than hard-coding
+the service's fault**, and that is why the fix needed no change here: the service was repaired and
+T22 began materializing on the next run. Tomorrow's prediction now reads 15.46 / 17.39 / 18.44 %θ at
+albedo 0.05 / 0.6 / 0.9, rising with albedo as the physics requires (`findings.md`). The episode is
+kept in this entry because it is the reason the guard exists, and the guard is what will catch the
+next such regression. **The fix also moved the endpoint's whole ET routine**, so the canary was
+re-pinned and every modelled answer in the catalog shifted; see `findings.md` for what that
+invalidated.
 
 **T23 — state override**
 Q: "If the {roof} roof's soil moisture had been {x} %θ {d} days ago, where would it be now?"
@@ -579,13 +581,13 @@ irrigation threshold?" — adds `lookup_reference` to Traj and `irrigation_thres
 A: bool / numeric · Traj: union of the composed calls, argument-checked · Split: unseen
 Note: the compositional-generalization headline, with train-side parents T21, T06 and T09/T10.
 Variant (i) composes `albedo`, whose axis is itself holdout, so it is interpretable only where T22
-passes and is reported conditionally; variant (iii) keeps the headline off double transfer. **Since
-T22 does not pass against the current service build** — the model ignores `albedo` — (i) is
-answerable and *half inert*: the rain moves its answer and the albedo cannot, so it composes one live
-axis with one dead one. It is not refused, because the case still probes composing a forcing with a
-card lookup, but **(iii) is the variant the headline should rest on** meanwhile. The comparison
-variants run both roofs over one window with one overlay, so the roof is the only thing that differs,
-and a tie is refused rather than broken.
+passes and is reported conditionally; variant (iii) keeps the headline off double transfer. **(i) was
+half inert while the service ignored `albedo`** — the rain moved its answer and the albedo could
+not — and is composing two live axes again since the 2026-08-24 fix: its window minimum moves 13.99 →
+16.38 %θ at albedo 0.6. It was never refused, because the case still probed composing a forcing with
+a card lookup, and the conditional-reporting rule above is what covers the gap either way. The
+comparison variants run both roofs over one window with one overlay, so the roof is the only thing
+that differs, and a tie is refused rather than broken.
 
 ### H. Presentation intent
 

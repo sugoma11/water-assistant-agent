@@ -841,21 +841,28 @@ by ignoring the argument the template exists to probe, so the answer metric woul
 report as evidence of counterfactual reasoning something that is evidence of
 nothing. T110 found both ways this happens. `initial_soil_moisture_pct` stops
 mattering once the store saturates and forgets its initial condition, which is a
-property of the *draw* and is resampled away. `albedo` stops mattering because
-the served GR2L accepts the parameter and discards it, which is a property of the
-*service* and cannot be resampled away at all (`findings.md`). The oracles
-therefore measure the dependence per draw — a probe run against the baseline —
-and refuse rather than emit, which is the same rule §1.6 already applies to an
-answer sitting within tolerance of its own threshold. Refusing is what keeps the
-failure visible: a T22 that quietly materialized would look like a passing
-template.
+property of the *draw* and is resampled away. `albedo` stopped mattering because
+the served GR2L accepted the parameter and discarded it, which is a property of
+the *service* and could not be resampled away at all. The oracles therefore
+measure the dependence per draw — a probe run against the baseline — and refuse
+rather than emit, which is the same rule §1.6 already applies to an answer sitting
+within tolerance of its own threshold. Refusing is what keeps the failure visible:
+a T22 that quietly materialized would look like a passing template.
+
+**The albedo case is closed and the rule is what closed it.** The service was
+repaired on 2026-08-24 and T22 materialized on the next run with no edit to the
+oracle, because the guard compares the override against the roof's own default
+rather than asserting a known-bad build (`findings.md`). That is the property to
+preserve if either check is ever revisited: a guard written as "this service is
+broken" would have had to be found and removed by hand, and until someone did,
+the template would have stayed silently empty.
 
 **Rejected here too:**
 
 - *Hard-coding the albedo template as retired.* The refusal is computed from the
-  service's own behaviour, so T22 starts materializing again the day the
-  parameter is wired up, with no edit. A retirement would have to be noticed and
-  undone by hand.
+  service's own behaviour, so T22 started materializing again the day the
+  parameter was wired up, with no edit — which is what happened. A retirement
+  would have had to be noticed and undone by hand.
 - *Choosing a "safe" window length for T23 instead of probing.* Measured, the
   safe length does not exist: the seed survives ten days in October and two in a
   wet April week.

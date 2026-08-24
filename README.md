@@ -1,6 +1,6 @@
 ## Water Assistant Agent
 
-Evaluating prompt optimization techniques for a water management analysis assistant with RAG.
+Evaluation of Prompt Optimization Techniques for a Water Management LLM Assistant with Retrieval-Augmented Generation
 
 ### Run
 

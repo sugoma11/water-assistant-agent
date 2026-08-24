@@ -384,6 +384,24 @@ summary statistics, no series.
   scorer's arithmetic; resolution is a property of the value being compared, so
   it rides as a flag on the check and leaves `eq`, `set_eq` and `present`
   meaning what they mean everywhere else.
+- *Leaving the family out of the oracle registry,* which is what T103 did and
+  what "a plot's deliverable is the spec, so there is nothing to materialize"
+  argued for. It was right about the **answer** and stopped being right about
+  the **case** once T24a drew three variants: the answer is null on all three
+  and the answer metric skips on all three, but two are `answered` and one is
+  `not_available`, and §6.1 gives `status` no channel except the oracle's. So
+  family H has an oracle that returns no number — which is the same shape the
+  abstention templates already have, and not a special case (T110).
+- *Deciding that status from the template's declared variant.* The stopgap
+  generator did, by copying a `status` field written beside the draw. It makes
+  the variant label load-bearing and unchecked, and a mislabelled draw is silent
+  in both directions: a model overlay on the gravel roof records an abstention
+  as answerable, and a non-modellable overlay on an extensive roof records an
+  answerable case as an abstention. The second is invisible to the false-
+  abstention rate, because that rate is computed against the gold set containing
+  it. The oracle runs `prepare_series` — §3.6's own trigger, the function the
+  tool calls before it fetches anything — and refuses the draw when the label and
+  the trigger disagree.
 
 **Validity conditions:** the scored surface is the agent-supplied half of the
 spec; derived fields — unit, axis, aggregation — are constant across candidates

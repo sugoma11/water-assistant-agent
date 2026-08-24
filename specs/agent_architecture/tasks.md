@@ -3115,6 +3115,47 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   thesaurus, and it says so: "maximum temperature" passes where the description
   writes "Max", so the `{variable}` pool stays authored.
   `uv run ruff check` and `uv run pytest` clean — 980 passed (959 + 21).
+  **P7a1 — family H (T24a, T24b) landed, and P7a1 is complete.**
+  `eval/oracles/presentation.py`.
+  **T24a is in the registry after all, and the earlier reasoning for leaving it
+  out was right about the answer and wrong about the case.** "A plot's
+  deliverable is the spec, so there is nothing to materialize" holds for the
+  *answer* — null on all three variants, answer metric skipped on all three — and
+  stopped holding once the template drew three shapes, because (i) and (ii) are
+  `answered` where (iii) is `not_available` and §6.1 gives `status` no channel
+  but the oracle's. Family H therefore has an oracle that returns no number,
+  which is the same shape T17a, T17b, T18a and T18b already have.
+  **The variant is checked against §3.6's trigger, not trusted.** The oracle
+  builds the series the request denotes and runs them through `prepare_series` —
+  the function the tool itself calls before fetching — so the decline comes back
+  in the tool's own words. A mislabelled draw is silent in both directions, and
+  one direction is invisible: a (iii) on a modellable roof writes an answerable
+  case into the gold set as an abstention, and the false-abstention rate is
+  computed against that same gold set. Refused, both ways.
+  **Hand-checked**, and the strongest check available was against T107's own
+  artifacts: the oracle reproduces `eval/cases/pilot.json`'s two committed T24a
+  cases key for key — same `status`, `answer`, `unit` and `pins` — so the pilot's
+  48 rollouts were scored against exactly the status this packet now computes and
+  none of T107's numbers move (`findings.md`). Beyond that: gravel + irrigated
+  extensive on `swc` is `answered` (a *measured* series for a non-modellable roof
+  is valid — that is (iii)'s counter-probe), Kiesdach and Sumpfdach both decline
+  on the `model` half, the semi-intensive roof on `outflow` is refused as an
+  `invalid_argument` rather than folded into the abstention, and T24b returns
+  8.377 pp over July 2025 — the same number T03 returns over the same days,
+  because they share `mean_swc_gap`.
+  **Nothing is fetched on any variant**, asserted with a context whose database
+  and weather client both raise. It is a property of `prepare_series` rather than
+  a rule the oracle keeps, and it is what makes (iii) cost no cache entry.
+  **`make_pilot_cases.py`'s `oracle: False` branch is left standing**, comment
+  updated. It now produces what the oracle produces, so switching it over would
+  change nothing except the pilot artifacts' regeneration — and regenerating them
+  is precisely what would move T107's measurement.
+  `uv run ruff check` and `uv run pytest` clean — 994 passed (980 + 14), same 15
+  pre-existing findings in `src/experiments/`.
+  **Still open on this row:** T110's D, E, F, G and I oracles (P7a2). One item
+  handed over — T27(i) still asks "over the next `{h}` hours", the phrasing T13
+  and T09 were repaired out of, and it is family I's to fix in the packet that
+  writes that oracle.
 - [ ] T111 Template instantiation with the §1.6 generation filters, evaluated
   **through the as-of view** and anchored at `seed_at` for seed-bearing families:
   coverage, per-column plausibility, and the frozenness run test applied to state

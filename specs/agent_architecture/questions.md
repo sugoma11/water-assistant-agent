@@ -538,10 +538,17 @@ modelling arguments, `present` rather than `eq` per architecture §7. Aggregatio
 `kind` are **not** scored: §3.6 derives the first three in code from the variable and §7 fixes the
 scored surface to the rest, so `model_overlay` against `line` discriminates no candidate.
 Traj: {plot_timeseries} · Must-not: `text_to_sql_agent` · Cards: [] · Split: train+seen
-Oracle: (i) and (ii) have none — the deliverable is the spec and the answer metric is skipped on a
-null answer. (iii)'s oracle is `NON_MODELLABLE_ROOFS` membership through §3.6's own trigger: a
-`model` series for the gravel roof or the wetland returns the tool's typed `not_available`, which the
-agent relays as the contract status.
+Oracle: **one oracle, and what it materializes is `status` rather than an answer.** The answer is
+null on all three variants and the answer metric is skipped on all three, so there is no number for
+an oracle to compute — but (i) and (ii) are `answered` where (iii) is `not_available`, and §6.1 gives
+`status` no channel but the oracle's, so something has to decide which per instance. It decides by
+building the series the request denotes and running them through §3.6's own trigger
+(`prepare_series`): a `model` series for the gravel roof or the wetland raises the tool's typed
+`not_available`, which the agent relays as the contract status. The declared variant is then checked
+**against** that outcome rather than trusted, because a mislabelled draw is silent in both directions
+— a (ii) on a non-modellable roof records an abstention as answerable, a (iii) on a modellable one
+records an answerable case as an abstention, and the second is invisible to the very metric that
+measures false abstention. Nothing is fetched on any variant, so (iii) costs no cache entry.
 Note: the tool fetches its own data; rendering is an unscored side effect. The earlier form fixed
 both roofs and drew a single `measured` `swc` series, which left §1.8's H pools notional and the
 model path, the mixed-resolution rule and the plot tool's `not_available` unreached by any case

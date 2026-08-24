@@ -111,8 +111,9 @@ TEMPLATES: dict[str, dict[str, Any]] = {
     },
     # questions.md §2 H — T24a(i): answered, answer null (the chart is the
     # deliverable), Traj {plot_timeseries}, Must-not `text_to_sql_agent`.
-    # `oracle: False` — the deliverable is the spec, so there is nothing to
-    # materialize and no registry entry to look up.
+    # `oracle: False` — the deliverable is the spec, so there is no answer to
+    # materialize. T110 registered a T24a oracle for the `status` its three
+    # variants split on; see the flag's branch below for why this stays.
     "T24a-i": {
         "template_id": "T24a",
         "oracle": False,
@@ -366,13 +367,20 @@ async def build(*, allow_live: bool) -> list[dict[str, Any]]:
             ctx = make_case_context(_as_instant(draw["as_of"]), allow_live=allow_live)
             materialized = (await ORACLES[template_id](inputs, ctx)).expectations()
         else:
-            # A plot's deliverable is the spec, so there is no answer to compute
-            # and no oracle to compute it (see eval/oracles/__init__). The pins
-            # are `duckdb_sha256` alone, and deliberately not the weather source
-            # or the GR2L canary even where the rollout will read both: what this
-            # case scores is `argument_checks` over the call's ARGUMENTS, which no
-            # fetched value can move. Stamping more would assert a dependency the
-            # scored surface does not have (eval/oracles/pins).
+            # A plot's deliverable is the spec, so there is no answer to compute.
+            # The pins are `duckdb_sha256` alone, and deliberately not the weather
+            # source or the GR2L canary even where the rollout will read both:
+            # what this case scores is `argument_checks` over the call's
+            # ARGUMENTS, which no fetched value can move. Stamping more would
+            # assert a dependency the scored surface does not have
+            # (eval/oracles/pins).
+            #
+            # T110 gave T24a an oracle after all — not for the answer, which is
+            # still null, but for the `status` its three variants split on. This
+            # branch is what that oracle replaces, and it is left standing
+            # because regenerating the pilot cases would move the artifacts
+            # T107's measurement was taken over. It produces the same four keys
+            # for the two variants drawn here.
             materialized = {
                 "status": template["status"],
                 "answer": None,

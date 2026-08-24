@@ -25,6 +25,7 @@ for a different reason than the one it was written for.
 
 import asyncio
 import dataclasses
+import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,11 @@ from eval.oracles.base import OracleInputError
 from eval.oracles.irrigation import t07_needs_irrigation_now
 from eval.oracles.model_chain import forecast_days_for, t09_falls_below_threshold
 from eval.oracles.pins import duckdb_sha256, station_derivation_version
+from eval.oracles.presentation import (
+    pair_variable,
+    t24a_plot_request,
+    t24b_extensive_gap,
+)
 import eval.oracles.reference as reference_module
 from eval.oracles.reference import (
     T17B_ROOF,
@@ -998,8 +1004,6 @@ def test_every_pin_stamped_here_matches_the_case_schema():
     key invented here would fail validation at emission rather than at review —
     but only once a case is emitted, which is T114.
     """
-    import json
-
     schema = json.loads(Path("eval/schema/case.schema.json").read_text(encoding="utf-8"))
     admitted = set(schema["$defs"]["pins"]["properties"])
 
@@ -1456,6 +1460,231 @@ def test_t18a_refuses_a_window_the_tool_would_actually_serve():
         )
 
 
+# --- T24a, T24b: family H (T110) -----------------------------------------------
+
+
+class RefusesEverything:
+    """A database and a weather client that raise if anything asks them for data.
+
+    T24a's oracle resolves a vocabulary and a roof table, and issues no query, no
+    weather fetch and no GR2L request — which is a property of
+    ``prepare_series`` rather than a rule the oracle keeps, and is what makes the
+    declined variant cost nothing at capture. Asserting it needs a seam that
+    cannot be read from rather than a count of calls that were not made.
+    """
+
+    def execute_query(self, query: str) -> Any:
+        raise AssertionError(f"T24a's oracle read the database: {query}")
+
+    async def fetch(self, *, start_date: str, end_date: str) -> Any:
+        raise AssertionError(f"T24a's oracle fetched weather for {start_date}..{end_date}")
+
+
+def _sealed_context(as_of: datetime = AS_OF) -> ScenarioContext:
+    seal = RefusesEverything()
+    return ScenarioContext.bound(clock=lambda: as_of, db=seal, weather=seal, cache=None)
+
+
+def test_t24a_answers_a_measured_pair_that_includes_a_non_modellable_roof():
+    """The gravel roof's *measured* series is valid, so the pair is drawable.
+
+    This is variant (iii)'s counter-probe, and it is the reason each split's
+    ``swc`` pair pins one of the two non-modellable roofs into it: a candidate
+    that generalized "gravel ⇒ ``not_available``" is charged for it through the
+    false-abstention rate. Inside one family and one tool, the two roofs are
+    separated by the series' **source** and by nothing else.
+    """
+    answer = asyncio.run(
+        t24a_plot_request(
+            _inputs(
+                "T24a",
+                variant="measured_pair",
+                roof_a="Kiesdach",
+                roof_b="irrigated_extensive",
+                table="swc",
+                month="2025-07",
+            ),
+            _sealed_context(),
+        )
+    )
+
+    assert answer.status == "answered"
+    assert answer.answer is None
+    assert answer.unit is None
+    assert [series["source"] for series in answer.detail["series"]] == ["measured"] * 2
+    assert [series["roof"] for series in answer.detail["series"]] == [
+        "gravel",
+        "irrigated_extensive",
+    ]
+
+
+@pytest.mark.parametrize("alias", ["Kiesdach", "Sumpfdach", "gravel", "wetland"])
+def test_t24a_declines_a_model_series_for_a_roof_outside_the_model(alias: str):
+    """§3.6's own trigger, reached by calling it rather than by restating it.
+
+    The reason comes back in the tool's own words, because the oracle ran the
+    tool's own resolver — a membership test written here would have made the
+    oracle a second opinion about the plot tool's scope instead of a reading of
+    it.
+    """
+    answer = asyncio.run(
+        t24a_plot_request(
+            _inputs(
+                "T24a", variant="non_modellable_overlay", alias=alias, month="2026-02"
+            ),
+            _sealed_context(),
+        )
+    )
+
+    assert answer.status == "not_available"
+    assert answer.answer is None
+    assert "water-balance model" in answer.detail["declined_because"]
+
+
+@pytest.mark.parametrize(
+    ("variant", "roof"),
+    [("model_overlay", "Kiesdach"), ("non_modellable_overlay", "non_irrigated_extensive")],
+)
+def test_t24a_refuses_a_variant_the_trigger_disagrees_with(variant: str, roof: str):
+    """A mislabelled variant is silent in both directions, so it is checked.
+
+    A (ii) draw on a non-modellable roof would record an abstention as answerable
+    and a (iii) draw on a modellable one would do the reverse — and the second is
+    the error the false-abstention rate cannot see, because the rate is computed
+    against the gold set that contains it.
+    """
+    with pytest.raises(OracleInputError, match="resolves the other way"):
+        asyncio.run(
+            t24a_plot_request(
+                _inputs("T24a", variant=variant, roof=roof, alias=roof, month="2026-02"),
+                _sealed_context(),
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    ("table", "variable"), [("swc", "soil_moisture"), ("outflow", "outflow")]
+)
+def test_t24a_derives_the_pairs_variable_from_its_table(table: str, variable: str):
+    """One table, one per-roof quantity, read off §3.6's closed vocabulary.
+
+    The ``outflow`` draw is what makes §1.8's P1f row real for family H, and it
+    exercises the other derived operator: a flux sums where a state averages, on
+    the same vocabulary.
+    """
+    answer = asyncio.run(
+        t24a_plot_request(
+            _inputs(
+                "T24a",
+                variant="measured_pair",
+                roof_a="gravel",
+                roof_b="wetland",
+                table=table,
+                month="2025-07",
+            ),
+            _sealed_context(),
+        )
+    )
+
+    assert {series["variable"] for series in answer.detail["series"]} == {variable}
+    assert pair_variable(table) == variable
+
+
+def test_t24a_refuses_a_pair_that_is_one_roof_twice():
+    """"Kiesdach" and "gravel" are one roof, so the pair is compared as segments."""
+    with pytest.raises(OracleInputError, match="the request compares two roofs"):
+        asyncio.run(
+            t24a_plot_request(
+                _inputs(
+                    "T24a",
+                    variant="measured_pair",
+                    roof_a="Kiesdach",
+                    roof_b="gravel",
+                    table="swc",
+                    month="2025-07",
+                ),
+                _sealed_context(),
+            )
+        )
+
+
+def test_t24a_refuses_an_undrawable_plot_rather_than_calling_it_an_abstention():
+    """The semi-intensive roof has no lysimeter, which is an argument fault.
+
+    The tool types that ``invalid_argument`` — a fumble a candidate could correct
+    — where the one thing it types ``not_available`` is a ``model`` series for
+    the gravel roof or the wetland. Folding the first into the second is what
+    makes the false-abstention rate uninterpretable.
+    """
+    with pytest.raises(OracleInputError, match="invalid_argument"):
+        asyncio.run(
+            t24a_plot_request(
+                _inputs(
+                    "T24a",
+                    variant="measured_pair",
+                    roof_a="semi_intensive",
+                    roof_b="gravel",
+                    table="outflow",
+                    month="2025-07",
+                ),
+                _sealed_context(),
+            )
+        )
+
+
+def test_t24a_reproduces_the_committed_pilot_cases():
+    """The two T24a cases T107 measured over, materialized again by the oracle.
+
+    They were hand-instantiated through the stopgap generator's ``oracle: False``
+    branch, which copied the status off the template. The oracle now derives it
+    from §3.6 instead, and it has to land on the same four keys — otherwise the
+    pilot's numbers were taken against a status this packet has just changed.
+    """
+    cases = json.loads(Path("eval/cases/pilot.json").read_text(encoding="utf-8"))
+    drawn = [case for case in cases if case["inputs"]["template_id"] == "T24a"]
+
+    assert len(drawn) == 2
+    for case in drawn:
+        ctx = make_case_context(datetime.fromisoformat(case["inputs"]["as_of"]))
+        materialized = asyncio.run(t24a_plot_request(case["inputs"], ctx)).expectations()
+
+        assert materialized == {
+            key: case["expectations"][key] for key in ("status", "answer", "unit", "pins")
+        }
+
+
+def test_t24a_refuses_a_month_the_case_cannot_see():
+    """The measured half has to exist on every variant, so the month is complete."""
+    with pytest.raises(OracleInputError, match="past the case's as_of"):
+        asyncio.run(
+            t24a_plot_request(
+                _inputs(
+                    "T24a", variant="model_overlay", roof=MODELLABLE, month="2026-04"
+                ),
+                _sealed_context(),
+            )
+        )
+
+
+def test_t24b_answers_t03s_question_through_t03s_arithmetic():
+    """The twin pairs two *shapes*, so the two oracles must mean one difference.
+
+    T24b is the measured two-roof comparison with the presentation verb removed,
+    and if the scalar were computed a second way the pair would be compared on a
+    difference neither template intends.
+    """
+    ctx = make_case_context(AS_OF)
+
+    scalar = asyncio.run(t24b_extensive_gap(_inputs("T24b", month="2025-07"), ctx))
+    twin = asyncio.run(
+        t03_irrigation_swc_gap(_inputs("T03", period="2025-07-01..2025-07-31"), ctx)
+    )
+
+    assert scalar.answer == twin.answer == pytest.approx(8.377)
+    assert scalar.unit == twin.unit == "pp"
+    assert scalar.detail["paired_rows"] == twin.detail["paired_rows"]
+
+
 # --- The registry -------------------------------------------------------------
 
 
@@ -1487,6 +1716,8 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
         "T17b",
         "T18a",
         "T18b",
+        "T24a",
+        "T24b",
     ]
     assert ORACLES["T01"] is t01_total_outflow
     assert ORACLES["T02"] is t02_hot_day_count
@@ -1504,4 +1735,5 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
     assert ORACLES["T15b"] is t15b_future_rain
     assert ORACLES["T18a"] is t18a_unservable_window
     assert ORACLES["T18b"] is t18b_missing_variable
-    assert "T24a" not in ORACLES
+    assert ORACLES["T24a"] is t24a_plot_request
+    assert ORACLES["T24b"] is t24b_extensive_gap

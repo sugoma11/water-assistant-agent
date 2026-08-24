@@ -525,6 +525,19 @@ entirely dry month tying at 0.0 on every day in it.
 only.
 *Date:* 2026-08-24.
 
+**T24a's new oracle reproduces the two pilot cases T107 measured over, key for
+key.** Those two were hand-instantiated through `make_pilot_cases.py`'s
+`oracle: False` branch, which copied `status` off the template; T110's oracle
+derives it from §3.6's trigger instead. Run over the committed `inputs` at each
+case's own `as_of`, it returns the same `status`, `answer`, `unit` and `pins` for
+both — so the pilot's 48 rollouts were scored against the status this packet now
+computes, and nothing in T107's numbers moves. The branch is left standing rather
+than switched over, because regenerating the pilot artifacts is what *would* move
+them.
+*Verified:* `t24a_plot_request` against `eval/cases/pilot.json`'s two T24a
+records, in `tests/eval/test_oracles.py`.
+*Date:* 2026-08-24.
+
 **No forward-looking weather window can resolve to the station, at any `as_of`.**
 The composite serves from the station only where the record covers **every** day
 asked for, tested through the as-of view — and a forward window starts on the

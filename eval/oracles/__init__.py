@@ -13,16 +13,22 @@ model families D, E, F, G and I in the next. The registry is what T111's
 generator looks a template up in, so a template with no oracle fails loudly at
 generation rather than emitting a case with no answer.
 
-**T24a is deliberately absent, and its absence is not an omission.** A plot's
-deliverable is the spec, the answer is null and the answer metric skips, so there
-is nothing for an oracle to materialize; what scores it is ``argument_checks``
-over the call's own arguments. A registry entry would have to invent an answer to
-have something to return.
+**T24a is registered, and what it materializes is a status rather than a
+number.** The earlier reading — that a plot needs no oracle, because its
+deliverable is the spec and its answer is null — was right about the answer and
+wrong about the case. It held while the template drew one shape. Across the three
+variants the measured pair and the model overlay are ``answered`` while the
+non-modellable overlay is ``not_available``, and §6.1 gives ``status`` no channel
+but this one, so something has to decide which per instance. The answer stays
+null on every variant and the answer metric still skips; what the oracle adds is
+the abstention the third variant is scored on
+(:func:`~eval.oracles.presentation.t24a_plot_request`).
 """
 
 from eval.oracles.base import Oracle, OracleAnswer, OracleInputError
 from eval.oracles.irrigation import t07_needs_irrigation_now
 from eval.oracles.model_chain import t09_falls_below_threshold
+from eval.oracles.presentation import t24a_plot_request, t24b_extensive_gap
 from eval.oracles.reference import (
     t06_stated_constant,
     t17a_absent_constant,
@@ -61,6 +67,8 @@ ORACLES: dict[str, Oracle] = {
     "T17b": t17b_scope_near_miss,
     "T18a": t18a_unservable_window,
     "T18b": t18b_missing_variable,
+    "T24a": t24a_plot_request,
+    "T24b": t24b_extensive_gap,
 }
 """Template id → the oracle that answers it.
 
@@ -89,4 +97,6 @@ __all__ = [
     "t17b_scope_near_miss",
     "t18a_unservable_window",
     "t18b_missing_variable",
+    "t24a_plot_request",
+    "t24b_extensive_gap",
 ]

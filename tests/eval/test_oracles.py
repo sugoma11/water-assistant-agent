@@ -45,7 +45,14 @@ from eval.oracles.reference import (
     t17a_absent_constant,
     t17b_scope_near_miss,
 )
-from eval.oracles.weather import t18a_unservable_window
+from eval.oracles.weather import (
+    daily_row_fields,
+    t13_rain_expected,
+    t14_forecast_max_temperature,
+    t15b_future_rain,
+    t18a_unservable_window,
+    t18b_missing_variable,
+)
 from water_assistant_agent.assistant.knowledge.store import load_card
 from water_assistant_agent.assistant.rules_constants import ROOF_RULES
 from water_assistant_agent.assistant.tools.weather_client import (
@@ -80,6 +87,7 @@ from water_assistant_agent.assistant.tools.schemas import (
     WeatherResult,
 )
 from water_assistant_agent.assistant.tools.swc import mm_to_theta_pct
+from water_assistant_agent.assistant.tools.weather import make_weather_forecast_tool
 from water_assistant_agent.assistant.tools.weather_station import StationWeatherSource
 from harness.run_case import make_case_context
 
@@ -1160,6 +1168,266 @@ def test_t17b_refuses_a_roof_the_card_covers():
         )
 
 
+# --- T13, T14, T15b, T18b: the rest of family C (T110) -------------------------
+
+# One window whose three days differ, so every family C answer is a different
+# number and none of them can be produced by reading the wrong day:
+#
+#   precip  1.2  0.0  4.3   -> total 5.5 mm
+#   tx     18.4 22.9 21.0   -> highest 22.9 C, on day 2
+#
+# `tm` is deliberately higher than `tx` would allow on no day: T14 has to pick
+# the daily maximum out of a row that carries the mean beside it, and a stub
+# where the two agreed would not test the choice.
+_PRECIP = (1.2, 0.0, 4.3)
+_TX = (18.4, 22.9, 21.0)
+
+WINDOW_PRECIP_MM = 5.5
+WINDOW_HOTTEST_C = 22.9
+HOTTEST_DAY = "2026-04-21"
+
+
+class SeriesWeather:
+    """A forecast whose days differ, so an oracle cannot pass by reading day 1."""
+
+    def __init__(self, *, source: str = "station") -> None:
+        self.calls: list[tuple[str, str]] = []
+        self._source = source
+
+    async def fetch(self, *, start_date: str, end_date: str) -> WeatherResult:
+        self.calls.append((start_date, end_date))
+        start = date.fromisoformat(start_date)
+        span = (date.fromisoformat(end_date) - start).days + 1
+        return WeatherResult(
+            latitude=51.353484,
+            longitude=12.432152,
+            timezone="Europe/Berlin",
+            source=self._source,
+            data=[
+                DailyWeatherRow(
+                    Date=(start + timedelta(days=offset)).isoformat(),
+                    tm=_TX[offset % len(_TX)] - 5.0,
+                    tx=_TX[offset % len(_TX)],
+                    tn=_TX[offset % len(_TX)] - 9.0,
+                    rf=61.0,
+                    precip=_PRECIP[offset % len(_PRECIP)],
+                    w=7.0,
+                    gs=1900.0,
+                )
+                for offset in range(span)
+            ],
+        )
+
+
+def test_t15b_totals_the_forward_windows_rain():
+    """5.5 mm = 1.2 + 0.0 + 4.3, over the window ``forecast_days=3`` resolves to.
+
+    The window is checked as well as the total: "the next 3 days" is today and
+    the two after it, and both sides go through ``resolve_window`` so the window
+    a case is scored on and the window it was answered over are one resolution.
+    """
+    weather = SeriesWeather()
+    ctx = _context(weather=weather)
+
+    answer = asyncio.run(t15b_future_rain(_inputs("T15b", d=3), ctx))
+
+    assert answer.answer == WINDOW_PRECIP_MM
+    assert answer.unit == "mm"
+    assert weather.calls == [("2026-04-20", "2026-04-22")]
+    assert answer.detail["days"] == 3
+
+
+@pytest.mark.parametrize(
+    ("threshold", "expected"),
+    [(5.0, True), (WINDOW_PRECIP_MM, False), (6.0, False)],
+)
+def test_t13_compares_the_windows_total_with_the_threshold(
+    threshold: float, expected: bool
+):
+    """5.5 mm: more than 5.0, not more than 5.5, not more than 6.0.
+
+    The middle case pins the comparison as **strict** — "more than" a threshold
+    the window sits exactly on is ``False``. It also pins the quantity as the
+    window's *total* rather than any day's: no single day of the three carries
+    5.5 mm, so an oracle reading a per-day maximum answers the first case wrong.
+    """
+    ctx = _context(weather=SeriesWeather())
+
+    answer = asyncio.run(t13_rain_expected(_inputs("T13", thr=threshold, d=3), ctx))
+
+    assert answer.answer is expected
+    assert answer.unit is None
+    assert answer.detail["total_precip_mm"] == WINDOW_PRECIP_MM
+
+
+def test_t14_takes_the_highest_daily_maximum_and_not_the_highest_mean():
+    """22.9 °C on the 21st — ``tx``, with ``tm`` sitting 5 °C below it in every row.
+
+    The row carries both, so choosing between them is the whole of this oracle's
+    content: a question about how hot it will get asks about the peak, and the
+    day's average is a different number that is also in front of the candidate.
+    """
+    ctx = _context(weather=SeriesWeather())
+
+    answer = asyncio.run(t14_forecast_max_temperature(_inputs("T14", d=3), ctx))
+
+    assert answer.answer == WINDOW_HOTTEST_C
+    assert answer.unit == "°C"
+    assert answer.detail["hottest_day"] == HOTTEST_DAY
+    assert answer.detail["field"] == "tx"
+
+
+def test_family_c_agrees_with_the_weather_tool_on_the_same_context():
+    """The claim family C rests on, against the tool its gold trajectory names.
+
+    T13, T14 and T15b all read one window of rows, and the tool returns the same
+    rows over the same window — so the three answers are recomputable from the
+    tool's own payload. An oracle that resolved a different window, or read a
+    different field, would encode as truth a number the gold route cannot
+    produce.
+    """
+    ctx = _context(weather=SeriesWeather())
+
+    rain = asyncio.run(t15b_future_rain(_inputs("T15b", d=3), ctx))
+    hottest = asyncio.run(t14_forecast_max_temperature(_inputs("T14", d=3), ctx))
+    expected = asyncio.run(t13_rain_expected(_inputs("T13", thr=5.0, d=3), ctx))
+    tool = asyncio.run(make_weather_forecast_tool(ctx)(forecast_days=3))
+
+    assert tool["status"] == "success"
+    rows = tool["data"]
+    assert rain.answer == round(sum(row["precip"] for row in rows), 3)
+    assert hottest.answer == max(row["tx"] for row in rows)
+    assert expected.answer is (sum(row["precip"] for row in rows) > 5.0)
+
+
+@pytest.mark.parametrize(
+    "oracle", [t13_rain_expected, t14_forecast_max_temperature, t15b_future_rain]
+)
+def test_family_c_refuses_a_window_past_the_horizon(oracle: Any):
+    """Past 16 days the tool abstains, so the case is T18a's and not this one.
+
+    A number computed over that window would be a number the gold route refuses
+    to produce, and the abstention metric would then be scoring a template that
+    was never meant to reach it.
+    """
+    weather = SeriesWeather()
+    ctx = _context(weather=weather)
+
+    with pytest.raises(OracleInputError, match="T18a"):
+        asyncio.run(
+            oracle(_inputs("T13", thr=1.0, d=FORECAST_HORIZON_DAYS + 2), ctx)
+        )
+    assert weather.calls == []
+
+
+def test_t18b_abstains_without_fetching_anything():
+    """Soil temperature is not one of the seven fields, and no call is made.
+
+    The gold trajectory is empty: the tool takes no variable argument, so asking
+    it returns the same seven fields it always returns and nothing types a
+    ``not_available``. The correct behaviour is to decline *before* calling, and
+    an oracle that fetched would be the only thing in the case that did.
+    """
+    weather = SeriesWeather()
+    ctx = _context(weather=weather)
+
+    answer = asyncio.run(
+        t18b_missing_variable(_inputs("T18b", variable="soil temperature", d=3), ctx)
+    )
+
+    assert answer.status == "not_available"
+    assert answer.answer is None
+    assert weather.calls == []
+    assert answer.detail["fields_served"] == ["gs", "precip", "rf", "tm", "tn", "tx", "w"]
+
+
+@pytest.mark.parametrize(
+    "variable", ["tx", "max temperature", "temperature", "precipitation", "wind speed"]
+)
+def test_t18b_refuses_a_variable_the_row_actually_carries(variable: str):
+    """A quantity the tool serves would record a false abstention as truth.
+
+    The one error here no metric could catch: the false-abstention rate is
+    computed against the gold set, so a gold set that calls an answerable
+    question unanswerable makes the metric agree with the mistake. "Temperature"
+    is in the list because the row carries three of them — the question is
+    answerable under any of them, so the draw is not a missing variable.
+    """
+    ctx = _context(weather=SeriesWeather())
+
+    with pytest.raises(OracleInputError, match="carries"):
+        asyncio.run(t18b_missing_variable(_inputs("T18b", variable=variable, d=3), ctx))
+
+
+@pytest.mark.parametrize("variable", ["maximum temperature", "rain", "sunshine"])
+def test_t18b_lets_a_synonym_outside_the_descriptions_through(variable: str):
+    """The guard is word containment, not a thesaurus, and it says so.
+
+    "Max" is what the row's description writes, so "maximum temperature" is not
+    caught; neither is "rain" for ``precip``. That is why T18b's ``{variable}``
+    pool is authored rather than sampled over any noun — the guard catches a pool
+    drifting onto the row's own vocabulary, which is how the template would
+    decay, and does not pretend to catch a paraphrase of it.
+    """
+    ctx = _context(weather=SeriesWeather())
+
+    answer = asyncio.run(
+        t18b_missing_variable(_inputs("T18b", variable=variable, d=3), ctx)
+    )
+
+    assert answer.status == "not_available"
+
+
+def test_t18b_refuses_a_window_that_would_make_it_t18a():
+    """Past the horizon the tool abstains on the *window*, so the variable is moot.
+
+    The case would be T18a wearing T18b's words, and a candidate could pass it
+    without ever noticing that soil temperature is not on offer — which is the
+    only thing this template tests.
+    """
+    ctx = _context(weather=SeriesWeather())
+
+    with pytest.raises(OracleInputError, match="T18a"):
+        asyncio.run(
+            t18b_missing_variable(
+                _inputs("T18b", variable="soil temperature", d=FORECAST_HORIZON_DAYS + 2),
+                ctx,
+            )
+        )
+
+
+def test_t18b_reads_the_field_list_off_the_row_and_not_off_the_docstring():
+    """The docstring is candidate-owned, so it cannot be ground truth for anything.
+
+    A candidate that deleted the weather tool's variable list would otherwise
+    move T18b's answer — the template would start passing for a reason the
+    optimizer had manufactured.
+    """
+    served = daily_row_fields()
+
+    assert set(served) == set(DailyWeatherRow.model_fields) - {"Date"}
+    assert served["tx"] == DailyWeatherRow.model_fields["tx"].description
+
+
+def test_family_c_stamps_the_source_the_window_resolved_to():
+    """A forward window that the station answered stamps the derivation with it.
+
+    ``ctx.weather`` picks the source from the window alone, and the pin records
+    which one answered — an oracle calling ``fetch_daily_weather`` directly would
+    read the Archive every time while claiming whatever it liked.
+    """
+    station = _context(weather=SeriesWeather(source="station"))
+    archive = _context(weather=SeriesWeather(source="archive"))
+
+    from_station = asyncio.run(t15b_future_rain(_inputs("T15b", d=3), station)).pins
+    from_archive = asyncio.run(t15b_future_rain(_inputs("T15b", d=3), archive)).pins
+
+    assert from_station["weather_source"] == ["station"]
+    assert from_station["station_derivation"] == station_derivation_version()
+    assert from_archive["weather_source"] == ["archive"]
+    assert "station_derivation" not in from_archive
+
+
 def test_t18a_abstains_on_a_window_past_the_horizon():
     """Four weeks out is beyond the 16-day limit, and the window is well formed.
 
@@ -1211,10 +1479,14 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
         "T06",
         "T07",
         "T09",
+        "T13",
+        "T14",
         "T15a",
+        "T15b",
         "T17a",
         "T17b",
         "T18a",
+        "T18b",
     ]
     assert ORACLES["T01"] is t01_total_outflow
     assert ORACLES["T02"] is t02_hot_day_count
@@ -1227,5 +1499,9 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
     assert ORACLES["T15a"] is t15a_past_rain
     assert ORACLES["T17a"] is t17a_absent_constant
     assert ORACLES["T17b"] is t17b_scope_near_miss
+    assert ORACLES["T13"] is t13_rain_expected
+    assert ORACLES["T14"] is t14_forecast_max_temperature
+    assert ORACLES["T15b"] is t15b_future_rain
     assert ORACLES["T18a"] is t18a_unservable_window
+    assert ORACLES["T18b"] is t18b_missing_variable
     assert "T24a" not in ORACLES

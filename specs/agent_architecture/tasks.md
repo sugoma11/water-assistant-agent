@@ -3074,6 +3074,47 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   `roof` parameter when a generator passes one, so it can never answer quietly
   about the wetland when it was asked about the gravel roof.
   `uv run ruff check` and `uv run pytest` clean — 959 passed (953 + 6).
+  **P7a1 — family C (T13, T14, T15b, T18b) landed**, beside T107's T18a.
+  **Hand-checked** over a three-day window whose days differ — precip 1.2 / 0.0
+  / 4.3 and `tx` 18.4 / 22.9 / 21.0 — so no family C answer can be produced by
+  reading the wrong day: T15b totals 5.5 mm, T14 takes 22.9 °C off the second
+  day, and T13 is true at 5.0, false at 5.5 (strict) and false at 6.0. No single
+  day carries 5.5 mm, so an oracle reading a per-day maximum fails the first T13
+  case. The three are then recomputed from `get_weather_forecast_tool`'s own
+  payload over the same context — family C's version of the agreement check T07
+  and T09 have.
+  **Two catalog entries were repaired, and both repairs were forced.** T13 asked
+  "within the next `{h}` hours", which is the defect T107 measured on T09: rows
+  are daily, the conversion happens privately on both sides, and they disagree
+  silently. T15b's `{future_period}` is worse than ambiguous — it is
+  *unrunnable*, because `period_param_within_as_of` intersects every day a
+  parameter carries with the case's cut and a future window's days are all past
+  it. Checked: `future_period: "2026-04-20..2026-04-26"` at `as_of` 2026-04-20
+  yields a violation, so every instance would have raised before scoring. Both
+  now carry `{d}` days, which is what T18a already did with `ahead_days` and for
+  the same reason. → `decisions.md § Forward horizons are counted in days`.
+  **The same phrasing survives on T27(i) ("over the next `{h}` hours"), which is
+  family I and P7a2's.** Left deliberately: it is the same defect and the same
+  fix, and it belongs in the packet that writes that oracle.
+  **A measurement that changes what the pins mean.** No forward-looking weather
+  window can resolve to the station **at any `as_of`** — the window starts on the
+  case's own day, the as-of view has truncated it mid-day, so it is short of its
+  48 rows and the whole window falls to the Archive. Measured 0/1, 0/3 and 0/7
+  station days at `as_of` 08:00, 12:00 and 23:00, against 7/7 on the preceding
+  week (`findings.md`). So every family C case stamps
+  `weather_source: ["archive"]` and **none of them is ever stamped with
+  `station_derivation`** — that pin covers only retrospective windows, of which
+  T24a(ii)'s completed month is the one in this packet.
+  **T18b grounds its abstention in `DailyWeatherRow`, not in the tool docstring**,
+  which is candidate-owned and so cannot be ground truth: a candidate that
+  deleted the variable list would otherwise move the answer. The guard is
+  generous in the direction that matters — a `{variable}` the row serves is
+  refused as a template fault rather than recorded, because a false abstention
+  written into the gold set is invisible to the very metric that measures false
+  abstention. It is word containment over the fields' frozen descriptions, not a
+  thesaurus, and it says so: "maximum temperature" passes where the description
+  writes "Max", so the `{variable}` pool stays authored.
+  `uv run ruff check` and `uv run pytest` clean — 980 passed (959 + 21).
 - [ ] T111 Template instantiation with the §1.6 generation filters, evaluated
   **through the as-of view** and anchored at `seed_at` for seed-bearing families:
   coverage, per-column plausibility, and the frozenness run test applied to state

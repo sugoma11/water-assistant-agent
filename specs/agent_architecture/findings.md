@@ -525,6 +525,27 @@ entirely dry month tying at 0.0 on every day in it.
 only.
 *Date:* 2026-08-24.
 
+**No forward-looking weather window can resolve to the station, at any `as_of`.**
+The composite serves from the station only where the record covers **every** day
+asked for, tested through the as-of view — and a forward window starts on the
+case's own day, which that view has truncated at the `as_of` instant. So it is
+short of its 48 rows, the completeness rule drops it, and the window falls to the
+Archive whole. Measured at `as_of` 08:00, 12:00 and 23:00 on 2026-03-10: the
+station serves 0 of 1, 0 of 3 and 0 of 7 days on `forecast_days` windows at every
+one of the three, and 7 of 7 on the preceding week. `record_bounds()` through the
+same view ends on 2026-03-09 — the day before the cut, never the cut's own day.
+Two consequences. Every family C case, and every seed-bearing forward window
+(T07's refill week, T09's horizon), carries `weather_source: ["archive"]` and is
+**never** stamped with `station_derivation`; the derivation pin therefore covers
+only the retrospective windows — T15a's SQL route reads the column directly, and
+T24a(ii)'s completed month is the one plot that reaches the station. And capture
+is unavoidable for all of them: a station window needs no cache entry, an Archive
+window does.
+*Verified:* `StationWeatherSource(ctx.db).daily_rows` over
+`make_case_context(as_of)` for three `as_of` hours × three horizons, against the
+same call on the preceding week.
+*Date:* 2026-08-24.
+
 **T15a and the station weather path return the same number.** Over
 2026-04-13..19, T15a's `sum(Rain)` grouped by the site's day gives 29.257 mm, and
 `StationWeatherSource.daily_rows` over the same window returns seven complete

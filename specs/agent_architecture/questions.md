@@ -268,6 +268,7 @@ A: date (exact) · Traj: {text_to_sql_agent} · Split: train+seen · Oracle: arg
 
 **T15a — past rain**
 Q: "How much rain fell in {past_period}?" · DE: "Wie viel hat es letzte Woche geregnet?"
+· `{past_period}` written `YYYY-MM-DD..YYYY-MM-DD`, ending ≤ `as_of`
 A: numeric (mm, ±2 % rel) · Traj: {text_to_sql_agent} · Split: train+seen
 Oracle: SUM over the station rain column.
 Note: tense minimal pair with T15b, scored as a pure-SQL positive — the station weather path derives
@@ -299,11 +300,17 @@ beside it. Strongest hallucination probe.
 ### C. Pure weather
 
 **T13 — rain expected?**
-Q: "Is more than {thr} mm of rain expected within the next {h} hours?"
+Q: "Is more than {thr} mm of rain expected in the next {d} days?"
 A: bool (balanced) · Traj: {get_weather_forecast_tool} · Split: train+seen
 Oracle: sum of `precip` over the resolved forward window, fetched through `ctx.weather` so the window
 resolves to the source the tool sees — never `fetch_daily_weather` directly, which is Archive-only and
 bypasses source resolution (architecture §3.3).
+Note: **asks in days for T09's reason, and it is the same defect.** This entry said "the next {h}
+hours" until T110. Weather rows are daily, so an hourly horizon has to become a day count somewhere,
+and wherever that happens it is a rule the candidate has never been told — which is exactly what
+T107's pilot measured on T09, where the oracle read "72 hours" as three days and a candidate writing
+explicit dates read it as four. The horizon is now the number the question names, passed straight
+into `forecast_days`.
 
 **T14 — forecast max temperature**
 Q: "What is the highest temperature forecast for the next {d} days?"
@@ -311,12 +318,20 @@ A: numeric (°C, ±0.1 abs) · Traj: {get_weather_forecast_tool} · Split: train
 Oracle: max of `tx` over the resolved window, same fetch path.
 
 **T15b — future rain**
-Q: "How much rain will fall in {future_period}?" · DE: "Wie viel soll es nächste Woche regnen?"
+Q: "How much rain will fall in the next {d} days?" · DE: "Wie viel soll es in den nächsten sieben
+Tagen regnen?"
 A: numeric (mm, ±2 % rel) · Traj: {get_weather_forecast_tool} · Must-not: `text_to_sql_agent`
 · Split: train+seen
 Oracle: sum of `precip` over the resolved future window.
 Note: the surviving half of the tense probe — the database holds no future, so the must-not binds in
-this direction only.
+this direction only. **The horizon is a forward day count, not a `{future_period}` range**, and both
+halves of that are forced. A future window written `start..end` names days past the case's own
+`as_of`, so `period_param_within_as_of` rejects every instance of it (T104) — the same reason T18a
+carries `ahead_days` as a count. Days rather than hours is T13's reason, which is T09's. The
+paraphrase constraint that follows is T112's to hold: a paraphrase may restate the window but not
+**redenote** it, so "in den nächsten sieben Tagen" is `d = 7` and "nächste Woche" is not — a calendar
+week starting Monday is a different window from the seven days beginning today, and the oracle
+resolves the parameter rather than the prose.
 
 **T18a — unservable window (abstention)**
 Q: "What will the temperature be in four weeks?"
@@ -325,11 +340,19 @@ Note: a well-formed window beyond the 16-day horizon, the tool's single scope li
 the `not_available` and the agent relays it as the contract status. Distinct from T15 misrouting.
 
 **T18b — missing variable (abstention)**
-Q: "What is the forecast **soil temperature** for the next 3 days?"
+Q: "What is the forecast {variable} for the next {d} days?" · `{variable}` a quantity the daily row
+does not carry (soil temperature, soil moisture, air pressure, …); `{d}` inside the 16-day horizon
 A: not_available · Traj: {} (empty) · Split: unseen
 Note: the tool takes no variable argument and always returns the seven documented fields, so the
 abstention is the agent's alone, grounded in the docstring's variable list; it tests transfer from
 T18a's tool-signalled abstention to one with no tool signal.
+**The oracle grounds it in `DailyWeatherRow` and not in that docstring**, which is candidate-owned
+and therefore cannot be ground truth for anything: a candidate that deleted the variable list would
+otherwise move the answer. The row's seven fields and their frozen descriptions are what the draw is
+checked against, and a `{variable}` matching any of them is refused as a template fault rather than
+recorded as an abstention — a false abstention encoded as truth is the one error here that no
+metric could catch. `{d}` stays inside the horizon on purpose: past it the *tool* would abstain, and
+the case would be T18a wearing T18b's words.
 
 ### D. Model chains
 

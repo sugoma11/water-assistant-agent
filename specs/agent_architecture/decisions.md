@@ -1014,3 +1014,49 @@ what makes T15a's accepted trajectory cost (see **Trajectory scoring and routing
 probes**) worth accepting. Measured at 29.257 mm both ways over 2026-04-13..19
 (`findings.md § T15a and the station weather path`), and it is a claim about
 covered windows only.
+
+---
+
+## Forward horizons are counted in days
+
+Every template whose window reaches forward — T09, T13, T14, T15b, T18a, T18b —
+carries the horizon as a **whole number of days** in its parameters, and the
+question names that number. No template asks in hours, and none carries a future
+window as a `start..end` range.
+
+Two independent forcings, either of which alone would settle it.
+
+**Hours hid a disagreement, measured.** Weather rows and GR2L rows are daily, so
+an hourly horizon has to become a day count somewhere. T107's pilot found the
+oracle reading "the next 72 hours" as three days while a candidate writing the
+same phrase as explicit dates read it as four, and nothing on either side could
+see the disagreement: the two silently differed on every draw whose answer did
+not happen to fall the same way in both windows. T09 was repaired then; T13 and
+T15b carried the same shape until T110 and are repaired here.
+
+**A future range is unrunnable.** `period_param_within_as_of` intersects every
+`YYYY-MM-DD` a parameter carries with the case's own cut (T104), and a future
+window's days are all past it — so `future_period: "2026-04-20..2026-04-26"`
+raises `CaseAssertionError` before the case is scored. T18a already carried
+`ahead_days` as a count for exactly this reason; T15b's `{future_period}` was the
+one entry that had not followed.
+
+**Rejected:**
+
+- *Converting hours to days inside each oracle.* It is the conversion itself that
+  is the defect: wherever it happens privately, it is a rule the candidate was
+  never told, and both sides then apply their own.
+- *Relaxing the assertion for parameters whose name says they are forward-looking.*
+  The invariant is read off parameter *values* on purpose, because the name is the
+  template author's and the invariant is not. An exemption keyed on a name is an
+  exemption a future template gets by spelling.
+- *Writing the future window as `start..end` in the question but keeping the
+  parameter a count.* The case file would then carry a window nothing checks
+  against the horizon, which is the surface T18a exists to probe.
+
+**Validity condition:** a paraphrase may restate a window but not **redenote**
+it. "In den nächsten sieben Tagen" is `d = 7`; "nächste Woche" is not, because a
+calendar week beginning Monday is a different set of days from the seven
+beginning today. The oracle resolves the parameter and never the prose, so a
+paraphrase that moves the window makes the case wrong rather than hard — T112's
+constraint, stated here because it is the same failure as the hours one.

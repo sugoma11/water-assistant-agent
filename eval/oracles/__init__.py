@@ -36,7 +36,13 @@ from eval.oracles.sql import (
     t05_peak_outflow_day,
     t15a_past_rain,
 )
-from eval.oracles.weather import t18a_unservable_window
+from eval.oracles.weather import (
+    t13_rain_expected,
+    t14_forecast_max_temperature,
+    t15b_future_rain,
+    t18a_unservable_window,
+    t18b_missing_variable,
+)
 
 ORACLES: dict[str, Oracle] = {
     "T01": t01_total_outflow,
@@ -47,10 +53,14 @@ ORACLES: dict[str, Oracle] = {
     "T06": t06_stated_constant,
     "T07": t07_needs_irrigation_now,
     "T09": t09_falls_below_threshold,
+    "T13": t13_rain_expected,
+    "T14": t14_forecast_max_temperature,
     "T15a": t15a_past_rain,
+    "T15b": t15b_future_rain,
     "T17a": t17a_absent_constant,
     "T17b": t17b_scope_near_miss,
     "T18a": t18a_unservable_window,
+    "T18b": t18b_missing_variable,
 }
 """Template id → the oracle that answers it.
 
@@ -71,8 +81,12 @@ __all__ = [
     "t06_stated_constant",
     "t07_needs_irrigation_now",
     "t09_falls_below_threshold",
+    "t13_rain_expected",
+    "t14_forecast_max_temperature",
     "t15a_past_rain",
+    "t15b_future_rain",
     "t17a_absent_constant",
     "t17b_scope_near_miss",
     "t18a_unservable_window",
+    "t18b_missing_variable",
 ]

@@ -909,7 +909,7 @@ same mechanism GR2L already uses — rather than by a dated version string.
 - *Moving the task model to a provider that does publish dated versions,* to
   satisfy the requirement literally. It changes the system under study — the
   thesis measures prompt optimization over the assistant this site actually runs
-   — for a reproducibility gain the canary already delivers.
+  — for a reproducibility gain the canary already delivers.
 
 **Validity condition:** the canary is checked in the same pass on every arm of a
 comparison. It detects a provider-side model swap **after the fact**, never
@@ -1148,3 +1148,105 @@ calendar week beginning Monday is a different set of days from the seven
 beginning today. The oracle resolves the parameter and never the prose, so a
 paraphrase that moves the window makes the case wrong rather than hard — T112's
 constraint, stated here because it is the same failure as the hours one.
+
+---
+
+## Generation draws the window first and the cut second
+
+A retrospective template — anything carrying a `{month}`, a `{period}`, T04's
+`{date}` or T12's `{event}` — draws its **parameter window first**, then samples
+`as_of` from the days that can see it. The forward families keep the opposite
+order, because their window is defined relative to `as_of` and has no existence
+without it.
+
+**Measured, not reasoned.** The first loop drew `as_of` and then a window behind
+it, which silently weights every window by how many band days can still reach it:
+a June window is reachable from 328 days and an April one from a handful. On T04
+that thinned the wet class from the record's own 1-in-6.3 to **1 in 25**, and the
+loop spent 13.5 draws per accepted case against 3.8 after the fix (`findings.md`).
+The balance rule still produced a 50/50 split either way — that is what rejection
+sampling is for — so the defect was invisible in the output and visible only in
+the draw counts.
+
+**Rejected:**
+
+- *Leaving the order alone and raising the attempt ceiling.* It fills, and it
+  fills from a distribution nothing states: `as_of` and the parameter window are
+  correlated by construction, and T113's striped `as_of` partition would inherit
+  that correlation as a confound between split and season.
+- *Sampling the window uniformly and then fixing `as_of` at the band's ceiling.*
+  Simplest, and it destroys `as_of` as a split dimension — `decisions.md § Case
+  time` rejects the single frozen cut for reasons that apply here verbatim.
+- *Rejection-sampling the pair until the window's marginal is uniform.* The same
+  distribution at many times the cost, and it hides the correlation inside a loop
+  instead of removing it.
+
+**Validity condition:** a template whose window is an absolute stretch of the
+record draws it independently of the cut. Where the split's day pool holds no day
+late enough to see the window drawn, the draw is *undrawable* and resampled —
+counted separately from a predicate rejection, because a template that is
+undrawable everywhere is a sizing problem and one that fails a predicate is a
+data problem.
+
+---
+
+## `as_of` is stamped at a fixed late hour
+
+Every case's `as_of` is 23:00 site time on its drawn day. The day varies and is
+what T113 stripes; the hour does not.
+
+**The seed forces it.** A seed-bearing family anchors at
+`seed_at = min(window_start, as_of)`, so a forward window's seed day *is* the
+`as_of` day — and §1.6 wants a point query's day at ≥44 of 48 rows. At a morning
+cut that day is structurally incomplete (18 rows at 09:00), so every forward draw
+would fail a coverage predicate that is asking about a sensor and answering about
+the cut. At 23:00 the day carries 47 of its 48 rows and one predicate serves the
+seed and every other point query alike.
+
+**Rejected:**
+
+- *A second coverage rule for the seed day, prorated against the hour.* It makes
+  the predicate depend on the cut it is supposed to be evaluated through, and the
+  rule that "a check never passes on data the tool cannot see" stops being one
+  rule.
+- *Sampling the hour alongside the day.* It buys no coverage the band does not
+  already have, and it makes T113's per-parameter disjointness on `as_of` a
+  statement about two quantities instead of one.
+- *Seeding the forward families at `as_of - 1 day`.* That is not the rule
+  architecture §3.4 states, and an oracle and a tool that disagree about the seed
+  day disagree about the answer.
+
+**Validity condition:** the hour is a property of the generator, not of a
+template. A case that needs a different one is a case whose window is wrong.
+
+---
+
+## An answer the schema cannot carry is not resampled
+
+Where an oracle answers something `eval/schema/case.schema.json` does not admit,
+generation raises `Unemittable` and stops, rather than putting the draw back.
+
+**Because every draw fails identically.** T26(ii) and T26(iii) answer the winning
+roof's canonical name, and the schema's `answer` admits a boolean, a number, an
+ISO-day string or null (`findings.md`). Resampling that 400 times and then
+reporting "the pool is too tight" would name the data as the cause of a
+disagreement between two frozen specifications. The two failure modes are
+different in kind and the generator says which one it hit.
+
+**Rejected:**
+
+- *Coercing the answer — emitting the roof name as a bare string, or as the index
+  of the winning roof.* The first needs the schema changed anyway; the second
+  invents a convention no scorer, oracle or catalog entry knows, which is exactly
+  the drift §6.1's copied-constants split exists to prevent.
+- *Dropping the two variants and refilling T26 from variant (i).* It fills the
+  ledger and silently deletes a probe: (iii) exists to keep the compositional
+  headline off double transfer (`questions.md` §2 T26), and a T26 made of (i)
+  alone is a different holdout entry wearing the same id.
+- *Skipping schema validation at generation and catching it at emission.* T114
+  would then discover it, over a whole run, with the draw that caused it gone.
+
+**Validity condition:** the case schema is checked at the point the case is
+built, not at the point it is written. A generator that emits a case the schema
+rejects has produced a case nothing can score, and the earliest place to find
+that out is the draw that produced it.

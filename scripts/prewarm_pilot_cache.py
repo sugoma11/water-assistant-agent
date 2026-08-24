@@ -20,8 +20,10 @@ same resolved request and share one key. The form the candidate chose is already
 irrelevant by the time a key exists; only the days it denotes are not.
 
 Belongs in T116 when that lands — this is the pilot-sized version of the same
-pass, kept separate from ``make_pilot_cases.py`` because warming a cache is not
-generating a case.
+pass, kept separate from case generation because warming a cache is not
+generating a case. It reads the committed ``eval/cases/pilot.json``, which stays
+as the pilot's record; the hand-instantiation script that wrote that file was
+``make_pilot_cases.py``, retired by T111 (:mod:`eval.generation`).
 """
 
 from __future__ import annotations

@@ -2968,7 +2968,8 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   schema and the oracles are frozen text in the sense §0 means.
   **The pilot ran wider than the task asked.** T103 emitted oracles and no cases,
   so the nine draws were hand-instantiated through T010's schema
-  (`scripts/make_pilot_cases.py`, a stopgap T111 replaces) — and then five more,
+  (`scripts/make_pilot_cases.py`, the stopgap T111 has since replaced and
+  deleted) — and then five more,
   because the first nine were all one shape and exercised one branch of every
   scorer. The five cover what they left: T06 the graded card recall, T17a an
   abstention with recall still graded, T18a a tool-signalled abstention past the
@@ -3149,7 +3150,9 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   **`make_pilot_cases.py`'s `oracle: False` branch is left standing**, comment
   updated. It now produces what the oracle produces, so switching it over would
   change nothing except the pilot artifacts' regeneration — and regenerating them
-  is precisely what would move T107's measurement.
+  is precisely what would move T107's measurement. *(T111 retired that script
+  along with the branch; `eval/cases/pilot.json` stays as the committed record,
+  which is what kept T107's measurement intact.)*
   `uv run ruff check` and `uv run pytest` clean — 994 passed (980 + 14), same 15
   pre-existing findings in `src/experiments/`.
   **P7a2 — families D, E, F, G and I landed, and the row closes.** All 32 catalog
@@ -3270,7 +3273,7 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   deliberate. Recorded in `findings.md` rather than fixed: the pin list is
   architecture §5's, and adding to it is a specification change rather than this
   row's.
-- [ ] T111 Template instantiation with the §1.6 generation filters, evaluated
+- [x] T111 Template instantiation with the §1.6 generation filters, evaluated
   **through the as-of view** and anchored at `seed_at` for seed-bearing families:
   coverage, per-column plausibility, and the frozenness run test applied to state
   columns only and never to the gravel roof's. Balance by rejection sampling to
@@ -3286,6 +3289,83 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   left test_unseen a template short — the service was fixed on 2026-08-24 and T22
   materializes normally, so §1.7's ledger stands as written and there is no sizing
   decision to make.
+  Done. `eval/generation/` in three modules, split by what each owns: `filters.py`
+  (the three predicates over a declared `(table, column, window)` set),
+  `templates.py` (the 32 catalog entries as data), `instantiate.py` (the draw
+  loop). Nothing writes to `eval/cases/`; splits and emission stay T113's and
+  T114's.
+  **The predicates were tested against the record's own named windows, not
+  synthetic data** — which is the only way to check the claim §1.6 actually
+  makes, that the rule separates real faults from real health. Rejected: every
+  sampled day of the dead `QWetland` stretch on bounds; the 2025-05-22…28 episode
+  frozen at 77.160 %θ on frozenness **and not** on bounds, which is what makes
+  that predicate necessary rather than spare; all eight sampled outage days; all
+  four bracket days at 36 / 8 / 27 / 25–27 rows. Accepted, with zero false
+  positives: the wetland's healthy January, `QGravel`'s honest near-zero July,
+  three substrate `swc` and five `tsoil` columns over August, four healthy days
+  across the band, the 46-row spring-forward Sunday, and `Sumpf2_Efflux`'s 4780
+  identical consecutive band rows — which nothing rejects, because §1.6 says the
+  run test is for state columns and a flux at rest is telling the truth. 48 tests
+  in `tests/eval/test_generation.py`.
+  **The gravel exclusion is derived, not spelled `QGravel`.** `frozenness_applies`
+  asks whether the segment has a `substrate_height_cm` at all: a roof with no
+  substrate store has nothing whose state that column could be. A roof that gains
+  or loses a store moves the rule with it.
+  **The `seed_at` anchor is load-bearing and was measured as such.** At `as_of`
+  2025-12-01 a window opening 2025-11-10 seeds inside the 35-day outage from a day
+  with no row, while the `as_of` day itself is healthy — so anchoring at the cut
+  would have cleared it. The two requirements name different days and only the
+  earlier is rejected.
+  **A defect the balance rule hid, found by counting draws rather than cases.**
+  The first loop drew `as_of` and then a window behind it, which weights every
+  window by how many band days can still reach it. T04's wet class fell from the
+  record's 1-in-6.3 to **1 in 25** and the loop spent 13.5 draws per case against
+  3.8 after the fix — and the *output* was a correct 50/50 split either way, since
+  rejection sampling repairs the marginal it is given. Retrospective templates now
+  draw the window first and sample `as_of` from the days that can see it
+  (`decisions.md § Generation draws the window first and the cut second`).
+  **`as_of` is stamped at 23:00 site time, and the seed rule forces it.** A
+  forward window seeds on the `as_of` day, and §1.6 wants a point query's day at
+  ≥44 of 48 rows; at a morning cut that day is structurally incomplete, so every
+  forward draw would fail a predicate that is asking about a sensor and answering
+  about the cut. The alternative was a second coverage rule for the seed day,
+  which makes the predicate depend on the cut it is evaluated through.
+  **A whole-catalog pass: 273 of 281 cases in 387 draws (70.5 % accepted).** Train
+  100/100, test_seen 125/125, test_unseen 48/56. Abstentions land at 13 / 16 / 16
+  — 13.0 % / 12.8 % / 28.6 %, 16.0 % overall — **exactly §1.6's stated figures,
+  with nothing in the generator steering toward them**: the share is
+  `abstentions ÷ (templates × m)` and moves only when a template is authored or
+  retired, which is §1.7's derivation rule. All ten bool templates balance (2/2
+  train, 2/3 or 3/2 test_seen, 4/4 holdout). The 142 rejections split 71 balance,
+  59 coverage, 9 oracle, 2 frozenness, 1 plausibility — and the last three are
+  real draws, not fixtures: T24a drew the wetland's `swc` for March 2026 and was
+  rejected on **both** bounds and frozenness, and for May 2025 on frozenness
+  alone. The nine oracle refusals are T110's four expected shapes plus T05's tie
+  and T22's default-albedo guard.
+  **T20 is the hardest template to fill and it is its own guard, not the data**:
+  38 rejections for 8 instances, 36 of them balance. A 3–7 day forecast qualifies
+  as a heatwave rarely enough that "yes" is the minority class, and the far-edge
+  boundary guard removes some of the draws that would have supplied it. It fills
+  4/4 regardless, so this is a cost rather than a limit.
+  **One thing this row could not fix, and it is not a sampling problem.** T26(ii)
+  and T26(iii) answer **the winning roof's canonical name** — deliberate in
+  `_t26_cross_roof`, since a signed gap would need a convention about which way
+  round it is written — and `case.schema.json`'s `answer` admits a boolean, a
+  number, an ISO-day string or null. So those two variants produce a valid oracle
+  answer that no case file can carry, which is why test_unseen lands 48 of 56.
+  T26(i) materializes and balances 4/4, so the holdout keeps a live T26 probe. The
+  generator raises `Unemittable` rather than resampling, because every draw fails
+  identically and resampling would blame a pool that is fine. **Not fixed here:
+  the repair is a specification change in the schema's `answer` or in the oracle's
+  return, and both are frozen as of T107** — handed to T114, which owns emission.
+  **`scripts/make_pilot_cases.py` is retired**, per this row's own text — one
+  instantiation path, not two. `eval/cases/pilot.json` stays as the pilot's
+  committed record and `prewarm_pilot_cache.py` still reads it; the T24a
+  reproduction test in `tests/eval/test_oracles.py` reads the committed file and
+  is unaffected.
+  `uv run ruff check .` and `uv run pytest` clean — 1137 passed, same 15
+  pre-existing findings in `experiments/`. `just pins`: 14 pinned, 4 unpinned,
+  0 moved.
 - [ ] T112 EN and DE paraphrase generation, 50/50 within each split, style pools
   disjoint between train and test, colloquial German included, roofs named in the
   agent's vocabulary or in alias-covered natural language and **never** by raw

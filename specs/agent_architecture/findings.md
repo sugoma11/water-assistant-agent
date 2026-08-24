@@ -910,6 +910,114 @@ pins can carry `station_derivation`, and it did in the check above.
 *Verified:* the pin sets returned by the family D and G oracles at `as_of`
 2026-04-20 12:00. *Date:* 2026-08-24.
 
+**The three validity predicates separate the record's real faults from its real
+health, on the record's own named windows.** Run as §1.6 states them — coverage
+at ≥44 of 48 rows for a point query and ≥95 % with no gap over 24 h for a period,
+per-column bounds off `roofs.py`, a 24-sample run test on state columns only —
+against the windows the entries above name. **Rejected:** every day of the dead
+`QWetland` stretch on bounds (2026-03-12 first, and 03-20 / 04-01 / 04-24
+sampled); the 2025-05-22…28 episode frozen at 77.160 %θ on frozenness *and not*
+on bounds, which is the whole reason that predicate exists; all eight sampled
+days of the two whole-system outages; and all four bracket days at 36 / 8 / 27 /
+25–27 rows. **Accepted:** the wetland's healthy January recharge, `QGravel`'s
+honest near-zero July, all three substrate `swc` columns and all five `tsoil`
+columns over August, four healthy days spread across the band, the spring-forward
+Sunday at 46 rows, and `Sumpf2_Efflux`'s zero run — 4780 identical consecutive
+rows inside the band — which is rejected by nothing. Zero false positives on
+every healthy window tried.
+*Verified:* `tests/eval/test_generation.py` (48 tests) against
+`data/water.duckdb` through a replay-cache context at `as_of` 2026-04-24 23:00.
+*Date:* 2026-08-24.
+
+**The 44-row point floor is what the bracket days need, and 24 would not do.**
+The four dates bracketing the outages carry 36, 8, 27 and 25–27 rows: a floor
+anywhere from 37 to 48 rejects all four, and one at 24 admits three of them. The
+four rows of slack below 48 are spent on the spring-forward Sunday, which is
+missing exactly its 02:00 and 02:30 rows as an ingest artifact and is a usable
+day. So the floor is insensitive across 37–44 and its lower edge is set by the
+27-row day rather than chosen.
+*Verified:* per-day row counts of `swc.QEx1` on the four bracket dates and of
+`wetter` on 2026-03-29. *Date:* 2026-08-24.
+
+**A seed anchored at `as_of` instead of at `min(window_start, as_of)` clears a
+window that seeds from a hole.** Measured on the shape T19 and T23 draw: at
+`as_of` 2025-12-01 a window opening 2025-11-10 seeds inside the 35-day lysimeter
+outage and its seed day carries no row at all, while the `as_of` day itself is
+healthy and passes. The two requirements name different days and only the earlier
+one is rejected, so the anchor is load-bearing rather than a restatement of the
+cut.
+*Verified:* `seed_requirement` at both anchors through the 2025-12-01 as-of view.
+*Date:* 2026-08-24.
+
+**T04's wet class is 1 in 6.3 of the pool, and rejection sampling turns that into
+50/50.** Over the band's 289 outflow days across P1f's four roofs, 184 of 1156
+(roof, day) pairs carry a non-zero daily sum — gravel 74, irrigated extensive 49,
+non-irrigated 44, wetland 17 — so the minority class needs ~6.3:1 oversampling,
+which is §1.6's "roughly 6:1" measured rather than estimated. With the quota
+capping each class at `ceil(m/2)`, train lands exactly 2/2 on 40 consecutive
+seeds and test_seen 2/3, at a mean 3.8 draws per accepted case and a worst
+observed 12.8.
+*Verified:* per-(roof, day) sums over `outflow` for the prior, and 40 seeded runs
+of the T04 draw loop for the balance. *Date:* 2026-08-24.
+
+**Drawing `as_of` before the window skews a retrospective pool badly enough to
+break balance.** The first draw loop picked a band day and then a parameter
+window behind it, which weights each window by how many band days can still see
+it — burying the late band under the early one. On T04 that thinned the wet class
+from the record's 1-in-6.3 to **1 in 25**, and the loop spent 13.5 draws per
+accepted case against 3.8 after the fix. Windows are therefore drawn first and
+the cut sampled from the days that can see them, which leaves both uniform. The
+forward families are unaffected and still draw `as_of` first, because their
+window is defined relative to it.
+*Verified:* the same T04 loop under both orders, comparing
+`answered`-draw class counts. *Date:* 2026-08-24.
+
+**A whole-catalog generation pass lands the stated sizes and the stated
+abstention share, with the predicates doing visible work.** 273 of §1.7's 281
+cases materialize — train 100/100, test_seen 125/125, test_unseen 48/56 — in 387
+draws, a 70.5 % acceptance rate. Abstentions land at **13 / 100, 16 / 125 and
+16 / 56**, i.e. 13.0 % / 12.8 % / 28.6 % and 16.0 % overall, exactly §1.6's
+figures, with nothing in the generator steering toward them. All ten bool
+templates balance: 2/2 in train, 2/3 or 3/2 in test_seen, 4/4 in the holdout. The
+142 rejections split 71 balance, 59 coverage, 9 oracle, 2 frozenness, 1
+plausibility. The last three are the interesting ones — they are not synthetic:
+T24a drew the wetland's `swc` for March 2026 and was rejected on **both** bounds
+and frozenness (the dead stretch), and for May 2025 on frozenness alone (the
+77.160 %θ episode). The nine oracle refusals are T110's four expected shapes plus
+T05's tie and T22's default-albedo guard: T05 2, T25 2, T20 2, T08 1, T22 1,
+T23 1.
+*Verified:* one `eval.generation.instantiate.generate()` pass over 31 templates
+at seed 20260824, live GR2L and Archive, cache written to a scratch directory.
+*Date:* 2026-08-24.
+
+**T20 is the catalog's hardest template to fill, and the cause is its own
+boundary guard rather than the data.** It took 38 rejections for 8 instances —
+more than twice the next template — of which 36 are balance and 2 are the
+oracle's refusal to answer a draw whose heatwave run continues past the window's
+far edge. A forecast horizon of 3–7 days qualifies as a heatwave rarely enough
+that the "yes" class is the minority, and the guard removes some of the draws
+that would have supplied it. It fills at 4/4 all the same, so this is a cost
+rather than a limit.
+*Verified:* per-template rejection counts from the same pass. *Date:* 2026-08-24.
+
+**T26's cross-roof variants cannot be emitted through the case schema, and two
+frozen surfaces disagree.** `_t26_cross_roof` answers **the winning roof's
+canonical name** — a deliberate choice recorded in its own docstring, since a
+signed gap would need a convention about which way round it is written — and
+`eval/schema/case.schema.json` admits an `answer` that is a boolean, a number, an
+ISO-day string (`^\d{4}-\d{2}-\d{2}$`) or null. `"semi_intensive"` matches none
+of the four, so **T26(ii) and T26(iii) produce a valid oracle answer that no case
+file can carry**, while T26(i) — which answers a boolean against the dry
+threshold — materializes and balances 4/4 normally. The generator raises
+`Unemittable` rather than resampling, because every draw of those two variants
+fails identically and resampling would report "the pool is too tight" about a
+pool that is fine. Not fixed here: the repair is a specification change in the
+schema's `answer` or in the oracle's return, and both are frozen as of T107.
+This is why the pass above lands 48 of test_unseen's 56.
+*Verified:* the oracle over `test_unseen`-shaped draws for all three variants,
+and a hand-built envelope validated against the committed schema. *Date:*
+2026-08-24.
+
 ## External sources on this machine
 
 Paths outside this repository, recorded here rather than in the plan because a

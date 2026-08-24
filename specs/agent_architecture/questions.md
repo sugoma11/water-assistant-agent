@@ -10,18 +10,25 @@ holdout; **281 instances** (100 / 125 / 56), derived in §1.7.
 ## 1 Conventions
 
 ### 1.1 Answer contract
+
 Every case's `A:` field instantiates the four-field JSON contract in architecture §2. Family H
-answers `null`, and its scored surface is the agent-supplied half of the plot spec (architecture §7).
+answers `null` on every variant, and its scored surface is the agent-supplied half of the plot spec
+(architecture §7) — plus `status`, which is `answered` where a plot is deliverable and
+`not_available` on T24a's non-modellable variant, where the abstention metric scores it on the same
+terms as any other unanswerable case.
 
 ### 1.2 Scoring
+
 Scored per architecture §7. Its per-template inputs are the `A:`, `Traj:`, `Must-not:`, `Cards:` and
 tolerance fields below, copied into each case at generation.
 
 ### 1.3 Time semantics
+
 Time semantics per architecture §5; every case carries `as_of`, and every relative expression in a
 question resolves against it.
 
 ### 1.4 Tool vocabulary
+
 `Traj:` and `Must-not:` name the **registered** tools — the six strings a root-agent trajectory can
 contain:
 
@@ -38,6 +45,7 @@ contain:
 no template may name it.
 
 ### 1.5 Answer units
+
 Soil-moisture states and every `initial_soil_moisture_pct` are in **%θ**; no template asks for
 millimetres of substrate storage. Retention and runoff stay in **mm** (fluxes) or **L** (lysimeter
 volumes); a difference between two %θ states answers in **pp**. **`L` and `mm` coincide
@@ -46,6 +54,7 @@ numerically** on the lysimeter columns — the collection area is 1 m², so 1 L 
 answer against a millimetre oracle as wrong (architecture §7).
 
 ### 1.6 Generation filters
+
 - **Validity — input data**: three predicates over the `(table, column, window)` set each template
   declares, evaluated **through the as-of view** so a check never passes on data the tool cannot see,
   and anchored at `seed_at = min(window_start, as_of)` for seed-bearing families rather than at
@@ -75,12 +84,13 @@ answer against a millimetre oracle as wrong (architecture §7).
   across P1, but it is the tightest date pool in the catalog. **Constant-value rejection is not a
   validity test**: it would delete every dry day, which is precisely the "no" class this rule needs
   (`findings.md`).
-- **Abstention share**: **12.0 % of train, 12.0 % of test_seen, 28.6 % of test_unseen, 15.3 %
+- **Abstention share**: **13.0 % of train, 12.8 % of test_seen, 28.6 % of test_unseen, 16.0 %
   overall** — what the five-template abstention set (T17a, T17b, T18a, T18b, T27) produces at §1.7's
-  m, stated rather than steered. An earlier draft targeted 7–10 %; hitting a band would take a
-  per-template m, which makes n unverifiable against `templates × m` and is what §1.7's derivation
-  rule exists to prevent. The holdout's share is fixed by its list — two of its seven templates are
-  abstentions — and is not a sampling choice at all.
+  m, plus the two instances T24a's non-modellable variant contributes, stated rather than steered. An
+  earlier draft targeted 7–10 %; hitting a band would take a per-template m, which makes n
+  unverifiable against `templates × m` and is what §1.7's derivation rule exists to prevent. The
+  holdout's share is fixed by its list — two of its seven templates are abstentions — and is not a
+  sampling choice at all.
 - **Paraphrases**: EN + DE, 50/50 within each split, style pools disjoint between train and test,
   colloquial German included.
 - **Route cue — the documentary reference**: a question that names the documentation ("per the
@@ -140,14 +150,23 @@ them by up to 8.8 pp, and steering to them would take a per-template m, which co
 derivation rule above. Composition is therefore verified against the product, and a share moves only
 when a template is authored or retired.
 
-**Abstention lands at 43/281 = 15.3 %** (T17a 9, T17b 8, T18a 9, T18b 8, T27 9): train
-12/100 = 12.0 %, test_seen 15/125 = 12.0 %, test_unseen 16/56 = 28.6 %, the last fixed by the holdout
-list rather than sampled. §1.6 states those as the suite's shares.
+**Abstention lands at 45/281 = 16.0 %** (T17a 9, T17b 8, T18a 9, T18b 8, T27 9, T24a's non-modellable
+variant 2): train 13/100 = 13.0 %, test_seen 16/125 = 12.8 %, test_unseen 16/56 = 28.6 %, the last
+fixed by the holdout list rather than sampled. §1.6 states those as the suite's shares. T24a's two
+are the only abstentions the ledger does not read off a whole template — they are a stratified slice
+of one template's `variant` axis (§2's T24a entry), which is why the count is stated per instance
+here and the template ledger above is untouched.
 
 **Generation constraints**, enforced in generation and not achieved by independent resampling:
+
 - **Per-param disjointness, per discrete value.** train ∩ test_seen = ∅ on every sampled param —
   T02/T09/T13's `thr`, T01/T05's `month`, T12's `event`, T21/T22's override values, T27's window and
   alias. Without it the memorized-constant detector fails open.
+- **The `variant` axis is shared, on the same footing as roof.** T24a's and T27's variants are
+  distinct probes rather than values of one quantity, so both splits carry all of them and the rule
+  above does not reach them: a disjoint variant axis would move a whole probe into one split, which
+  is what the holdout list is for. Each template's variant mix is stratified within a split, stated
+  in its §2 entry, and never resampled.
 - **`as_of` is a striped partition, never a cut point.** Bands are disjoint but interleaved over
   ~2025-06-01 → 2026-04-24; a contiguous split strands summer on one side and makes T02/T08/T20
   unbalanceable.
@@ -175,9 +194,9 @@ column cannot sample it at all.
 
 | Pool | Members | Sampled by |
 |---|---|---|
-| **P1** — full roster | gravel · irrigated ext. · non-irrigated ext. · semi-intensive · wetland | H `measured` on `swc` / `tsoil`; any A or B template naming a roof on those two tables |
-| **P1f** — flux-instrumented subset of P1 | gravel · irrigated ext. · non-irrigated ext. · wetland | A (T01, T04, T05), E (T12); H `measured` on `outflow` / `radiation` |
-| **P2** — substrate roofs: modellable and irrigation-decidable | irrigated ext. · non-irrigated ext. · semi-intensive | D (T09, T10, T19), E (T07, T11), F (T16b), G (T21–T23, T26), H with a `model` series |
+| **P1** — full roster | gravel · irrigated ext. · non-irrigated ext. · semi-intensive · wetland | H(i)'s `measured` pair on its `swc` draw; any A or B template naming a roof on `swc` or `tsoil` |
+| **P1f** — flux-instrumented subset of P1 | gravel · irrigated ext. · non-irrigated ext. · wetland | A (T01, T04, T05), E (T12); H(i)'s `measured` pair on its `outflow` draw |
+| **P2** — substrate roofs: modellable and irrigation-decidable | irrigated ext. · non-irrigated ext. · semi-intensive | D (T09, T10, T19), E (T07, T11), F (T16b), G (T21–T23, T26), H(ii)'s `model` overlay |
 
 **P1f is a data fact, not a scope limit, and no template probes it.** The semi-intensive roof is
 absent from the pool because the column does not exist, not because the system declines to answer;
@@ -187,10 +206,23 @@ excludes it at generation rather than the filter rejecting it afterwards.
 
 **One pool serves both tools because their scopes coincide** — `NON_MODELLABLE_ROOFS` bounds the
 GR2L chain and the irrigation decision alike, so no roof abstains under one tool and answers under
-the other. Family H splits across P1, P1f and P2 — a plot is only as modellable as its most
-demanding series, and only as widely instrumented as its narrowest one.
-**Family I samples the two excluded roofs, from outside this table**: the pools govern
-answerable cases, and I's point is the roofs they exclude.
+the other. `plot_timeseries` adds no third scope: its `model` series routes through `run_gr2l`, so
+architecture §3.6's `not_available` trigger is the same membership test, which is why a `model`
+series draws P2 while a `measured` series for the same roof stays valid.
+
+Family H splits across all three pools, per sampled variant rather than per template — the pair
+variant draws P1 on a state column and P1f on a flux column, the overlay variant draws P2, and each
+row above names the variant that reaches it. A plot is only as modellable as its most demanding
+series, and only as widely instrumented as its narrowest one, and the H rows now record which
+variant that binds on. Before T24a's series spec was sampled, all three rows were notional: the
+template fixed both roofs and drew one `measured` `swc` series, so no case reached P1f or P2 through
+family H at all (plan.md § 8, Q4).
+
+**Family I samples the two excluded roofs, from outside this table**, and so does **H's
+non-modellable variant**: the pools govern answerable cases, and the point of both is the roofs they
+exclude. The two probe different tools — I puts the excluded roofs in front of the model and the
+calculator, H(iii) in front of the plot tool's own trigger — which is why neither pool row absorbs
+them.
 
 ---
 
@@ -447,21 +479,78 @@ passes and is reported conditionally; variant (iii) keeps the headline off doubl
 ### H. Presentation intent
 
 **T24a — plot request**
-Q: "Show me how the soil moisture of both extensive roofs developed in {month}."
-A: null (artifact deliverable); scored through `argument_checks` on the agent-supplied series specs
-and the resolved range — two `measured` series, variable `swc_pct`, roofs {irrigated extensive,
-non-irrigated extensive} as a set match, plus resolved `start`/`end`. Aggregation, unit and axis are
-**not** scored: architecture §3.6 derives them in code from the variable, so they discriminate no
-candidate.
-Traj: {plot_timeseries} · Must-not: `text_to_sql_agent` · Split: train+seen
-Note: the tool fetches its own data; rendering is an unscored side effect.
+Q variants, sampled; each fixes the *shape* of the series spec, not the wording alone:
+(i) **measured pair** — "Show me how the soil moisture of the {roof_a} and the {roof_b} developed in
+{month}." On the flux draw: "Show me how much water ran off the {roof_a} and the {roof_b} in
+{month}." Two `measured` series, one variable, the roofs a set match.
+(ii) **model overlay** — "Plot the measured soil moisture of the {roof} roof against the model's
+prediction for {month}." One `measured` `swc` series and one `model` `swc_pct` series, same roof,
+same window.
+(iii) **non-modellable overlay** — (ii)'s request for a roof outside the model's scope: "Plot the
+{alias}'s measured soil moisture against the model's prediction for {month}."
+DE: "Zeig mir den Bodenfeuchteverlauf der beiden Extensivdächer im Juli."
+Params: variant; `{roof_a},{roof_b}` an unordered pair of distinct roofs; `{roof}`; `{alias}` ∈ the
+semantic layer's gravel and wetland aliases (§1.6, T27's map); (i)'s table ∈ {`swc`, `outflow`}, the
+column following from the roof through §3.6's closed vocabulary, while (ii) and (iii) are fixed to
+measured `swc` against the model's `swc_pct`; `{month}`, a completed calendar month ending ≤ `as_of`
+on every variant, since the `measured` half must exist and a month sits inside architecture §3.3's
+31-day cap so the truncation flag stays clear. Pools: (i) **P1** on `swc`, **P1f** on `outflow`;
+(ii) **P2**; (iii) gravel and wetland, deliberately outside §1.8's pools.
+**Variant mix, stratified within each split and not resampled**: train 2/1/1, test_seen 2/2/1 over
+(i)/(ii)/(iii). m stays §1.7's 4 and 5, so the ledger and the 18-instance family total are unchanged.
+(i)'s two instances per split take one `swc` pair and one `outflow` pair, and the `swc` pair includes
+the gravel roof or the wetland.
+A: (i) and (ii) null with status `answered` (artifact deliverable); (iii) not_available (answer null,
+unit null). Scored through `argument_checks` on the agent-supplied half of the spec — series source,
+variable and roof as a set match, plus resolved `start`/`end` — and on (ii) also the `model` series'
+modelling arguments, `present` rather than `eq` per architecture §7. Aggregation, unit, axis and
+`kind` are **not** scored: §3.6 derives the first three in code from the variable and §7 fixes the
+scored surface to the rest, so `model_overlay` against `line` discriminates no candidate.
+Traj: {plot_timeseries} · Must-not: `text_to_sql_agent` · Cards: [] · Split: train+seen
+Oracle: (i) and (ii) have none — the deliverable is the spec and the answer metric is skipped on a
+null answer. (iii)'s oracle is `NON_MODELLABLE_ROOFS` membership through §3.6's own trigger: a
+`model` series for the gravel roof or the wetland returns the tool's typed `not_available`, which the
+agent relays as the contract status.
+Note: the tool fetches its own data; rendering is an unscored side effect. The earlier form fixed
+both roofs and drew a single `measured` `swc` series, which left §1.8's H pools notional and the
+model path, the mixed-resolution rule and the plot tool's `not_available` unreached by any case
+(plan.md § 8, Q4). What the three variants add, in order:
+
+- **(ii) is the suite's only `model` series**, and the only place §3.6's mixed-resolution rule binds:
+  `swc` is half-hourly and GR2L daily, so the measured half aggregates to calendar days
+  (Europe/Berlin) under the state variable's derived `mean`, and the resolved spec reports the
+  resolution. Unscored, diffed as a diagnostic. It is T19's presentation twin — same retrospective
+  measured-against-modelled comparison, reached by a presentation verb instead of a scalar question.
+- **(iii) is not a second T27.** T27 probes modellability as *family-dependent* across the model tool
+  and the calculator, which a sampling variant inside H cannot test and this one does not attempt.
+  (iii) probes §3.6's own `not_available` trigger, which no other template reaches, and its gold set
+  is `plot_timeseries`. Naming the model side is what keeps the oracle single-valued under §1.6:
+  dropping the `model` series and plotting the measured half alone does not answer the request, so
+  there is no second defensible reading in which the case is answerable.
+- **(i) is (iii)'s counter-probe.** A `measured` series for the gravel roof or the wetland stays
+  valid (§3.6), so pinning one of them into each split's `swc` pair charges a candidate that
+  generalized "gravel ⇒ `not_available`" through the false-abstention rate. Inside one family and one
+  tool, the two roofs are then separated by the series' **source**, which is the distinction §3.6
+  actually draws and the one no other template puts in front of a candidate.
+- The **`outflow` draw** is what makes §1.8's P1f row real for H, and it exercises the other derived
+  operator: a flux sums where a state averages, on the same closed vocabulary.
+Must-not stays `text_to_sql_agent` on every variant, on the tool's own docstring ground. The model
+tool is deliberately **not** listed on (ii): §3's margin paragraph places its unauthored second slot
+on T05, and listing it here would settle that as a side effect of a sampling change rather than as
+the decision that paragraph asks for.
 
 **T24b — twin without plot verb**
 Q: "What was the mean soil-moisture difference between the two extensive roofs in {month}?"
 A: numeric (pp, ±0.2 abs — T03's convention) · Traj: {text_to_sql_agent} · Must-not:
 `plot_timeseries` · Split: train+seen
-Note: near-identical information need to T24a, differing only in the presentation verb; the
-difference wording keeps the answer a single scalar inside the answer contract.
+Note: near-identical information need to T24a's **measured-pair variant**, differing only in the
+presentation verb; the difference wording keeps the answer a single scalar inside the answer
+contract. T24b's pair stays fixed where T24a's is sampled, because a scalar gap needs a comparable
+pair — a mean difference between the gravel roof's 0.06 %θ and the wetland's near-saturated fleece
+is arithmetic without an information need, while plotting the same two is merely a dull plot. The
+twin therefore pairs the two *shapes*, a two-roof measured comparison against its scalar, not two
+identical parameter draws, and `decisions.md § The answer contract`'s "twin plots both roofs" holds
+on every variant-(i) instance.
 
 ### I. Modelling availability — non-modellable roofs (abstention)
 
@@ -486,10 +575,15 @@ Note: the gravel roof is the most-sampled roof in family A, so modellability has
 must-not binds on T15b's ground — the database holds no future, so a last measured value is not a
 prediction — and variant (ii) reaches the same limit through a second tool, making the limit a
 property of the roof rather than of one tool. Both roofs behave identically under every
-water-balance route, so family dependence carries the whole probe: A, B and H answer them from
-measured data, and I — the only family putting them in front of a model or the calculator —
-abstains. **No template splits one roof across two tools**, so a per-tool scope limit is outside
-what the suite measures (architecture §8).
+water-balance route, so family dependence carries the whole probe: A, B and H's `measured` series
+answer them from measured data, and every route that reaches a model abstains — I directly, through
+the model tool and the calculator, and T24a(iii) through the plot tool's `model` series. That third
+route does not dilute this template's probe and is not a second copy of it: it varies the *source*
+inside one family and one tool, where T27 varies the *family* while holding the roof and the
+modelling intent fixed, which is the thing a sampling variant inside H cannot test.
+**No template splits one roof across two tools** — the gravel roof and the wetland are denied by
+every modelling route and admitted by every measured one, T24a's two variants included — so a
+per-tool scope limit is outside what the suite measures (architecture §8).
 
 ---
 

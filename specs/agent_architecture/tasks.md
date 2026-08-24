@@ -3366,11 +3366,58 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   `uv run ruff check .` and `uv run pytest` clean — 1137 passed, same 15
   pre-existing findings in `experiments/`. `just pins`: 14 pinned, 4 unpinned,
   0 moved.
-- [ ] T112 EN and DE paraphrase generation, 50/50 within each split, style pools
+- [x] T112 EN and DE paraphrase generation, 50/50 within each split, style pools
   disjoint between train and test, colloquial German included, roofs named in the
   agent's vocabulary or in alias-covered natural language and **never** by raw
   column name. Spot-check the German pool for referential ambiguity before splits
   are cut. → T106
+  Done. `eval/generation/paraphrases.py`: **272 authored surfaces** — 8 registers
+  over the catalog's 38 *question shapes*, four registers per language and two per
+  side of the train/test cut. A shape is a template, except on the three
+  templates whose `variant` axis fixes different question *shapes* rather than
+  different wordings (T24a's four, T27's three, T26's two): `Template.shape` now
+  keys the canonical sketch and the paraphrase pool alike, so a shape cannot exist
+  in one and be missing from the other.
+  **Four rules, each checked on rendered questions over real draws rather than on
+  the sketches.** The route cue and the window rule are both stated *against the
+  canonical rendering of the same draw*, which is what makes them claims about
+  the paraphrase: `names_documentation(surface) == names_documentation(canonical)`
+  and the same for `names_calendar_period`. The cue is matched as stems, because
+  German writes it as one noun (`Betriebshandbuchs`). Roof vocabulary reuses
+  T111's `mentions_raw_column` — load-bearing on T27 and T24a(iii), whose
+  `{alias}` parameter is drawn from spellings half of which *are* database
+  columns. The fourth is underspecification: every parameter a shape draws
+  appears in every surface of it.
+  **The German spot-check ran before this row closed, and it found two defects
+  and no ambiguous reference.** It covered all 136 distinct German surfaces over
+  12 draws of every shape: referential ambiguity (none — "das Dach" is five roofs
+  and "das Extensivdach" is two, and the plural is admitted only where the pair is
+  the subject), grammar, underspecification and raw column names. The two
+  defects: family F's German opened on the roof in lower case, and T24a's
+  colloquial pair register wrote "von dem Kiesdach" for "vom Kiesdach". The first
+  is why `german_forms` carries capitalized forms — it cannot be repaired after
+  rendering, since an English surface may legitimately open on
+  `non_irrigated_extensive`, which is a vocabulary token rather than a word.
+  **German declension is derived from the roof, not written into the sketch.**
+  Two labels carry a strong adjective (`bewässertes Extensivdach`), so a sketch
+  writing "vom {roof}" produces "vom bewässertes Extensivdach". `german_forms`
+  declines it — `das`/`dem`/`des`/oblique — and a roof whose label changes moves
+  every question with it.
+  **A defect in the catalog, found by applying the rule to it.** §2 T15a's own DE
+  example — "Wie viel hat es letzte Woche geregnet?" — redenotes an explicit
+  `{past_period}` window, which is the backward twin of the "nächste Woche" T15b
+  forbids. Struck through in `questions.md` rather than quietly ignored, and a
+  test asserts the rule catches it (`findings.md`).
+  **Language is positional, never sampled**, for the reason §1.7 stratifies
+  `variant`: 50/50 in train, 28/28 in test_unseen, **63/62** in test_seen because
+  125 is odd — stated rather than rounded. Every template is asked in both
+  languages in every split it carries, so the split-level balance is not made of
+  monolingual templates. The register is not a case field, because the schema
+  admits none; the plan is recoverable exactly from the split and the instance
+  index (`decisions.md § Language is a positional stratum, not a sampled one`,
+  `§ Both sides of the style cut carry colloquial German`).
+  24 tests in `tests/eval/test_paraphrases.py` over 6 816 renderings. `uv run
+  ruff check .` and `uv run pytest tests/eval tests/harness` clean.
 - [ ] T113 Splits per §1.7 with the generation constraints enforced *in
   generation*: per-param disjointness between train and test_seen on every sampled
   parameter; `as_of` as a striped partition, never a cut point; roof deliberately

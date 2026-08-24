@@ -267,7 +267,11 @@ Q: "On which day in {month} did the {roof} roof have its highest outflow?" · ro
 A: date (exact) · Traj: {text_to_sql_agent} · Split: train+seen · Oracle: argmax of daily sums.
 
 **T15a — past rain**
-Q: "How much rain fell in {past_period}?" · DE: "Wie viel hat es letzte Woche geregnet?"
+Q: "How much rain fell in {past_period}?" · DE: ~~"Wie viel hat es letzte Woche geregnet?"~~ —
+**a redenotation, and not used** (T112): `{past_period}` is an explicit window and "letzte
+Woche" is a calendar week beginning Monday, which is T15b's forbidden "nächste Woche" pointing
+backwards. The German pool states the window: "Wie viel Regen ist vom 2025-09-04 bis 2025-09-10
+gefallen?"
 · `{past_period}` written `YYYY-MM-DD..YYYY-MM-DD`, ending ≤ `as_of`
 A: numeric (mm, ±2 % rel) · Traj: {text_to_sql_agent} · Split: train+seen
 Oracle: SUM over the station rain column.

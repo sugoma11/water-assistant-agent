@@ -1018,6 +1018,46 @@ This is why the pass above lands 48 of test_unseen's 56.
 and a hand-built envelope validated against the committed schema. *Date:*
 2026-08-24.
 
+**The German paraphrase pool was spot-checked before splits were cut, and it
+found two defects and no ambiguous reference.** The check covered all **136
+German surfaces** — 38 question shapes × 2 registers per side, over 12 draws of
+each shape, so every value pool and every roof the shape can draw appears in it.
+Four classes were looked for. *Referential ambiguity*: none. The site has five
+roofs and two of them are extensive, so "das Dach" and "das Extensivdach" name
+nothing, and the plural "die beiden Extensivdächer" resolves only where the pair
+*is* the subject (T03, T06, T24b) — every other German surface names its roof
+through the declined label. *Grammar*: two defects, both found by reading rather
+than by a rule, and both now checked mechanically. Family F's German opened on
+the roof — "das unbewässerte Extensivdach liegt bei 8.0 %θ …" — a German sentence
+beginning in lower case; and T24a's colloquial pair register wrote "von dem
+Kiesdach" where German contracts to "vom Kiesdach". The first cannot be repaired
+after rendering, because an English surface may legitimately open on
+`non_irrigated_extensive`, so the fix is capitalized forms in `german_forms` and
+a test that every German surface opens with a capital. *Underspecification*:
+every parameter a shape draws appears in every surface of it, so no German
+paraphrase asks a question its oracle answers a parameter of. *Raw column names*:
+none, which is the load-bearing half for T27 and T24a(iii), whose `{alias}`
+parameter is drawn from spellings half of which are database columns.
+*Verified:* `tests/eval/test_paraphrases.py`, 24 tests over 6 816 renderings of
+the 272 surfaces (3 408 of them German), plus a printed read-through of all 136
+distinct German ones. *Date:* 2026-08-24.
+
+**The catalog's own German example for T15a is a redenotation, and is not used.**
+§2 T15a offers "Wie viel hat es letzte Woche geregnet?" as its DE example, while
+the template's parameter is an explicit `{past_period}` window — so that sentence
+names a different set of days on every reading. It is the backward twin of the
+"nächste Woche" T15b's own note forbids and that `decisions.md § Forward horizons
+are counted in days` rules out. The paraphrase pool states the window instead,
+and `names_calendar_period` refuses any surface whose calendar-relative wording
+differs from the canonical's — which keeps families F's "coming week", where the
+week is a *stated value* rather than a sampled window. Two smaller catalog
+examples are stale in the same way and were left as illustrations: T24a's DE
+example names "die beiden Extensivdächer", a pair variant (i) can no longer draw
+since its `swc` pair must contain the gravel roof or the wetland, and T27's drops
+the `{d}` horizon the entry itself repaired in.
+*Verified:* the rule applied to the catalog's example strings, in
+`tests/eval/test_paraphrases.py`. *Date:* 2026-08-24.
+
 ## External sources on this machine
 
 Paths outside this repository, recorded here rather than in the plan because a

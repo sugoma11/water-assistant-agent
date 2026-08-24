@@ -8,6 +8,9 @@ Three modules, split by what each one owns:
 * :mod:`eval.generation.templates` — the catalog's 32 entries as data: the
   per-template constants §6.1 copies into a case, the parameter sampler, and the
   data the draw needs to be valid.
+* :mod:`eval.generation.paraphrases` — the EN and DE question surfaces (T112):
+  eight registers over 38 question shapes, the positional language plan, and the
+  four rules that keep a paraphrase a paraphrase of the same question.
 * :mod:`eval.generation.instantiate` — the draw loop: sample, filter, answer
   through :data:`eval.oracles.ORACLES`, and rejection-sample until every bool
   template is balanced inside its split.

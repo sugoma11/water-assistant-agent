@@ -1250,3 +1250,71 @@ different in kind and the generator says which one it hit.
 built, not at the point it is written. A generator that emits a case the schema
 rejects has produced a case nothing can score, and the earliest place to find
 that out is the draw that produced it.
+
+---
+
+## Both sides of the style cut carry colloquial German
+
+Paraphrase style pools are disjoint between train and test (§1.7), and the
+colloquial German register is on **both** sides of that cut: `de_umgangssprachlich`
+in train, `de_knapp` in test, sharing no sketch. Eight registers in all, two per
+(side, language).
+
+**Because disjointness is about surface forms, not about registers.** The rule
+sits beside per-parameter disjointness as a memorization guard: no wording a
+candidate met in train is met again in test. A whole register withheld is a
+different claim, and either direction of it is worse than useless — colloquial
+German in test alone confounds German register with style novelty on the split
+that carries the generalization headline, and in train alone the suite never
+measures the register the site actually speaks.
+
+**Rejected:**
+
+- *One colloquial register, in test.* The `de` stratum's number would then mix
+  two changes at once, and §1.7 reports DE routing accuracy precisely because it
+  is a measured quantity rather than sampling noise.
+- *One register per (side, language).* Every instance of a template inside a
+  split then reads identically, which is what the canonical rendering already
+  did and is what "paraphrases" was asked for instead.
+- *Generating paraphrases by transformation rather than authoring them.* A
+  mechanical rewrite cannot keep the route cue and the window invariant — the two
+  things §1.6 says a paraphrase may not touch — and the failure would be silent
+  in exactly the families where phrasing is the only discriminator (T16a/T16b).
+
+**Validity condition:** the two German registers also differ in date convention —
+`de_standard`/`de_hoeflich` write a window in ISO dates, `de_umgangssprachlich`/
+`de_knapp` in the German `03.07.2025` form — so both conventions reach a
+candidate on a *stated* axis. A German paraphrase that used both conventions
+would make a parsing failure unattributable.
+
+---
+
+## Language is a positional stratum, not a sampled one
+
+Each instance's language and register come from `paraphrases.plan`, a pure
+function of the split and the template's position in the registry. Languages
+alternate inside a template and the starting language alternates with the
+position, so train lands 50/50, test_unseen 28/28 and test_seen **63/62**.
+
+**Because a stratum drawn at random is a stratum whose balance is a property of
+the seed.** This is §1.7's reason for stratifying the `variant` axis, and
+language is reported the same way. The arithmetic is also stated rather than
+rounded: 125 is odd, so test_seen cannot be halved, and 63/62 is what "50/50
+within each split" means there.
+
+**Rejected:**
+
+- *Sampling the language per instance and rejection-sampling until balanced.*
+  The same distribution at more cost, and it makes the per-template mix a draw —
+  a template answered only in English would balance the split and leave that
+  template's German accuracy unmeasured.
+- *Carrying the style in the case file.* `case.schema.json`'s `inputs` admits no
+  such key, and it does not need one: the plan is recoverable exactly from the
+  split, the registry and the instance index.
+- *Balancing language across the whole suite instead of within each split.* The
+  stratum is reported per split, so a suite-level balance can hide a split that
+  is 70/30.
+
+**Validity condition:** every template is asked in both languages in every split
+it carries. A per-split balance assembled from monolingual templates reports the
+same 50/50 and measures nothing.

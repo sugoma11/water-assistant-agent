@@ -49,7 +49,8 @@ from jsonschema import Draft202012Validator
 from water_assistant_agent.assistant.context import ScenarioContext
 from water_assistant_agent.assistant.tools.site import site_day_expr
 
-from eval.generation import filters
+from eval.generation import filters, paraphrases
+from eval.generation.paraphrases import Choice
 from eval.generation.templates import (
     TEMPLATES,
     Draw,
@@ -225,6 +226,7 @@ def case_envelope(
     as_of: datetime,
     params: Mapping[str, Any],
     materialized: Mapping[str, Any],
+    surface: Choice | None = None,
 ) -> dict[str, Any]:
     """One case's two halves — ``inputs`` and ``expectations`` — assembled.
 
@@ -235,17 +237,23 @@ def case_envelope(
     sampled variant's series shape and are the template's own function of the
     parameters rather than an oracle's output.
 
-    ``language`` is ``en`` and ``question`` is the canonical rendering. T112 owns
-    the paraphrases, the EN/DE balance and the style pools; what this writes is
-    the one unambiguous form a paraphrase is a paraphrase *of*.
+    ``question`` and ``language`` come from *surface* — T112's pools, positional
+    rather than sampled (:func:`eval.generation.paraphrases.plan`). Omitted, the
+    question is the template's **canonical** English rendering: the one
+    unambiguous form every paraphrase is a paraphrase *of*, and what a caller
+    building a single envelope by hand is asking for.
     """
     inputs = {
-        "question": template.render(params),
+        "question": (
+            template.render(params)
+            if surface is None
+            else paraphrases.render(template, params, surface)
+        ),
         "as_of": as_of.isoformat(),
         "case_id": case_id,
         "template_id": template.template_id,
         "params": dict(params),
-        "language": "en",
+        "language": "en" if surface is None else surface.language,
     }
     expectations: dict[str, Any] = {
         **materialized,
@@ -364,6 +372,7 @@ async def draw_one(
     context_for: ContextFactory,
     fixed: Mapping[str, Any],
     case_id: str,
+    surface: Choice,
     quota: Mapping[bool, int] | None,
     counts: dict[bool, int],
     run: GenerationRun,
@@ -397,12 +406,12 @@ async def draw_one(
         return None
 
     inputs = {
-        "question": template.render(params),
+        "question": paraphrases.render(template, params, surface),
         "as_of": as_of.isoformat(),
         "case_id": case_id,
         "template_id": template.template_id,
         "params": params,
-        "language": "en",
+        "language": surface.language,
     }
     try:
         materialized = (await ORACLES[template.template_id](inputs, ctx)).expectations()
@@ -426,7 +435,12 @@ async def draw_one(
         return None
 
     case = case_envelope(
-        template, case_id=case_id, as_of=as_of, params=params, materialized=materialized
+        template,
+        case_id=case_id,
+        as_of=as_of,
+        params=params,
+        materialized=materialized,
+        surface=surface,
     )
     try:
         assert_case(case, roof_pool=roof_pool_for(template, params))
@@ -455,6 +469,7 @@ async def instantiate(
     days: Sequence[date],
     context_for: ContextFactory,
     run: GenerationRun,
+    surfaces: Sequence[Choice] = (),
     start_index: int = 1,
     max_attempts: int = MAX_ATTEMPTS,
 ) -> list[dict[str, Any]]:
@@ -466,6 +481,11 @@ async def instantiate(
     whichever direction the record offered first. Preferring a direction would be
     a sampling choice nothing in the catalog asks for, where the cap is the whole
     of what "~50/50 within each split" says.
+
+    *surfaces* is T112's language and register per instance, positional like the
+    strata beside it and for the same reason: language is a reported stratum.
+    Empty, every instance is asked in the canonical English — the shape a caller
+    exercising the draw loop alone wants.
     """
     count = template.instances(split)
     if not count:
@@ -474,6 +494,15 @@ async def instantiate(
     if len(strata) != count:
         raise Exhausted(
             f"{template.template_id} stratifies {len(strata)} instances into {split}, "
+            f"which carries {count}"
+        )
+    asked = tuple(surfaces) or tuple(
+        Choice("en", "en_direct" if split == "train" else "en_polite")
+        for _ in range(count)
+    )
+    if len(asked) != count:
+        raise Exhausted(
+            f"{template.template_id} was planned {len(asked)} surfaces for {split}, "
             f"which carries {count}"
         )
     quota = {True: (count + 1) // 2, False: (count + 1) // 2} if template.balanced else None
@@ -490,6 +519,7 @@ async def instantiate(
                 context_for=context_for,
                 fixed=strata[index],
                 case_id=f"{template.template_id}-{start_index + index:04d}",
+                surface=asked[index],
                 quota=quota,
                 counts=counts,
                 run=run,
@@ -538,6 +568,7 @@ async def generate(
     for split in splits:
         split_days = tuple((day_pools or {}).get(split, pool))
         rng = Random(f"{seed}:{split}")
+        planned = paraphrases.plan(split, bound)
         for template_id in sorted(bound):
             await instantiate(
                 bound[template_id],
@@ -546,6 +577,7 @@ async def generate(
                 days=split_days,
                 context_for=context_for,
                 run=run,
+                surfaces=planned.get(template_id, ()),
                 start_index=1 + sum(
                     1 for item in run.instances if item.template_id == template_id
                 ),

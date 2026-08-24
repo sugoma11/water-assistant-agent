@@ -252,6 +252,23 @@ class Template:
     so both splits carry all of them in a stated mix.
     """
 
+    surface_shape: Callable[[Mapping[str, Any]], str] | None = None
+    """Which *question shape* a draw takes, on the three templates that have several.
+
+    T24a, T26 and T27 fix shapes rather than wordings of one shape — T27(ii) takes
+    no horizon because ``calc_irrigation`` has no date argument, T24a's pair asks
+    about runoff or about moisture depending on the table it drew — so a
+    paraphrase pool is per shape rather than per template.
+
+    The same function keys the canonical sketch in :func:`_render_by` and the
+    paraphrase pool in :mod:`eval.generation.paraphrases`, so a shape cannot exist
+    in one and be missing from the other. :meth:`shape` is what both call.
+    """
+
+    def shape(self, params: Mapping[str, Any]) -> str:
+        """This draw's question shape — the template id, unless the template varies."""
+        return self.surface_shape(params) if self.surface_shape else self.template_id
+
     def instances(self, split: str) -> int:
         """How many instances this template contributes to *split*."""
         return M[split] if split in self.splits else 0
@@ -998,6 +1015,31 @@ def _render_by(key: Callable[[Mapping[str, Any]], str], sketches: Mapping[str, s
     return render
 
 
+def _t24a_shape(params: Mapping[str, Any]) -> str:
+    """H's four shapes: the pair asks a different question of each of its two tables."""
+    variant = str(params["variant"])
+    if variant == MEASURED_PAIR:
+        return f"T24a:{variant}:{params.get('table') or 'swc'}"
+    return f"T24a:{variant}"
+
+
+def _t26_shape(params: Mapping[str, Any]) -> str:
+    """T26's two shapes over three variants.
+
+    (ii) and (iii) ask the same question — one comparison, one overlay — and
+    differ in which axes they compose, which is a property of the gold set rather
+    than of the wording (``questions.md`` §2 T26). One shape, so a paraphrase of
+    the comparison is a paraphrase of both.
+    """
+    variant = str(params["variant"])
+    return "T26:albedo_and_rain" if variant == VARIANT_ALBEDO_AND_RAIN else "T26:cross_roof"
+
+
+def _t27_shape(params: Mapping[str, Any]) -> str:
+    """I's three routes to one scope limit, each a shape of its own."""
+    return f"T27:{params['variant']}"
+
+
 # --- The registry -------------------------------------------------------------
 
 EXACT: Mapping[str, Any] = {"kind": "exact"}
@@ -1446,17 +1488,13 @@ TEMPLATES: dict[str, Template] = {
             ),
         ),
         render=_render_by(
-            lambda params: str(params["variant"]),
+            _t26_shape,
             {
-                VARIANT_ALBEDO_AND_RAIN: (
+                "T26:albedo_and_rain": (
                     "If albedo were {a} and {mm} mm fell on day {offset} of the next "
                     "{d} days, would the {roof} stay above the irrigation threshold?"
                 ),
-                VARIANT_RAIN_CROSS_ROOF: (
-                    "If {mm} mm of rain falls on day {offset} of the next {d} days, "
-                    "which of the {roof_a} and the {roof_b} ends wetter?"
-                ),
-                VARIANT_TRAIN_TAUGHT: (
+                "T26:cross_roof": (
                     "If {mm} mm of rain falls on day {offset} of the next {d} days, "
                     "which of the {roof_a} and the {roof_b} ends wetter?"
                 ),
@@ -1465,6 +1503,7 @@ TEMPLATES: dict[str, Template] = {
         draw=from_as_of(_sample_t26),
         requires=_requires_t26,
         strata=_t26_strata,
+        surface_shape=_t26_shape,
         # (ii) and (iii) do not currently emit, and the cause is a disagreement
         # between two frozen surfaces rather than anything this row can sample
         # around. `_t26_cross_roof` answers **the winning roof's canonical name**
@@ -1491,25 +1530,21 @@ TEMPLATES: dict[str, Template] = {
         must_not_tools=(TEXT_TO_SQL_TOOL,),
         argument_checks=_t24a_checks,
         render=_render_by(
-            lambda params: (
-                f"{params['variant']}:{params.get('table', 'swc')}"
-                if params["variant"] == MEASURED_PAIR
-                else str(params["variant"])
-            ),
+            _t24a_shape,
             {
-                f"{MEASURED_PAIR}:swc": (
+                f"T24a:{MEASURED_PAIR}:swc": (
                     "Show me how the soil moisture of the {roof_a} and the {roof_b} "
                     "developed in {month}."
                 ),
-                f"{MEASURED_PAIR}:outflow": (
+                f"T24a:{MEASURED_PAIR}:outflow": (
                     "Show me how much water ran off the {roof_a} and the {roof_b} in "
                     "{month}."
                 ),
-                MODEL_OVERLAY: (
+                f"T24a:{MODEL_OVERLAY}": (
                     "Plot the measured soil moisture of the {roof} against the model's "
                     "prediction for {month}."
                 ),
-                NON_MODELLABLE_OVERLAY: (
+                f"T24a:{NON_MODELLABLE_OVERLAY}": (
                     "Plot the {alias}'s measured soil moisture against the model's "
                     "prediction for {month}."
                 ),
@@ -1518,6 +1553,7 @@ TEMPLATES: dict[str, Template] = {
         draw=after_window(_build_t24a),
         requires=_requires_t24a,
         strata=_t24a_strata,
+        surface_shape=_t24a_shape,
     ),
     "T24b": Template(
         template_id="T24b",
@@ -1542,14 +1578,14 @@ TEMPLATES: dict[str, Template] = {
         expected_tool_calls=_calls({"name": GREEN_ROOF_TOOL},),
         must_not_tools=(TEXT_TO_SQL_TOOL,),
         render=_render_by(
-            lambda params: str(params["variant"]),
+            _t27_shape,
             {
-                VARIANT_PREDICTED_MINIMUM: (
+                f"T27:{VARIANT_PREDICTED_MINIMUM}": (
                     "What is the minimum soil moisture predicted for the {alias} over "
                     "the next {d} days?"
                 ),
-                VARIANT_IRRIGATION: "Does the {alias} need irrigation tomorrow?",
-                VARIANT_FORCED_RAIN: (
+                f"T27:{VARIANT_IRRIGATION}": "Does the {alias} need irrigation tomorrow?",
+                f"T27:{VARIANT_FORCED_RAIN}": (
                     "If {mm} mm fell tomorrow, what would the {alias}'s minimum soil "
                     "moisture be over the next {d} days?"
                 ),
@@ -1557,6 +1593,7 @@ TEMPLATES: dict[str, Template] = {
         ),
         draw=from_as_of(_sample_t27),
         strata=_t27_strata,
+        surface_shape=_t27_shape,
         abstains=True,
     ),
 }
@@ -1594,6 +1631,25 @@ def roof_pool_for(template: Template, params: Mapping[str, Any]) -> str | None:
     if template.template_id == "T24a":
         return t24a_roof_pool(params)
     return template.roof_pool
+
+
+def shapes(template: Template) -> tuple[str, ...]:
+    """Every question shape *template* can draw, in the order its strata name them.
+
+    Read off the stratified ``variant`` axis rather than listed, because that axis
+    is exactly what fixes a shape: a template with no strata has one shape and it
+    is the template itself. This is the completeness key
+    :mod:`eval.generation.paraphrases` is checked against — a shape with no
+    paraphrase pool is a case that would fall back to nothing.
+    """
+    fragments = [
+        fragment
+        for split in ("train", "test_seen", "test_unseen")
+        for fragment in template.strata(split)
+    ]
+    if not fragments:
+        return (template.template_id,)
+    return tuple(dict.fromkeys(template.shape(fragment) for fragment in fragments))
 
 
 def gold_card_topics() -> frozenset[str]:

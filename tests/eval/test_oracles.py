@@ -18,7 +18,7 @@ so it has no such twin; its day-boundary fixture is the substitute.
 
 import asyncio
 import dataclasses
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +39,17 @@ from water_assistant_agent.assistant.rules_constants import ROOF_RULES
 from water_assistant_agent.assistant.tools.weather_client import (
     FORECAST_HORIZON_DAYS,
 )
-from eval.oracles.sql import month_window, t01_total_outflow
+import eval.oracles.sql as sql_module
+from eval.oracles.sql import (
+    month_window,
+    period_window,
+    t01_total_outflow,
+    t02_hot_day_count,
+    t03_irrigation_swc_gap,
+    t04_outflow_occurred,
+    t05_peak_outflow_day,
+    t15a_past_rain,
+)
 from water_assistant_agent.assistant.agents.text_to_sql.executor import (
     DuckDbQueryExecutor,
     create_duckdb_connection,
@@ -58,6 +68,7 @@ from water_assistant_agent.assistant.tools.schemas import (
     WeatherResult,
 )
 from water_assistant_agent.assistant.tools.swc import mm_to_theta_pct
+from water_assistant_agent.assistant.tools.weather_station import StationWeatherSource
 from harness.run_case import make_case_context
 
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -283,6 +294,372 @@ def test_t01_runs_against_the_real_pinned_database():
 
     assert answer.answer == pytest.approx(46.0)
     assert answer.pins["duckdb_sha256"] == duckdb_sha256()
+
+
+# --- T02-T05, T15a: the rest of family A (T110) --------------------------------
+
+# Every fixture below straddles the Berlin/UTC day boundary, because that is the
+# one property a pure-SQL oracle shares with the candidate rather than owns: the
+# schema block tells the model to group by `site_day_expr()` (T106), and a test
+# that grouped either way and got the same number would prove nothing about it.
+
+# Berlin Jul 1 holds 33.0 and 32.0; Berlin Jul 2 holds 31.0 (from the 22:30 UTC
+# row) and 25.0. Above 30 °C: two Berlin days, one UTC day (Jul 1 absorbs the
+# 22:30 row), and three rows — three different numbers for three readings.
+_WETTER_ROWS = """
+CREATE TABLE wetter (timestamp TIMESTAMP, Tmax DOUBLE, Rain DOUBLE);
+INSERT INTO wetter VALUES
+  (TIMESTAMP '2025-07-01 12:00:00', 33.0, 1.0),
+  (TIMESTAMP '2025-07-01 13:00:00', 32.0, 0.5),
+  (TIMESTAMP '2025-07-01 22:30:00', 31.0, 4.0),
+  (TIMESTAMP '2025-07-02 12:00:00', 25.0, 0.25);
+"""
+
+BERLIN_HOT_DAYS = 2
+UTC_HOT_DAYS = 1
+HOT_ROWS = 3
+
+
+def test_t02_counts_days_over_the_threshold_not_rows(tmp_path: Path):
+    """Two hot days out of four rows — not three rows and not one UTC day.
+
+    The day's maximum first, then the count of days above the threshold. The
+    other order answers "how many half hours were hot", which is a different
+    quantity reachable through the same column, and the fixture separates all
+    three numbers so no two readings can agree by accident.
+    """
+    ctx = _context(
+        as_of=datetime(2026, 1, 1, 12, 0, tzinfo=BERLIN),
+        db=_executor(tmp_path / "t02.duckdb", _WETTER_ROWS),
+    )
+
+    answer = asyncio.run(
+        t02_hot_day_count(
+            _inputs("T02", period="2025-07-01..2025-07-02", thr=30.0), ctx
+        )
+    )
+
+    assert answer.answer == BERLIN_HOT_DAYS
+    assert answer.answer not in (UTC_HOT_DAYS, HOT_ROWS)
+    assert answer.unit == "count"
+    assert answer.detail["column"] == "Tmax"
+
+
+def test_t02_exceeding_is_strict(tmp_path: Path):
+    """A day sitting exactly on the threshold has not exceeded it.
+
+    §1.6 keeps a sampled draw away from its own boundary, so this decides no
+    case that survives generation — it states the rule the oracle applies when
+    one does reach it.
+    """
+    ctx = _context(
+        as_of=datetime(2026, 1, 1, 12, 0, tzinfo=BERLIN),
+        db=_executor(tmp_path / "t02strict.duckdb", _WETTER_ROWS),
+    )
+
+    answer = asyncio.run(
+        t02_hot_day_count(
+            _inputs("T02", period="2025-07-01..2025-07-02", thr=33.0), ctx
+        )
+    )
+
+    assert answer.answer == 0
+
+
+def test_t02_runs_against_the_real_pinned_database():
+    """Five days above 29 °C in the first fortnight of July 2025.
+
+    Hand-checkable from the record's own daily maxima: 34.45, 38.10, 29.53,
+    26.12, 29.05, 28.47, 24.27, 21.07, 21.40, 25.55, 25.77, 18.82, 24.72,
+    29.67 — the 1st, 2nd, 3rd, 5th and 14th clear 29.0 and nothing else does.
+    """
+    answer = asyncio.run(
+        t02_hot_day_count(
+            _inputs("T02", period="2025-07-01..2025-07-14", thr=29.0),
+            make_case_context(AS_OF),
+        )
+    )
+
+    assert answer.answer == 5
+    assert answer.detail["days_with_rows"] == 14
+    assert answer.pins["duckdb_sha256"] == duckdb_sha256()
+
+
+# Two paired rows and one unpaired. The mean of the paired differences is
+# (8 + 4) / 2 = 6.0 pp; the difference of the two columns' means over every
+# non-null reading is 22.667 - 13.0 = 9.667. The third row is what separates
+# them, and a sensor out for an afternoon is exactly that row.
+_SWC_PAIR_ROWS = """
+CREATE TABLE swc (timestamp TIMESTAMP, QEx1 DOUBLE, QEx2 DOUBLE);
+INSERT INTO swc VALUES
+  (TIMESTAMP '2025-07-01 12:00:00', 20.0, 12.0),
+  (TIMESTAMP '2025-07-01 12:30:00', 18.0, 14.0),
+  (TIMESTAMP '2025-07-01 13:00:00', 30.0, NULL);
+"""
+
+PAIRED_GAP_PP = 6.0
+UNPAIRED_GAP_PP = 9.667
+
+
+def test_t03_means_the_difference_over_rows_where_both_roofs_read(tmp_path: Path):
+    """6.0 pp, not the 9.667 a difference of two independent means gives.
+
+    The two are the same number only while the columns are non-null on exactly
+    the same rows. Requiring both readings is what makes the quantity a gap
+    between the roofs *at an instant*, which is what the question names.
+    """
+    ctx = _context(
+        as_of=datetime(2026, 1, 1, 12, 0, tzinfo=BERLIN),
+        db=_executor(tmp_path / "t03.duckdb", _SWC_PAIR_ROWS),
+    )
+
+    answer = asyncio.run(
+        t03_irrigation_swc_gap(_inputs("T03", period="2025-07-01..2025-07-01"), ctx)
+    )
+
+    assert answer.answer == PAIRED_GAP_PP
+    assert answer.answer != UNPAIRED_GAP_PP
+    assert answer.unit == "pp"
+    assert answer.detail["paired_rows"] == 2
+
+
+def test_t03_answers_in_pp_and_not_in_theta():
+    """8.377 pp between the extensive roofs over July 2025, on the pinned record.
+
+    A difference between two %θ states is not itself a water content
+    (``questions.md`` §1.5), and the unit is what says so — the answer metric
+    treats ``%`` and ``%θ`` as one unit and ``pp`` as another.
+    """
+    answer = asyncio.run(
+        t03_irrigation_swc_gap(
+            _inputs("T03", period="2025-07-01..2025-07-31"), make_case_context(AS_OF)
+        )
+    )
+
+    assert answer.answer == pytest.approx(8.377)
+    assert answer.unit == "pp"
+    # 31 days x 48 half-hours, both roofs reading throughout.
+    assert answer.detail["paired_rows"] == 1488
+
+
+# Berlin Jul 10 gets 5.0; Berlin Jul 12 gets 9.0 (from the 22:30 UTC row) plus
+# 1.0 = 10.0. On UTC days the peak is Jul 11 with 9.0, so the two groupings name
+# different days rather than the same day by different arithmetic.
+_PEAK_ROWS = """
+CREATE TABLE outflow (timestamp TIMESTAMP, Kies_Efflux DOUBLE);
+INSERT INTO outflow VALUES
+  (TIMESTAMP '2025-07-10 12:00:00', 5.0),
+  (TIMESTAMP '2025-07-11 22:30:00', 9.0),
+  (TIMESTAMP '2025-07-12 12:00:00', 1.0);
+"""
+
+_DRY_MONTH = """
+CREATE TABLE outflow (timestamp TIMESTAMP, Kies_Efflux DOUBLE);
+INSERT INTO outflow VALUES
+  (TIMESTAMP '2025-07-10 12:00:00', 0.0),
+  (TIMESTAMP '2025-07-11 12:00:00', 0.0);
+"""
+
+
+def test_t04_reads_a_day_of_zeroes_as_a_no(tmp_path: Path):
+    """Zero outflow is the "no" class, and it is most of the record.
+
+    Outflow is exactly zero on 75-94 % of band days depending on the roof
+    (``findings.md``), so this is the half of T04's balance that the rejection
+    sampler has to *keep* — reading it as a missing day would delete it.
+    """
+    ctx = _context(
+        as_of=datetime(2026, 1, 1, 12, 0, tzinfo=BERLIN),
+        db=_executor(tmp_path / "t04dry.duckdb", _DRY_MONTH),
+    )
+
+    answer = asyncio.run(
+        t04_outflow_occurred(_inputs("T04", roof="gravel", date="2025-07-10"), ctx)
+    )
+
+    assert answer.answer is False
+    assert answer.unit is None
+    assert answer.detail["rows"] == 1
+
+
+def test_t04_reads_a_day_with_no_rows_as_a_defect(tmp_path: Path):
+    """A day of nothing is not a "no" — it is a draw the coverage filter missed.
+
+    The two are one boolean apart and a null sum read as ``False`` would hide
+    the second inside the answer distribution the balance rule is tuned against.
+    """
+    ctx = _context(
+        as_of=datetime(2026, 1, 1, 12, 0, tzinfo=BERLIN),
+        db=_executor(tmp_path / "t04gap.duckdb", _DRY_MONTH),
+    )
+
+    with pytest.raises(OracleInputError, match="no reading"):
+        asyncio.run(
+            t04_outflow_occurred(_inputs("T04", roof="gravel", date="2025-07-20"), ctx)
+        )
+
+
+def test_t04_on_the_pinned_database_answers_both_ways():
+    """16.1 L on 2025-07-15 and exactly 0.0 over the 48 rows of 2025-07-01.
+
+    Both classes off one roof and one month, so the template is checked to be
+    answerable in both directions on the record it will be sampled from.
+    """
+    ctx = make_case_context(AS_OF)
+
+    wet = asyncio.run(
+        t04_outflow_occurred(_inputs("T04", roof="Kiesdach", date="2025-07-15"), ctx)
+    )
+    dry = asyncio.run(
+        t04_outflow_occurred(_inputs("T04", roof="Kiesdach", date="2025-07-01"), ctx)
+    )
+
+    assert (wet.answer, wet.detail["daily_total_l"]) == (True, 16.1)
+    assert (dry.answer, dry.detail["daily_total_l"], dry.detail["rows"]) == (False, 0.0, 48)
+
+
+def test_t05_takes_the_argmax_over_the_sites_own_days(tmp_path: Path):
+    """2025-07-12, because the 22:30 UTC row belongs to the Berlin 12th.
+
+    Grouped by UTC day the same three rows peak on the 11th. This is the one
+    template where the day boundary changes the *answer* rather than a digit of
+    it (``decisions.md`` § The day boundary).
+    """
+    ctx = _context(
+        as_of=datetime(2026, 1, 1, 12, 0, tzinfo=BERLIN),
+        db=_executor(tmp_path / "t05.duckdb", _PEAK_ROWS),
+    )
+
+    answer = asyncio.run(
+        t05_peak_outflow_day(_inputs("T05", roof="gravel", month="2025-07"), ctx)
+    )
+
+    assert answer.answer == "2025-07-12"
+    assert answer.answer != "2025-07-11"
+    assert answer.unit is None
+    assert answer.detail["peak_total_l"] == 10.0
+
+
+def test_t05_refuses_a_month_whose_peak_is_tied(tmp_path: Path):
+    """Two days sharing the maximum give the question two defensible answers.
+
+    The refusal also covers the case that would otherwise be silently absurd: an
+    entirely dry month ties at 0.0 on every day in it, and a broken tie would
+    report "the peak was the 1st".
+    """
+    ctx = _context(
+        as_of=datetime(2026, 1, 1, 12, 0, tzinfo=BERLIN),
+        db=_executor(tmp_path / "t05tie.duckdb", _DRY_MONTH),
+    )
+
+    with pytest.raises(OracleInputError, match="more than one defensible answer"):
+        asyncio.run(t05_peak_outflow_day(_inputs("T05", roof="gravel", month="2025-07"), ctx))
+
+
+def test_t05_on_the_pinned_database():
+    """The gravel roof's July 2025 peak is 2025-07-15 at 16.1 L, and it is unique.
+
+    The month's next two days are 12.8 L on the 21st and 11.2 L on the 12th, so
+    the argmax has margin and the tie check is not what is being exercised here.
+    """
+    answer = asyncio.run(
+        t05_peak_outflow_day(
+            _inputs("T05", roof="gravel", month="2025-07"), make_case_context(AS_OF)
+        )
+    )
+
+    assert answer.answer == "2025-07-15"
+    assert answer.detail["peak_total_l"] == 16.1
+
+
+def test_t15a_sums_the_station_rain_column_over_the_sites_own_days(tmp_path: Path):
+    """1.5 mm on the Berlin 1st, not the 5.5 mm a UTC grouping reports.
+
+    Read off ``_WETTER_ROWS``: 1.0 + 0.5 falls on the Berlin 1st, and the 4.0 at
+    22:30 UTC is already the Berlin 2nd. Grouped by the raw column all three land
+    on the 1st, which is the shape of the error the shared day expression exists
+    to prevent.
+    """
+    ctx = _context(
+        as_of=datetime(2026, 1, 1, 12, 0, tzinfo=BERLIN),
+        db=_executor(tmp_path / "t15a.duckdb", _WETTER_ROWS),
+    )
+
+    answer = asyncio.run(
+        t15a_past_rain(_inputs("T15a", past_period="2025-07-01..2025-07-01"), ctx)
+    )
+
+    assert answer.answer == 1.5
+    assert answer.answer != 5.5
+    assert answer.unit == "mm"
+
+
+def test_t15a_agrees_with_the_station_weather_path_on_a_covered_window():
+    """29.257 mm either way — the equivalence ``decisions.md`` states, measured.
+
+    T15a's gold set is ``{text_to_sql_agent}`` while the weather tool's station
+    path derives its ``precip`` from this same column, so a candidate answering
+    through the weather tool returns the identical number and loses trajectory
+    anyway. That cost is accepted, but it rests on the two numbers actually being
+    the same — which is a claim about the derivation and the raw sum, and is
+    checked here rather than argued. The window is seven complete days, which is
+    the condition under which the station serves at all: it drops any day short
+    of its 48 rows and this oracle sums whatever is there.
+    """
+    ctx = make_case_context(AS_OF)
+    window = "2026-04-13..2026-04-19"
+
+    answer = asyncio.run(t15a_past_rain(_inputs("T15a", past_period=window), ctx))
+    rows = StationWeatherSource(ctx.db).daily_rows(date(2026, 4, 13), date(2026, 4, 19))
+
+    # 0.0 + 2.159 + 0.068 + 0.0 + 0.0 + 7.684 + 19.346, the record's own days.
+    assert answer.answer == pytest.approx(29.257)
+    assert len(rows) == 7
+    assert round(sum(row.precip for row in rows), 3) == answer.answer
+
+
+@pytest.mark.parametrize(
+    "period", ["2025-07", "2025-07-01..", "last week", "2025-07-31..2025-07-01"]
+)
+def test_a_period_that_is_not_two_days_fails_at_the_parameter(period: str):
+    """A window the oracle cannot read fails before any arithmetic runs."""
+    with pytest.raises(OracleInputError):
+        period_window(period)
+
+
+def test_a_period_reaching_past_the_cut_is_refused(tmp_path: Path):
+    """The same containment T01 enforces on a month, on a sampled window.
+
+    ``period_param_within_as_of`` does see both ends of a ``start..end`` period,
+    so this is belt and braces there — and the belt is what T01 has instead of
+    braces, since ``"2025-07"`` carries no day for that check to read.
+    """
+    ctx = _context(
+        as_of=datetime(2025, 7, 15, 12, 0, tzinfo=BERLIN),
+        db=_executor(tmp_path / "t15acut.duckdb", _WETTER_ROWS),
+    )
+
+    with pytest.raises(OracleInputError, match="past the case's as_of"):
+        asyncio.run(
+            t15a_past_rain(_inputs("T15a", past_period="2025-07-01..2025-07-31"), ctx)
+        )
+
+
+def test_a_station_column_the_semantic_layer_dropped_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A column the candidate is not shown is a column no route could have read.
+
+    ``Rain`` and ``Tmax`` are the two names family A writes out rather than
+    resolves through ``roofs.py``, because the station belongs to no roof. What
+    they are checked against is the schema block the sub-agent is given, which is
+    the closest this family gets to the shared core the others have by import.
+    """
+    monkeypatch.setattr(sql_module, "_declared_columns", lambda _table: frozenset({"Rain"}))
+
+    assert sql_module.station_column("Rain") == "Rain"
+    with pytest.raises(OracleInputError, match="no longer declares"):
+        sql_module.station_column("Tmax")
 
 
 # --- T07: the ladder, on the rung the fixture puts it on ----------------------
@@ -714,21 +1091,39 @@ def test_t18a_refuses_a_window_the_tool_would_actually_serve():
 # --- The registry -------------------------------------------------------------
 
 
-def test_the_registry_holds_the_pilot_set_and_only_it():
-    """T103's three templates plus T107's coverage draws; T110 adds the rest.
+def test_the_registry_holds_what_has_been_checked_and_only_it():
+    """The pilot set plus the families T110 has landed, and nothing on credit.
 
-    Registering an oracle the pilot does not exercise would put an unchecked
-    answer one lookup away from a case file.
+    Registering an oracle no test exercises would put an unchecked answer one
+    lookup away from a case file, and T111 looks a template up here rather than
+    mapping an id to a function by parsing it.
 
     **T24a is absent on purpose.** Its answer is null and the deliverable is the
     spec, so there is nothing to materialize; an entry would have to invent an
     answer to have something to return.
     """
-    assert sorted(ORACLES) == ["T01", "T06", "T07", "T09", "T17a", "T18a"]
+    assert sorted(ORACLES) == [
+        "T01",
+        "T02",
+        "T03",
+        "T04",
+        "T05",
+        "T06",
+        "T07",
+        "T09",
+        "T15a",
+        "T17a",
+        "T18a",
+    ]
     assert ORACLES["T01"] is t01_total_outflow
+    assert ORACLES["T02"] is t02_hot_day_count
+    assert ORACLES["T03"] is t03_irrigation_swc_gap
+    assert ORACLES["T04"] is t04_outflow_occurred
+    assert ORACLES["T05"] is t05_peak_outflow_day
     assert ORACLES["T06"] is t06_stated_constant
     assert ORACLES["T07"] is t07_needs_irrigation_now
     assert ORACLES["T09"] is t09_falls_below_threshold
+    assert ORACLES["T15a"] is t15a_past_rain
     assert ORACLES["T17a"] is t17a_absent_constant
     assert ORACLES["T18a"] is t18a_unservable_window
     assert "T24a" not in ORACLES

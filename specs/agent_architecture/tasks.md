@@ -3019,6 +3019,41 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   oracle and tool cannot diverge. Each writes into the case's `expectations` and
   stamps `expectations.pins` with the surface the answer was computed against — DB
   sha256, GR2L canary, station-derivation version, resolved weather source. → T010
+  **P7a1 — family A (T02, T03, T04, T05, T15a) landed; the row stays open until
+  P7a2.** Five oracles in `eval/oracles/sql.py`, beside T103's T01.
+  **Hand-checked against the pinned record, not against the code.** T02 counts 5
+  days above 29 °C over 2025-07-01..14, which reads off the record's own daily
+  maxima (34.45, 38.10, 29.53, 26.12, 29.05, 28.47, 24.27, 21.07, 21.40, 25.55,
+  25.77, 18.82, 24.72, 29.67 — the 1st, 2nd, 3rd, 5th and 14th clear it). T15a
+  totals 29.257 mm over 2026-04-13..19 = 0.0 + 2.159 + 0.068 + 0.0 + 0.0 +
+  7.684 + 19.346. T03 is 8.377 pp over July 2025's 1488 paired rows, T04 is
+  16.1 L on 2025-07-15 against exactly 0.0 over the 48 rows of 2025-07-01, and
+  T05's July peak is the 15th at 16.1 L against 12.8 on the 21st.
+  **Every fixture straddles the Berlin/UTC boundary**, because the day expression
+  is the one thing a pure-SQL oracle shares with the candidate rather than owns
+  (T106 puts it in the schema block). Each fixture is built so the two groupings
+  give *different* numbers: T02 two hot days against one, T05 the 12th against
+  the 11th, T15a 1.5 mm against 5.5. A fixture that agreed either way would prove
+  nothing about the property it exists to check.
+  **The station's completeness rule is deliberately not applied here** — see
+  `decisions.md § Family A and the station derivation` — and the equivalence that
+  rests on it is now measured rather than argued: T15a and
+  `StationWeatherSource.daily_rows` return the same 29.257 mm over that week
+  (`findings.md § T15a and the station weather path`).
+  **Two readings were single-valued only after being made so.** T03's mean is
+  over rows where *both* roofs read, which is 6.0 pp against 9.667 on the
+  three-row fixture — a difference of two independently averaged columns is a
+  different quantity as soon as one sensor drops an afternoon. T05 refuses a tied
+  peak instead of breaking it, which is what stops an entirely dry month
+  answering "the peak was the 1st"; the pool that leaves is measured in
+  `findings.md § T05's unique-peak pool` and it binds on the wetland.
+  **Pins: `duckdb_sha256` alone on all six.** No weather client and no model is
+  reached, and `pins.py`'s rule is stamped-where-read — a blanket stamp would
+  assert a dependency the answer does not have and then survive a change that
+  could not have moved it (T01's pin test states this and now covers the family).
+  `uv run ruff check` and `uv run pytest` clean — 953 passed (934 + 19), same 15
+  pre-existing findings in `src/experiments/`. (`just lint` / `just test` are not
+  recipes in this repo; these two are what the earlier rows ran.)
 - [ ] T111 Template instantiation with the §1.6 generation filters, evaluated
   **through the as-of view** and anchored at `seed_at` for seed-bearing families:
   coverage, per-column plausibility, and the frozenness run test applied to state

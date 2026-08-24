@@ -971,3 +971,46 @@ and disclosed as a scope limit, and the data is served as recorded.
 reachable — the semantic layer and the plot vocabulary — because a `radiation`
 series drawn beside another table's is misaligned by two half-hourly rows, and a
 reader who does not know that reads the misalignment as physics.
+
+---
+
+## Family A and the station derivation
+
+The pure-SQL oracles read `wetter` with their own `sum` and `max`; they do
+**not** call `weather_station`'s derivation, even though it aggregates the same
+two columns from the same table through the same day expression.
+
+The reason is the completeness rule. The derivation serves a day only when it
+carries all 48 half-hourly rows and drops it otherwise, because a weather
+*source* that returned partial days would hand GR2L a forcing row assembled from
+half a day. A candidate answering T02 or T15a writes SQL against the semantic
+layer and applies nothing of the kind. So importing the derivation would make
+the oracle answer a question the gold trajectory does not ask, and a case whose
+window contained one short day would score a correct candidate wrong.
+
+What is shared instead is everything that can be: the day expression comes from
+`site_day_expr()`, `Rain` comes from the plot tool's closed vocabulary, and
+`Tmax` — the one name with no shared constant anywhere — is checked against the
+semantic layer's schema block before it is used, so a column the candidate is
+not shown cannot be read by the oracle either.
+
+**Rejected:**
+
+- *Calling `StationWeatherSource.daily_rows` and summing its `precip`.* It is the
+  stronger sharing and it is the wrong sharing: it silently narrows the oracle's
+  window to complete days, which is a property of the weather tool rather than of
+  the question. Family C does exactly this, and correctly, because there the
+  weather tool *is* the gold trajectory.
+- *Copying the derivation's `_AGGREGATES` fragment.* A private SQL string,
+  written for a caller with a different contract; borrowing it inherits the
+  completeness rule through the `HAVING` clause it is paired with, or drops it and
+  keeps a second copy of the aggregation to drift.
+- *Applying §1.6's coverage predicate inside the oracle.* Generation's job. Run
+  here it would turn a badly sampled case into a wrong answer instead of a
+  rejected draw, and the two failures need different repairs.
+
+**Validity condition:** the two routes agree on a fully covered window, which is
+what makes T15a's accepted trajectory cost (see **Trajectory scoring and routing
+probes**) worth accepting. Measured at 29.257 mm both ways over 2026-04-13..19
+(`findings.md § T15a and the station weather path`), and it is a claim about
+covered windows only.

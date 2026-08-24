@@ -508,6 +508,39 @@ wetland days in the whole band.
 *Verified:* daily `sum(col)` per outflow column over the band.
 *Date:* 2026-08-17.
 
+**T05's unique-peak pool is 28 of 44 whole roof-months, and 2 of them are the
+wetland's.** A peak-outflow question needs a month whose daily maximum is
+attained on exactly one day; a tie gives the question two defensible answers and
+§1.6 discards the draw. Over the 11 calendar months lying wholly inside the
+outflow record (2025-05 → 2026-03), the gravel roof has a unique peak in all 11,
+the irrigated extensive roof in 8, the non-irrigated in 7, and **the wetland in
+2** — 2025-09 and 2026-02. Every one of the 11 months has at least one roof that
+qualifies, so nine disjoint months across train and test_seen are reachable; what
+is not free is the roof axis, since the wetland can appear in T05 at most twice
+in the whole suite and both of its months are then forced. Ties are not rare
+noise here: they are the zero-outflow finding above seen from the other side, an
+entirely dry month tying at 0.0 on every day in it.
+*Verified:* per-(roof, month) daily `sum(col)` over `outflow` through
+`site_day_expr()`, counting days attaining the month's maximum; whole months
+only.
+*Date:* 2026-08-24.
+
+**T15a and the station weather path return the same number.** Over
+2026-04-13..19, T15a's `sum(Rain)` grouped by the site's day gives 29.257 mm, and
+`StationWeatherSource.daily_rows` over the same window returns seven complete
+days summing to 29.257 mm of `precip`. `decisions.md § Trajectory scoring and
+routing probes` accepts a real cost on this template — a candidate answering
+correctly through the weather tool scores 0 on trajectory — and that cost is only
+worth accepting if the two routes really are equivalent, which had been asserted
+and not measured. The equality holds on a *fully covered* window and only there:
+the derivation serves a day only with all 48 of its rows and drops the rest,
+where the SQL route sums whatever is present. §1.6's coverage predicate is what
+keeps a sampled window on the side where they agree.
+*Verified:* `t15a_past_rain` against `StationWeatherSource(ctx.db).daily_rows`
+over one `make_case_context` at `as_of` 2026-04-20, in
+`tests/eval/test_oracles.py`.
+*Date:* 2026-08-24.
+
 ## External sources on this machine
 
 Paths outside this repository, recorded here rather than in the plan because a

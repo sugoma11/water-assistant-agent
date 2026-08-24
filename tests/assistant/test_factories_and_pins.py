@@ -42,6 +42,7 @@ from water_assistant_agent.assistant.agents.root_agent.agent import (
 )
 from water_assistant_agent.assistant.context import ScenarioContext
 from water_assistant_agent.assistant.ports import QueryResult
+from water_assistant_agent.assistant.settings import AssistantSettings
 from water_assistant_agent.assistant.tools import gr2l as gr2l_module
 from water_assistant_agent.assistant.tools import weather as weather_module
 from water_assistant_agent.assistant.tools.schemas import (
@@ -396,6 +397,57 @@ def test_the_committed_pins_match_the_tree(monkeypatch: pytest.MonkeyPatch) -> N
     check_pins = _load_check_pins()
     monkeypatch.setattr(sys, "argv", ["check_pins.py"])
     assert check_pins.main() == 0
+
+
+PINNED_MODEL_SETTINGS = {
+    "root_agent_model": "task_model",
+    "text_to_sql_agent_model": "sub_agent_model",
+    "sql_builder_model": "sql_builder_model",
+    "sql_fixer_model": "sql_fixer_model",
+}
+"""Every model setting, and the pin that watches it.
+
+Spelled out rather than derived, because two of the four keys do not match their
+setting's name: the root agent is pinned as ``task_model`` and the sub-agent's
+model as ``sub_agent_model``, which is what the architecture §5 calls them.
+"""
+
+
+def test_every_model_the_package_builds_is_pinned() -> None:
+    """A model setting with no pin is a live dependency nobody is watching.
+
+    This is the check that was missing. ``sql_builder_model`` and
+    ``sql_fixer_model`` were settings for as long as the pins file has existed and
+    neither appeared in it, so a swap under either would have moved every family-A
+    answer with nothing to say it had — the fixer most quietly, since it changes
+    which queries *fail* rather than which are answered, and a failure leaves the
+    aggregates as an ``upstream`` exclusion.
+
+    Written as a sweep over the settings rather than as four assertions, so a
+    fifth model cannot be introduced without either pinning it or failing here.
+    """
+    declared = {
+        name for name in AssistantSettings.model_fields if name.endswith("_model")
+    }
+    assert declared == set(PINNED_MODEL_SETTINGS), (
+        "A model setting was added or renamed without a pin to watch it; add it to "
+        "compute_pins() and to PINNED_MODEL_SETTINGS."
+    )
+
+    check_pins = _load_check_pins()
+    computed = check_pins.compute_pins()
+    settings = AssistantSettings()
+    for setting, pin_key in PINNED_MODEL_SETTINGS.items():
+        pin = computed[pin_key]
+        assert pin is not None, f"{pin_key} is unpinned"
+        assert pin["model_id"] == getattr(settings, setting)
+        # The endpoint and decoding are half the pin's point: the same served id
+        # on another provider, or at another temperature, is another surface.
+        assert "endpoint" in pin
+        assert pin["decoding"] == {
+            "temperature": settings.llm_temperature,
+            "seed": settings.llm_seed,
+        }
 
 
 def test_the_pins_check_fails_on_a_moved_hash(

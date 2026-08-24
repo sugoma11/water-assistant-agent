@@ -28,23 +28,33 @@ _DIRECT_ENDPOINT = "provider-default"
 """Recorded in place of the endpoint when no ``llm_api_base`` is configured."""
 
 
-def task_model_pin(settings: AssistantSettings | None = None) -> dict[str, Any]:
-    """The task model's pin record: served id, endpoint and decoding parameters.
+def _model_pin(model_id: str, settings: AssistantSettings) -> dict[str, Any]:
+    """One model's pin record: served id, endpoint and decoding parameters.
 
-    The ``canary`` slot is deliberately absent here — a request/response canary
-    can only be captured by talking to the endpoint, which this module never does
-    on its own. ``eval/pins.json`` carries the slot and reports it as unfilled
-    until a live pass writes it.
+    The shape is shared because the *claim* is shared — every model this package
+    builds is a live dependency under an undated alias, and what identifies it is
+    the same three things each time. Four copies of this dict would let one of
+    them quietly stop recording the endpoint.
+
+    The ``canary`` slot is deliberately absent: a request/response canary can only
+    be captured by talking to the endpoint, which this module never does on its
+    own. ``eval/pins.json`` carries the slot and reports it unfilled until a live
+    pass writes it.
     """
-    settings = settings or get_settings()
     return {
-        "model_id": settings.root_agent_model,
+        "model_id": model_id,
         "endpoint": settings.llm_api_base or _DIRECT_ENDPOINT,
         "decoding": {
             "temperature": settings.llm_temperature,
             "seed": settings.llm_seed,
         },
     }
+
+
+def task_model_pin(settings: AssistantSettings | None = None) -> dict[str, Any]:
+    """The task model's pin — the agent under test, and the only optimized one."""
+    settings = settings or get_settings()
+    return _model_pin(settings.root_agent_model, settings)
 
 
 def sub_agent_model_pin(settings: AssistantSettings | None = None) -> dict[str, Any]:
@@ -55,14 +65,35 @@ def sub_agent_model_pin(settings: AssistantSettings | None = None) -> dict[str, 
     root model's.
     """
     settings = settings or get_settings()
-    return {
-        "model_id": settings.text_to_sql_agent_model,
-        "endpoint": settings.llm_api_base or _DIRECT_ENDPOINT,
-        "decoding": {
-            "temperature": settings.llm_temperature,
-            "seed": settings.llm_seed,
-        },
-    }
+    return _model_pin(settings.text_to_sql_agent_model, settings)
+
+
+def sql_builder_model_pin(settings: AssistantSettings | None = None) -> dict[str, Any]:
+    """The model that writes the SQL, one layer below the sub-agent's own.
+
+    ``text_to_sql_agent`` decides *whether* to build a query; this model is what
+    actually turns the question into DuckDB (``agents/text_to_sql/builder.py``).
+    It is the model doing the work family A's templates measure, so a swap under
+    it moves every pure-SQL answer — and until it was pinned, nothing said so.
+    """
+    settings = settings or get_settings()
+    return _model_pin(settings.sql_builder_model, settings)
+
+
+def sql_fixer_model_pin(settings: AssistantSettings | None = None) -> dict[str, Any]:
+    """The model that repairs SQL the transpiler or the validator rejected.
+
+    **It moves results by changing what fails, not by changing what is answered.**
+    A query the fixer rescues is a case that scores; one it cannot is a
+    ``RuntimeError`` out of the pipeline, which reaches the root agent as the
+    sub-agent's ``{"status": "error"}`` payload and excludes the rollout as
+    ``upstream``. So a weaker fixer does not produce worse answers — it produces
+    *fewer* answers and a higher exclusion rate, which §7 reports and the
+    aggregates drop. That is the least visible way a model swap can move a number,
+    which is the argument for pinning it rather than against.
+    """
+    settings = settings or get_settings()
+    return _model_pin(settings.sql_fixer_model, settings)
 
 
 def configure_llm_cache(

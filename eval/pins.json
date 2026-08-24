@@ -2,7 +2,7 @@
   "_comment": "Architecture \u00a75's pin list. Verified by `just pins`; rewritten only by `just pins-write`. A null is an unpinned slot \u2014 the artifact does not exist yet, or the value needs a live capture.",
   "pins": {
     "candidate_prompts": null,
-    "card_store_sha256": null,
+    "card_store_sha256": "9348c18386c970a339b65f34f332bbce21c0750c421e139638bfbf39006f4afc",
     "dependency_versions": {
       "duckdb": "1.5.3",
       "gepa": "0.1.1",
@@ -19,6 +19,22 @@
     "reflection_model_canary_sha256": null,
     "roofs_version": "1.0",
     "rules_constants_version": "1.0",
+    "sql_builder_model": {
+      "decoding": {
+        "seed": 42,
+        "temperature": 0.0
+      },
+      "endpoint": "https://saia.gwdg.de/v1",
+      "model_id": "openai/qwen3.6-35b-a3b"
+    },
+    "sql_fixer_model": {
+      "decoding": {
+        "seed": 42,
+        "temperature": 0.0
+      },
+      "endpoint": "https://saia.gwdg.de/v1",
+      "model_id": "openai/qwen3.6-35b-a3b"
+    },
     "station_derivation": {
       "derivation_sha256": "da6c872647ed04026a92d0127323cda5ce65002bc4fd077bb300463041109ae3",
       "first_complete_day": "2025-01-02",

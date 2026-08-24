@@ -177,7 +177,12 @@ def compute_pins() -> dict[str, Any]:
     ``None`` means "cannot be computed here" — the artifact does not exist yet,
     or the value needs a live capture — and is what leaves a pin unpinned.
     """
-    from water_assistant_agent.assistant.llm import sub_agent_model_pin, task_model_pin
+    from water_assistant_agent.assistant.llm import (
+        sql_builder_model_pin,
+        sql_fixer_model_pin,
+        sub_agent_model_pin,
+        task_model_pin,
+    )
     from water_assistant_agent.assistant.settings import get_settings
     from water_assistant_agent.assistant.tools.gr2l_client import (
         CANARY_REQUEST,
@@ -199,7 +204,13 @@ def compute_pins() -> dict[str, Any]:
         "gr2l_canary_response_sha256": None,
         "task_model": task_model_pin(settings),
         "task_model_canary_sha256": None,
+        # The text-to-SQL chain is three models, not one: the sub-agent that
+        # routes, the builder that writes the query, and the fixer that repairs
+        # it. All three are live dependencies under undated aliases and each moves
+        # family A's answers on its own, so each is pinned on its own.
         "sub_agent_model": sub_agent_model_pin(settings),
+        "sql_builder_model": sql_builder_model_pin(settings),
+        "sql_fixer_model": sql_fixer_model_pin(settings),
         "reflection_model": None,
         "reflection_model_canary_sha256": None,
         "candidate_prompts": None,

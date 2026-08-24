@@ -544,7 +544,13 @@ task LLM's served
 model id, endpoint and decoding parameters (`temperature=0`, seed) **plus its own
 request/response canary**, the provider offering no dated versions; the same three
 for **the reflection LM**, a second model distinct from the task model, without which
-a run is unrepeatable even with the task model fixed; the
+a run is unrepeatable even with the task model fixed; **the same three again for each
+of the text-to-SQL chain's three models** — the sub-agent that routes, the builder
+that writes the query, and the fixer that repairs one the transpiler or the validator
+rejected — since all three are live dependencies under undated aliases and each moves
+family A's answers on its own, the fixer most quietly of all: it changes not what is
+answered but what *fails*, and an unrescued query leaves the aggregates as an
+`upstream` exclusion rather than as a wrong answer; the
 candidate prompt names and seed versions in the MLflow registry; the dependency
 lockfile (adk, litellm, mlflow, gepa, pyyaml, duckdb); and the **station derivation**
 (`weather_tool.md` § Station source — the per-field aggregation, the day boundary,

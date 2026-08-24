@@ -2958,9 +2958,58 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   a stated absence is what an abstention can be grounded in.
   `uv run ruff check` and `uv run pytest` clean — 874 passed (863 + 11), same 15
   pre-existing findings in `src/experiments/`.
-- [ ] T107 **Pilot run** on T01 / T07 / T09 with the handwritten instruction, three
+- [x] T107 **Pilot run** on T01 / T07 / T09 with the handwritten instruction, three
   repeats, paired — then **freeze the testbed**. Everything after this point may
   change only the optimizable text. → T100, T101, T102, T103, T105, T106
+  **The testbed is frozen as of `main` at this commit.** What may still change is
+  the optimizable surface and nothing else: the root instruction and the six tool
+  docstrings, reached only through the prompt registry (§6). The tool specs, the
+  sub-agent's prompt, the semantic layer, the card store, the scorers, the case
+  schema and the oracles are frozen text in the sense §0 means.
+  **The pilot ran wider than the task asked.** T103 emitted oracles and no cases,
+  so the nine draws were hand-instantiated through T010's schema
+  (`scripts/make_pilot_cases.py`, a stopgap T111 replaces) — and then five more,
+  because the first nine were all one shape and exercised one branch of every
+  scorer. The five cover what they left: T06 the graded card recall, T17a an
+  abstention with recall still graded, T18a a tool-signalled abstention past the
+  16-day horizon, T24a(i) the answer metric's skip with an argument-check set
+  match, T24a(ii) `present` and §3.6's mixed resolution. **48 rollouts** across
+  the two runs: zero `harness_error`, zero `parse_failure`, zero answer flips,
+  zero live fetches in replay. Answer 30 scored / 12 skipped (coverage 0.71),
+  card recall 6 graded / 36 skipped (0.14), abstention split both ways for the
+  first time — 0.50 over the unanswerable, 0.00 false abstention over the
+  answerable — and 33 argument checks executed.
+  **Four defects found before the gate rather than after, which is what the
+  pilot is for.** (i) T09 phrased in hours made the oracle read "the next 72
+  hours" as three days and the candidate as four; the catalog now asks in days
+  (T09's entry, `eval/oracles/model_chain.py`). (ii) Replay was deterministic
+  only because capture happened to record the windows replay asked for, so
+  `scripts/prewarm_pilot_cache.py` records the neighbours — a miss under replay
+  excludes the rollout, and that bias drops a candidate's messiest runs and lifts
+  its mean. (iii) `series.*.roof` did not exist, so §2 H's "roofs as a set match"
+  was unsayable. (iv) Each argument check hunted the trajectory for its own
+  satisfying call, which let a pass be assembled from fragments — the hole that
+  would have passed T26(i)'s compositional holdout on `albedo` in one call and
+  `forcings` in another. All four are fixed and their reasoning is in
+  `decisions.md` and §7.
+  **One result is a finding rather than a fix, and it is deliberately left for
+  the search.** T17a fails 3/3 on the handwritten baseline: the agent fetches the
+  card, quotes the sentence naming wind as a non-condition, concludes correctly
+  that there is no cutoff — and then writes `status: "answered"` with a null
+  answer instead of `not_available`. The reasoning is right and the contract
+  encoding is wrong, and the encoding lives in the root instruction, which is
+  optimizable. So the baseline enters the search at **0.50 abstention accuracy**
+  by choice, not by oversight; a candidate that repairs it is measuring exactly
+  what the thesis claims to measure.
+  **Two slots are unpinned at the freeze, both knowingly.** `candidate_prompts`
+  cannot be pinned until T120 registers the prompts — the freeze is what makes
+  that registration meaningful, not the other way round. `task_model_canary_sha256`
+  is null, and the task-model endpoint moved during this packet
+  (chat-ai.academiccloud.de → saia.gwdg.de, re-pinned): the canary is the
+  mechanism that would have caught a provider swap under that move and there was
+  nothing to catch it with, so a swap after the freeze is currently undetectable.
+  `just pins` reports 14 pinned, 4 unpinned, 0 moved.
+  `uv run ruff check` and `uv run pytest` clean — 934 passed.
 
 ---
 

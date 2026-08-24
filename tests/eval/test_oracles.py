@@ -37,7 +37,13 @@ from zoneinfo import ZoneInfo
 from eval.oracles import ORACLES
 from eval.oracles.base import OracleInputError
 from eval.oracles.irrigation import t07_needs_irrigation_now
-from eval.oracles.model_chain import forecast_days_for, t09_falls_below_threshold
+from eval.oracles.model_chain import (
+    forecast_days_for,
+    past_days_for,
+    t09_falls_below_threshold,
+    t10_predicted_minimum,
+    t19_model_deviation,
+)
 from eval.oracles.pins import duckdb_sha256, station_derivation_version
 from eval.oracles.presentation import (
     pair_variable,
@@ -929,6 +935,229 @@ def test_t09_refuses_a_roof_the_water_balance_declines(monkeypatch: pytest.Monke
             )
 
 
+# --- T10, T19: the rest of family D (T110) -------------------------------------
+
+
+def test_t10_returns_the_minimum_itself_in_theta(monkeypatch: pytest.MonkeyPatch):
+    """T09's number without T09's comparison: 14.29 %θ off a ramp from 28.57.
+
+    Seeded at 20 mm and losing 5 mm a day over three days, the driest day is the
+    last at 10 mm — 14.29 %θ on a 7 cm roof — and the answer is that value rather
+    than a bool about it.
+
+    **The unit is %θ, not the millimetres GR2L holds the store in.** No template
+    asks for millimetres of storage (``questions.md`` §1.5), and 10.0 against
+    14.29 is exactly the pair a wrong unit would swap.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", StubGr2l(ssub=20.0, step=-5.0))
+    ctx = _context(weather=StubWeather())
+
+    answer = asyncio.run(t10_predicted_minimum(_inputs("T10", roof=MODELLABLE, d=3), ctx))
+
+    assert answer.answer == FLAT_SWC_PCT
+    assert answer.answer != FLAT_SSUB_MM
+    assert answer.unit == "%θ"
+    assert answer.detail["driest_day"] == "2026-04-22"
+
+
+def test_t10_and_t09_read_one_minimum(monkeypatch: pytest.MonkeyPatch):
+    """The pair's whole point: one run, one ``min_swc_pct``, two questions about it.
+
+    A candidate that reports the minimum correctly and then compares it wrongly
+    fails T09 and passes T10. Two oracles with two notions of "the minimum" could
+    not separate that from a candidate that got both wrong.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", StubGr2l(ssub=20.0, step=-5.0))
+    ctx = _context(weather=StubWeather())
+
+    ten = asyncio.run(t10_predicted_minimum(_inputs("T10", roof=MODELLABLE, d=3), ctx))
+    nine = asyncio.run(
+        t09_falls_below_threshold(_inputs("T09", roof=MODELLABLE, thr=15.0, d=3), ctx)
+    )
+
+    assert ten.answer == nine.detail["min_swc_pct"]
+    assert nine.answer is (ten.answer < 15.0)
+
+
+def test_t10_agrees_with_the_water_balance_tools_summary(monkeypatch: pytest.MonkeyPatch):
+    """The answer *is* ``summary.min_swc_pct``, checked against the tool that reports it.
+
+    :func:`~eval.oracles.model_chain.min_swc_pct` re-derives one line rather than
+    importing ``_summarize``, which needs the forcing rows back. This is the test
+    that keeps the two from drifting.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", StubGr2l(ssub=18.0, step=-2.5))
+    ctx = _context(weather=StubWeather())
+
+    answer = asyncio.run(t10_predicted_minimum(_inputs("T10", roof=MODELLABLE, d=4), ctx))
+    tool = asyncio.run(make_green_roof_balance_tool(ctx)(MODELLABLE, forecast_days=4))
+
+    assert tool["status"] == "success"
+    assert answer.answer == tool["summary"]["min_swc_pct"]
+
+
+def test_t10_refuses_a_roof_the_water_balance_declines(monkeypatch: pytest.MonkeyPatch):
+    """Pool P2, read off the tool's own scope table rather than a second list."""
+    monkeypatch.setattr(gr2l_module, "run_gr2l", StubGr2l())
+    ctx = _context(weather=StubWeather())
+
+    with pytest.raises(OracleInputError, match="P2"):
+        asyncio.run(t10_predicted_minimum(_inputs("T10", roof="Kiesdach", d=3), ctx))
+
+
+# T19's fixture: seven half-hourly `swc` readings, one per day of the window
+# 2026-04-13..2026-04-19, each the whole of its Berlin day's mean. Against a GR2L
+# series held flat at 14.0 mm — 20.0 %θ on the 7 cm roof — the daily deviations
+# are 5, 4, 3, 2, 1, 0 and 1 pp, so the mean is 16 / 7 = 2.2857… → 2.29 and the
+# largest is 5.0. Neither is the other, and neither is the last day's.
+_T19_MEASURED = (15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0)
+_T19_FLAT_MM = 14.0
+_T19_FLAT_PCT = round(mm_to_theta_pct(_T19_FLAT_MM, float(ROOF_PRESETS[MODELLABLE]["SH"])), 2)
+_T19_MEAN_DEVIATION = 2.29
+_T19_MAX_DEVIATION = 5.0
+
+
+def _t19_db(path: Path, values: tuple[float, ...] = _T19_MEASURED) -> DuckDbQueryExecutor:
+    """A ``swc`` table holding one midday reading per day of T19's window."""
+    column = ROOFS[MODELLABLE].columns["swc"]
+    rows = ", ".join(
+        f"(TIMESTAMP '2026-04-{13 + offset:02d} 10:00:00', {value})"
+        for offset, value in enumerate(values)
+    )
+    return _executor(
+        path,
+        f"CREATE TABLE swc (timestamp TIMESTAMP, {column} DOUBLE);"
+        f"INSERT INTO swc VALUES {rows};",
+    )
+
+
+def test_t19_averages_the_absolute_daily_deviation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """2.29 pp, worked out from seven days: |20 − (15…21)| = 5,4,3,2,1,0,1 → 16/7.
+
+    The **mean of the absolute** deviations, which is not the absolute value of
+    the mean: the signed deviations are +5, +4, +3, +2, +1, 0, −1 and sum to 14,
+    so a signed average would answer 2.0 over the same seven days. The fixture
+    crosses zero on purpose, because a series the model is uniformly above cannot
+    tell the two apart.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", StubGr2l(ssub=_T19_FLAT_MM))
+    ctx = _context(db=_t19_db(tmp_path / "t19.duckdb"), weather=StubWeather())
+
+    answer = asyncio.run(t19_model_deviation(_inputs("T19", roof=MODELLABLE, d=7), ctx))
+
+    assert _T19_FLAT_PCT == 20.0
+    assert answer.answer == _T19_MEAN_DEVIATION
+    assert answer.answer != 2.0
+    assert answer.unit == "pp"
+    assert answer.detail["max_abs_deviation_pct"] == _T19_MAX_DEVIATION
+    assert answer.detail["compared_days"] == 7
+
+
+def test_t19_asks_for_complete_past_days_ending_yesterday(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """"The last 7 days" at an ``as_of`` of 2026-04-20 is 04-13..04-19, not 04-14..04-20.
+
+    ``resolve_window(past_days=…)`` is the tool's own resolver and it excludes
+    today, because today is not a complete day. An oracle that included it would
+    compare the model against a partial daily mean and call the difference model
+    error.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", StubGr2l(ssub=_T19_FLAT_MM))
+    weather = StubWeather()
+    ctx = _context(db=_t19_db(tmp_path / "t19win.duckdb"), weather=weather)
+
+    answer = asyncio.run(t19_model_deviation(_inputs("T19", roof=MODELLABLE, d=7), ctx))
+
+    assert weather.calls == [("2026-04-13", "2026-04-19")]
+    assert answer.detail["window"] == "2026-04-13..2026-04-19"
+
+
+def test_t19_agrees_with_evaluate_against_measured(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """The tool's own ``evaluation``, reached through the same two functions.
+
+    ``daily_mean_swc`` for the measured series and ``_compare_to_measured`` for
+    the join: the oracle calls both rather than averaging a difference of its
+    own, so the day boundary, the failed-sensor bound and the overlap rule are
+    one implementation.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", StubGr2l(ssub=_T19_FLAT_MM, step=0.4))
+    ctx = _context(db=_t19_db(tmp_path / "t19agree.duckdb"), weather=StubWeather())
+
+    answer = asyncio.run(t19_model_deviation(_inputs("T19", roof=MODELLABLE, d=7), ctx))
+    tool = asyncio.run(
+        make_green_roof_balance_tool(ctx)(
+            MODELLABLE, past_days=7, evaluate_against_measured=True
+        )
+    )
+
+    assert tool["status"] == "success"
+    assert answer.answer == tool["evaluation"]["mean_abs_deviation_pct"]
+    assert answer.detail["compared_days"] == tool["evaluation"]["days"]
+
+
+def test_t19_refuses_a_window_the_record_does_not_cover(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """No overlap is a coverage failure, not a deviation of zero.
+
+    ``_compare_to_measured`` returns ``days: 0`` and a reason, which the tool
+    reports honestly and an oracle must not turn into a number. §1.6's coverage
+    filter is what should have rejected the draw.
+
+    The fixture holds one reading the day *before* the window, which is what
+    separates the two failures: the run is seeded and simulates fine, and it is
+    the comparison that has nothing to stand on.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", StubGr2l(ssub=_T19_FLAT_MM))
+    column = ROOFS[MODELLABLE].columns["swc"]
+    ctx = _context(
+        db=_executor(
+            tmp_path / "t19empty.duckdb",
+            f"CREATE TABLE swc (timestamp TIMESTAMP, {column} DOUBLE);"
+            f"INSERT INTO swc VALUES (TIMESTAMP '2026-04-12 10:00:00', 20.0);",
+        ),
+        weather=StubWeather(),
+    )
+
+    with pytest.raises(OracleInputError, match="nothing to compare"):
+        asyncio.run(t19_model_deviation(_inputs("T19", roof=MODELLABLE, d=7), ctx))
+
+
+def test_t19_stamps_the_station_derivation_where_the_station_forced_the_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """The one model template whose window can resolve to the station.
+
+    Every forward window falls to the Archive whole — the as-of view has
+    truncated today, so no forecast window is ever complete (family C's
+    measurement) — which leaves T19's retrospective week as the only GR2L run in
+    the catalog that can be forced by the site's own instruments, and the only
+    one whose pins can carry ``station_derivation``.
+    """
+    monkeypatch.setattr(gr2l_module, "run_gr2l", StubGr2l(ssub=_T19_FLAT_MM))
+    ctx = _context(
+        db=_t19_db(tmp_path / "t19pins.duckdb"), weather=StubWeather(source="station")
+    )
+
+    pins = asyncio.run(t19_model_deviation(_inputs("T19", roof=MODELLABLE, d=7), ctx)).pins
+
+    assert pins["weather_source"] == ["station"]
+    assert pins["station_derivation"] == station_derivation_version()
+    assert len(pins["gr2l_canary"]) == 64
+
+
+@pytest.mark.parametrize("days", [0, -3, 2.5, "7", True])
+def test_t19_refuses_a_look_back_that_is_not_whole_days(days: object):
+    """One rule, two directions: the backward horizon is checked like the forward one."""
+    with pytest.raises(OracleInputError, match="whole number of days"):
+        past_days_for(days)
+
+
 # --- Pins: stamped where they were read ---------------------------------------
 
 
@@ -1695,9 +1924,9 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
     lookup away from a case file, and T111 looks a template up here rather than
     mapping an id to a function by parsing it.
 
-    **T24a is absent on purpose.** Its answer is null and the deliverable is the
-    spec, so there is nothing to materialize; an entry would have to invent an
-    answer to have something to return.
+    **T24a is registered and materializes a status rather than an answer.** Its
+    answer is null on every variant, but §6.1 gives ``status`` no channel but the
+    oracle's and the three variants do not agree on it.
     """
     assert sorted(ORACLES) == [
         "T01",
@@ -1708,6 +1937,7 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
         "T06",
         "T07",
         "T09",
+        "T10",
         "T13",
         "T14",
         "T15a",
@@ -1716,6 +1946,7 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
         "T17b",
         "T18a",
         "T18b",
+        "T19",
         "T24a",
         "T24b",
     ]
@@ -1727,6 +1958,8 @@ def test_the_registry_holds_what_has_been_checked_and_only_it():
     assert ORACLES["T06"] is t06_stated_constant
     assert ORACLES["T07"] is t07_needs_irrigation_now
     assert ORACLES["T09"] is t09_falls_below_threshold
+    assert ORACLES["T10"] is t10_predicted_minimum
+    assert ORACLES["T19"] is t19_model_deviation
     assert ORACLES["T15a"] is t15a_past_rain
     assert ORACLES["T17a"] is t17a_absent_constant
     assert ORACLES["T17b"] is t17b_scope_near_miss

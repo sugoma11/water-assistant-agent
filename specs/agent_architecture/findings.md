@@ -575,6 +575,32 @@ over one `make_case_context` at `as_of` 2026-04-20, in
 `tests/eval/test_oracles.py`.
 *Date:* 2026-08-24.
 
+**Family D against the live model, hand-checked.** At `as_of` 2026-04-20 12:00
+on the non-irrigated extensive roof, T10 over three days runs
+2026-04-20..2026-04-22 seeded at 20.14 %θ (the `QEx2` reading at 10:00, inside
+the cut) and returns substrate storage 14.10 / 11.4089 / 8.6292 mm, so the
+minimum is `8.6292 / 70 × 100 = 12.33 %θ` on the 22nd — the conversion the tool's
+own `_to_days` performs at `SH = 7 cm`, checkable without re-running the model.
+T19 over seven complete past days runs 2026-04-13..2026-04-19 seeded at
+13.69 %θ, with daily |predicted − measured| of 1.04, 1.081, 1.381, 2.029, 2.997,
+4.975 and 4.664 pp: mean `18.167 / 7 = 2.595 → 2.6 pp`, largest 4.97 pp. The two
+windows resolve to **different sources** — the forward one to the Archive, the
+retrospective week to the station — so T10 stamps three pins and T19 four.
+*Verified:* both oracles through `make_case_context(as_of, allow_live=True)`
+against the live GR2L service and the pinned database, one event loop, a scratch
+cache directory. *Date:* 2026-08-24.
+
+**T19 is the only GR2L window in the catalog that can reach the station.** It
+follows from the forward-window finding above rather than being a separate
+measurement: every other model template (T09, T10, T21, T22, T26) resolves a
+window starting on the case's own day, which the as-of view has truncated, so all
+of them fall to the Archive whole. T23's window is retrospective at its start but
+runs *to* the case's day and therefore reaches the same truncated day, so it
+falls too. That leaves T19's completed look-back as the one model template whose
+pins can carry `station_derivation`, and it did in the check above.
+*Verified:* the pin sets returned by the family D and G oracles at `as_of`
+2026-04-20 12:00. *Date:* 2026-08-24.
+
 ## External sources on this machine
 
 Paths outside this repository, recorded here rather than in the plan because a

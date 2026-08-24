@@ -368,23 +368,35 @@ candidate was never told: the oracle read "the next 72 hours" as three days whil
 candidate, writing the window as explicit dates, read it as four. Neither reading is wrong, which
 is precisely the problem — the disagreement is invisible except on a draw whose minimum falls
 between the two windows. In days the candidate passes the number the question names straight into
-`forecast_days`, and there is nothing left to infer. **T10 carries the identical ambiguity** ("the
-next 72 h") and should be rephrased the same way when T110 implements it.
+`forecast_days`, and there is nothing left to infer. **T10 and T19 carried the same ambiguity and are
+repaired here** (T110): T10's "the next 72 h" is T09's defect verbatim, and T19's "last week" is its
+backward twin — a calendar week beginning Monday is a different set of days from the seven ending
+yesterday, which is the redenotation `decisions.md` § Forward horizons are counted in days already
+forbids a paraphrase.
 
 **T10 — predicted minimum**
-Q: "What is the minimum soil moisture predicted for the {roof} roof over the next 72 h?" · roof ∈ P2
+Q: "What is the minimum soil moisture predicted for the {roof} roof over the next {d} days?"
+· roof ∈ P2
 A: numeric (%θ, ±0.1 abs) · Traj: {predict_green_roof_water_balance_tool} · Split: train+seen
 Oracle: the same chain, returning the summary's `min_swc_pct`.
+Note: T09's number without T09's comparison, off one run and one `min_swc_pct`. The pair is why both
+share an oracle helper: a candidate that reports the minimum correctly and compares it wrongly fails
+T09 and passes T10, and two oracles with two notions of "the minimum" could not tell those apart.
+Answered in **%θ, never in millimetres of storage** (§1.5) — GR2L holds the store in mm and the tool
+converts once.
 
 **T19 — retrospective model check**
-Q: "How far off was the soil-moisture model for the {roof} roof last week, on average?" · roof ∈ P2;
-window ends ≤ `as_of`
+Q: "How far off was the soil-moisture model for the {roof} roof over the last {d} days, on average?"
+· roof ∈ P2; the window is *d* complete past days ending yesterday, so it ends ≤ `as_of` by
+construction
 A: numeric (pp, ±0.1 abs) · Traj:
 {predict_green_roof_water_balance_tool(evaluate_against_measured=True)} · Must-not:
 `get_weather_forecast_tool` · Split: train+seen
 Oracle: the same call, reading mean |predicted − measured| from the summary.
 Note: past-facing model use; the must-not binds on the disclosure the tool contract mandates — the
-green-roof tool fetches its own weather.
+green-roof tool fetches its own weather. The **only retrospective GR2L window in the catalog**, and
+therefore the only model template whose forcing resolves to the station and whose pins carry
+`station_derivation` — every forward window falls to the Archive whole, measured under family C.
 
 ### E. Hybrid / full chain
 

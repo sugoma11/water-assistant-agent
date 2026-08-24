@@ -27,7 +27,11 @@ the abstention the third variant is scored on
 
 from eval.oracles.base import Oracle, OracleAnswer, OracleInputError
 from eval.oracles.irrigation import t07_needs_irrigation_now
-from eval.oracles.model_chain import t09_falls_below_threshold
+from eval.oracles.model_chain import (
+    t09_falls_below_threshold,
+    t10_predicted_minimum,
+    t19_model_deviation,
+)
 from eval.oracles.presentation import t24a_plot_request, t24b_extensive_gap
 from eval.oracles.reference import (
     t06_stated_constant,
@@ -59,6 +63,7 @@ ORACLES: dict[str, Oracle] = {
     "T06": t06_stated_constant,
     "T07": t07_needs_irrigation_now,
     "T09": t09_falls_below_threshold,
+    "T10": t10_predicted_minimum,
     "T13": t13_rain_expected,
     "T14": t14_forecast_max_temperature,
     "T15a": t15a_past_rain,
@@ -67,6 +72,7 @@ ORACLES: dict[str, Oracle] = {
     "T17b": t17b_scope_near_miss,
     "T18a": t18a_unservable_window,
     "T18b": t18b_missing_variable,
+    "T19": t19_model_deviation,
     "T24a": t24a_plot_request,
     "T24b": t24b_extensive_gap,
 }
@@ -89,6 +95,7 @@ __all__ = [
     "t06_stated_constant",
     "t07_needs_irrigation_now",
     "t09_falls_below_threshold",
+    "t10_predicted_minimum",
     "t13_rain_expected",
     "t14_forecast_max_temperature",
     "t15a_past_rain",
@@ -97,6 +104,7 @@ __all__ = [
     "t17b_scope_near_miss",
     "t18a_unservable_window",
     "t18b_missing_variable",
+    "t19_model_deviation",
     "t24a_plot_request",
     "t24b_extensive_gap",
 ]

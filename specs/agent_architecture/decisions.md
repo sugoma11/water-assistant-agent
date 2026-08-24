@@ -1037,10 +1037,13 @@ covered windows only.
 
 ## Forward horizons are counted in days
 
-Every template whose window reaches forward — T09, T13, T14, T15b, T18a, T18b —
-carries the horizon as a **whole number of days** in its parameters, and the
-question names that number. No template asks in hours, and none carries a future
-window as a `start..end` range.
+Every template whose window reaches forward — T09, T10, T13, T14, T15b, T18a,
+T18b, T20, T21, T26, T27 — carries the horizon as a **whole number of days** in
+its parameters, and the question names that number. No template asks in hours,
+and none carries a future window as a `start..end` range. **A relative window
+that reaches backward is bound by the same rule**: T19's look-back is *d*
+complete past days and T23's overridden state sits on a named date, never on
+"last week" or "last Monday".
 
 Two independent forcings, either of which alone would settle it.
 
@@ -1050,7 +1053,16 @@ oracle reading "the next 72 hours" as three days while a candidate writing the
 same phrase as explicit dates read it as four, and nothing on either side could
 see the disagreement: the two silently differed on every draw whose answer did
 not happen to fall the same way in both windows. T09 was repaired then; T13 and
-T15b carried the same shape until T110 and are repaired here.
+T15b carried the same shape into T110's first packet, and T10, T19, T20, T21,
+T23, T26 and T27(i) into its second. All of them are repaired, and the list above
+is now every template with a relative window rather than the four that had been
+noticed.
+
+**A named calendar span is the same defect wearing a noun.** "Last week", "the
+coming week" and "last Monday" are not day counts — the validity condition below
+already says why, and it says it about paraphrases, but a *sketch* that writes
+one is the same redenotation authored into the template instead of introduced by
+a translator. T19, T20 and T23 carried one each until T110's second packet.
 
 **A future range is unrunnable.** `period_param_within_as_of` intersects every
 `YYYY-MM-DD` a parameter carries with the case's own cut (T104), and a future

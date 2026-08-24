@@ -26,6 +26,7 @@ from eval.generation.instantiate import event_draw, generate
 from eval.generation.templates import (
     M,
     TEMPLATES,
+    Pools,
     Template,
     Undrawable,
     band_days,
@@ -67,7 +68,9 @@ def _rendered() -> tuple[tuple[Template, dict[str, Any], str, str, str], ...]:
     comparison is about the paraphrase rather than about two different cases.
     """
     rng = Random(20260824)
-    days = band_days()
+    # The whole band, undivided: a surface is checked over every draw the
+    # catalog admits, not over one split's stripe of them.
+    days = Pools(band_days())
     out: list[tuple[Template, dict[str, Any], str, str, str]] = []
     for name in sorted(_bound()):
         template = _bound()[name]
@@ -274,7 +277,7 @@ def test_the_documentary_reference_lands_exactly_where_the_gold_route_is_a_looku
             for fragment in template.strata(split) or ({},):
                 for _ in range(4):
                     try:
-                        _, drawn = template.draw(rng, band_days(), fragment)
+                        _, drawn = template.draw(rng, Pools(band_days()), fragment)
                     except Undrawable:
                         continue
                     if P.names_documentation(template.render({**fragment, **drawn})):

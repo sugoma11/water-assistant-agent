@@ -1318,3 +1318,76 @@ within each split" means there.
 **Validity condition:** every template is asked in both languages in every split
 it carries. A per-split balance assembled from monolingual templates reports the
 same 50/50 and measures nothing.
+
+---
+
+## The `as_of` band is dealt out one day at a time
+
+The three splits take every third day of the band — train 2025-06-01, test_seen
+06-02, test_unseen 06-03, and so on to 2026-04-24. Disjoint, and interleaved at
+the finest stride there is.
+
+**Because what the interleaving protects against clusters on a multi-day scale.**
+A storm lasts two to six days, a heatwave three or more, the record's two
+lysimeter outages four and thirty-five. A stripe wider than the episode hands
+whole episodes to one split, which is the seasonal imbalance a contiguous cut has
+in a milder form: §1.7 rejects the cut because it strands summer on one side and
+makes T02, T08 and T20 unbalanceable. At stride 3 no split is ever more than two
+days from any event in the record, and each holds a third of every week and every
+month of the band.
+
+**Rejected:**
+
+- *A contiguous cut — train the first two thirds, test the last third.* §1.7's
+  own rejection, and it also puts the two outages entirely inside one split.
+- *Week-long or month-long stripes.* Each split still spans the band, but a
+  single storm or heatwave now falls inside one stripe, and T04's wet days —
+  1 in 6.3 of the pool and clustered — thin unevenly between the splits.
+- *Assigning days at random.* Equivalent in expectation and worse in fact: the
+  assignment is then a property of the seed rather than of the calendar, and a
+  reviewer cannot check a split's membership without rerunning the generator.
+
+**Validity condition:** the day stripe is also what makes a `{period}`
+disjoint. A window is a continuum and cannot be enumerated into halves, so its
+end day is drawn from the split's own days — and two splits' periods then differ
+in a value the case file carries.
+
+---
+
+## Value pools are striped, and the holdout takes them whole
+
+Every discrete pool a template samples — thresholds, months, events, aliases,
+horizons, override values, stated values, the forcing offset — is cut by position:
+train takes the even members, test_seen the odd, test_unseen all of them.
+
+**Striped rather than cut at a point**, for the reason `as_of` is: a pool split at
+its median gives train the low thresholds and test_seen the high ones, which
+confounds the split with the difficulty of the draw and can put one class of a
+bool template out of reach on one side. Every other member leaves both sides
+spanning the same range.
+
+**The holdout takes every pool whole**, because its novelty is its templates.
+T16b, T20, T22, T23, T26 never appear in train at all, so a shared value carries
+no answer with it; a third stripe would thin every pool by another third — T20
+has to reach both classes out of five horizons — and would confound a
+template-transfer failure with an unseen parameter value, which is not the one
+axis a holdout entry moves.
+
+**Rejected:**
+
+- *Drawing freely and rejecting values the other split has used.* It converges to
+  the same sets and is precisely the "achieved by independent resampling" §1.7
+  rules out: the constraint would then hold of one run rather than of the design,
+  and the order the splits are generated in would decide who gets which value.
+- *Assigning each value to a side by a hash of the value.* Value-intrinsic, which
+  is the property that matters, but the split of a seven-member pool is then
+  binomial — 7/0 is a pool one side cannot draw from at all.
+- *Cutting the pools by hand, per template.* Thirty-two entries, each a place to
+  forget a parameter; the memorized-constant detector fails open silently when
+  one is missed.
+
+**Validity condition:** the stripe must be a property of the *value*, not of its
+index in one particular list. Two lists that share values and are striped
+separately put the same value on both sides — measured on T24a's `{month}`, whose
+two tables offer overlapping month lists (`findings.md`). Pools that overlap are
+striped once, over the widest of them, and narrowed afterwards.

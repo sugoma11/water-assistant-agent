@@ -40,6 +40,7 @@ from eval.generation.templates import (
     BAND_START,
     M,
     TEMPLATES,
+    Pools,
     Template,
     abstention_share,
     as_of_at,
@@ -500,7 +501,7 @@ def test_no_question_names_a_roof_by_its_raw_column():
         for _ in range(20):
             for fragment in template.strata("train") or ({},):
                 try:
-                    _, params = template.draw(rng, band_days(), fragment)
+                    _, params = template.draw(rng, Pools(band_days()), fragment)
                 except Exception:  # an undrawable shape renders nothing
                     continue
                 question = template.render({**fragment, **params})

@@ -3418,10 +3418,57 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   `§ Both sides of the style cut carry colloquial German`).
   24 tests in `tests/eval/test_paraphrases.py` over 6 816 renderings. `uv run
   ruff check .` and `uv run pytest tests/eval tests/harness` clean.
-- [ ] T113 Splits per §1.7 with the generation constraints enforced *in
+- [x] T113 Splits per §1.7 with the generation constraints enforced *in
   generation*: per-param disjointness between train and test_seen on every sampled
   parameter; `as_of` as a striped partition, never a cut point; roof deliberately
   shared; language balanced and reported as a stratum. → T111, T007
+  Done. `eval/generation/splits.py` builds one `Pools` per split and the draw loop
+  takes it; **a value belonging to the other split is never drawn at all**, which
+  is what §1.7 means by "enforced in generation and not achieved by independent
+  resampling". `Pools` carries exactly two things, because a split differs in
+  exactly two: its striped `as_of` days, and its parity over every discrete value
+  pool. Roof and the stratified `variant` axis are absent from it, which is how
+  "shared, deliberately" is written in code.
+  **The cut is a stripe on both axes.** `as_of` is dealt out one day at a time
+  (`decisions.md § The as_of band is dealt out one day at a time`) — the finest
+  stride there is, because what the interleaving protects against clusters on a
+  multi-day scale: a storm, a heatwave, the record's 4- and 35-day outages. Value
+  pools take every other member rather than a half each side of the median, which
+  would confound the split with the difficulty of the draw. A `{period}` is a
+  continuum and is cut where it touches the day stripe: its end day is one of the
+  split's own, so two splits' windows differ in a value the case file carries.
+  **The holdout takes every pool whole** — its novelty is its templates, and a
+  third stripe would confound a template-transfer failure with an unseen value.
+  **Asserted by test, and in two ways that fail differently** (`tests/eval/
+  test_splits.py`, 19 tests): exhaustively over the samplers — 200 draws per
+  template per split, which reaches every member of every pool and would catch a
+  parameter that *could* be shared even if no case ever drew it — and over the
+  emitted cases of a generation pass, which is the property the suite actually
+  has. Both would pass vacuously on their own; a third test checks the same
+  comparison finds the shared axes overlapping, so the assertion is comparing
+  something.
+  **A defect found in this row's own output, not by inspection.** T24a draws its
+  `{month}` from `outflow`'s eleven complete months on one variant and `swc`'s
+  twenty on another; striping each list by position put `2025-07` in train through
+  the first and in test_seen through the second, and **one template's parameter
+  overlapped between the splits** while everything else was clean. The stripe is
+  now taken over the widest month list and narrowed afterwards, so a month's side
+  is a property of the month. It was invisible to the sampler and visible only in
+  the emitted parameters, which is why `GenerationRun.report()` now carries
+  `parameter_overlaps` and why the exit criterion is asserted over cases as well
+  as draws (`findings.md`).
+  **A whole-catalog pass under the cut: 273 cases in 400 draws, 68.3 % accepted
+  against 70.5 % uncut** — so the cut cost the sampler almost nothing. Train
+  100/100, test_seen 125/125, test_unseen 48/48 with T26 held out of the pass;
+  abstentions 13 / 16 / 16; all ten bool templates balanced; `parameter_overlaps`
+  empty; languages 50/50, 63/62, 24/24. `as_of` is **striped, not cut**, and the
+  three numbers that say so are longest consecutive run **1** in every split, 11
+  calendar months touched in every split, and each split spanning the whole band.
+  **T12 is the one cut that could have failed on the data**, since its pool is the
+  record's: the 15 candidate windows stripe 8/7, the 11 qualifying ones land 6/5,
+  and train and test_seen hold disjoint event sets with both classes reachable —
+  which is what `t12_rain_events.md` predicted.
+  `uv run ruff check .` and `uv run pytest` clean.
 - [ ] T114 Emit `eval/cases/{train,test_seen,test_unseen}.json` as pretty-printed
   arrays through T010's schema — deterministic key order, sorted by `case_id`,
   `indent=2`, trailing newline, generated and never hand-edited. Loadable directly

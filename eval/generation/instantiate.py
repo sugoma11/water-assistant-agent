@@ -49,16 +49,16 @@ from jsonschema import Draft202012Validator
 from water_assistant_agent.assistant.context import ScenarioContext
 from water_assistant_agent.assistant.tools.site import site_day_expr
 
-from eval.generation import filters, paraphrases
+from eval.generation import filters, paraphrases, splits as split_pools
 from eval.generation.paraphrases import Choice
 from eval.generation.templates import (
     TEMPLATES,
     Draw,
+    Pools,
     Template,
     Undrawable,
     after_window,
     as_of_at,
-    band_days,
     rain_events,
     roof_pool_for,
 )
@@ -201,13 +201,23 @@ class GenerationRun:
         }
 
     def report(self) -> dict[str, Any]:
-        """The numbers a generation pass is checked by, in one object."""
+        """The numbers a generation pass is checked by, in one object.
+
+        The last three are T113's, and they are read off the **cases** rather than
+        off the sampler: a split whose constraint is enforced in generation still
+        has to be shown to hold in what it produced, and the emitted parameters
+        are the only evidence that survives the run.
+        """
         reasons: dict[str, int] = {}
         for rejection in self.rejections:
             reasons[rejection.reason] = reasons.get(rejection.reason, 0) + 1
         splits = sorted({item.split for item in self.instances})
+        by_split = {split: self.for_split(split) for split in splits}
+        overlaps = split_pools.overlaps(
+            by_split.get("train", []), by_split.get("test_seen", [])
+        )
         return {
-            "n": {split: len(self.for_split(split)) for split in splits},
+            "n": {split: len(cases) for split, cases in by_split.items()},
             "abstentions": {
                 split: sum(
                     1 for item in self.instances if item.split == split and item.abstains
@@ -216,6 +226,12 @@ class GenerationRun:
             },
             "rejections": reasons,
             "attempts": sum(self.attempts.values()),
+            "languages": split_pools.language_stratum(by_split),
+            "as_of": split_pools.stripe_report(by_split),
+            "parameter_overlaps": {
+                f"{template}.{param}": sorted(map(str, values))
+                for (template, param), values in overlaps.items()
+            },
         }
 
 
@@ -311,10 +327,13 @@ def event_draw(events: Sequence[tuple[date, date]]) -> Draw:
     of two.
     """
 
-    def build(rng: Random, fixed: Mapping[str, Any]) -> tuple[dict[str, Any], date]:
-        if not events:
+    def build(
+        rng: Random, fixed: Mapping[str, Any], pools: Pools
+    ) -> tuple[dict[str, Any], date]:
+        candidates = pools.of(events)
+        if not candidates:
             raise Undrawable("the record holds no rain event of the catalog's depth")
-        start, end = rng.choice(list(events))
+        start, end = rng.choice(list(candidates))
         return (
             {
                 "roof": rng.choice(list(pool_members("P1f"))),
@@ -368,7 +387,7 @@ async def draw_one(
     *,
     split: str,
     rng: Random,
-    days: Sequence[date],
+    pools: Pools,
     context_for: ContextFactory,
     fixed: Mapping[str, Any],
     case_id: str,
@@ -388,7 +407,7 @@ async def draw_one(
     run.attempts[key] = run.attempts.get(key, 0) + 1
 
     try:
-        as_of, drawn = template.draw(rng, days, fixed)
+        as_of, drawn = template.draw(rng, pools, fixed)
     except Undrawable as exc:
         run.rejections.append(
             Rejected(template.template_id, split, "undrawable", str(exc))
@@ -466,7 +485,7 @@ async def instantiate(
     *,
     split: str,
     rng: Random,
-    days: Sequence[date],
+    pools: Pools,
     context_for: ContextFactory,
     run: GenerationRun,
     surfaces: Sequence[Choice] = (),
@@ -515,7 +534,7 @@ async def instantiate(
                 template,
                 split=split,
                 rng=rng,
-                days=days,
+                pools=pools,
                 context_for=context_for,
                 fixed=strata[index],
                 case_id=f"{template.template_id}-{start_index + index:04d}",
@@ -542,31 +561,35 @@ async def generate(
     templates: Mapping[str, Template] = TEMPLATES,
     splits: Iterable[str] = ("train", "test_seen", "test_unseen"),
     seed: int = 20260824,
-    days: Sequence[date] | None = None,
-    day_pools: Mapping[str, Sequence[date]] | None = None,
+    pools: Mapping[str, Pools] | None = None,
     context_for: ContextFactory | None = None,
     max_attempts: int = MAX_ATTEMPTS,
 ) -> GenerationRun:
     """A whole pass over the registry, one template at a time.
 
-    *day_pools* is where T113 arrives: ``as_of`` is a **striped** partition rather
-    than a cut point, so a split's pool is a set of interleaved band days and this
-    takes it per split. Absent, every split draws the whole band, which is the
-    right default for a packet that is not cutting splits yet.
+    *pools* is T113's cut, and it is the whole of what differs between splits:
+    the split's striped ``as_of`` days and its half of every discrete value pool
+    (:mod:`eval.generation.splits`). Every constraint §1.7 states is therefore
+    enforced **in generation** — a value belonging to the other split is never
+    drawn — rather than by resampling until one holds. The default is
+    :func:`eval.generation.splits.pools`; passing one is for a test that wants a
+    narrower band.
 
     *context_for* is injected so a caller can decide whether the run may reach the
     network at all: the measured families answer from the pinned database alone,
     and the model families need weather and GR2L.
     """
-    pool = tuple(days) if days is not None else band_days()
+    by_split = dict(pools or split_pools.pools())
     context_for = context_for or cached_contexts()
     run = GenerationRun()
 
-    # One context is needed before the loop, to read the record-bound pools off.
-    bound = await bind_record(context_for(as_of_at(pool[-1])), templates)
+    # One context is needed before the loop, to read the record-bound pools off,
+    # and it is built at the latest day any split can see so the whole record is
+    # in scope — the event pool is the record's, not a split's.
+    latest = max(day for pool in by_split.values() for day in pool.days)
+    bound = await bind_record(context_for(as_of_at(latest)), templates)
 
     for split in splits:
-        split_days = tuple((day_pools or {}).get(split, pool))
         rng = Random(f"{seed}:{split}")
         planned = paraphrases.plan(split, bound)
         for template_id in sorted(bound):
@@ -574,7 +597,7 @@ async def generate(
                 bound[template_id],
                 split=split,
                 rng=rng,
-                days=split_days,
+                pools=by_split[split],
                 context_for=context_for,
                 run=run,
                 surfaces=planned.get(template_id, ()),

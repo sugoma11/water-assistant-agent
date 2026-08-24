@@ -133,10 +133,55 @@ class Undrawable(Exception):
     """
 
 
-Sampler = Callable[[Random, datetime, Mapping[str, Any]], dict[str, Any]]
+@dataclasses.dataclass(frozen=True, slots=True)
+class Pools:
+    """What one split may draw — the whole of what differs between splits (T113).
+
+    Two fields, because §1.7 cuts a split along exactly two axes and shares every
+    other one:
+
+    * :attr:`days` — the split's ``as_of`` days, a **stripe** of the band rather
+      than a contiguous band of its own, and the same stripe the retrospective
+      families anchor their window on. A window whose end day is a train day is
+      a value no test_seen draw can produce, which is how a ``{period}`` obeys
+      per-parameter disjointness without being enumerable.
+    * :attr:`parity` — which half of every discrete value pool this split takes.
+      ``0`` is train and ``1`` is test_seen, by position in the pool's own order;
+      ``None`` takes the pool whole and is the holdout's.
+
+    **Roof, and the stratified ``variant`` axis, are absent on purpose.** They are
+    shared (§1.7), so there is nothing per-split to carry: a template reads them
+    from :func:`~harness.assertions.pool_members` and from its strata exactly as
+    before.
+    """
+
+    days: tuple[date, ...]
+    parity: int | None = None
+
+    def of(self, values: Sequence[Any]) -> tuple[Any, ...]:
+        """This split's stripe of *values* — its every-other member, or all of them.
+
+        **Striped rather than cut at a point**, for the reason ``as_of`` is: a
+        pool split at its median gives train the low thresholds and test_seen the
+        high ones, which confounds the split with the difficulty of the draw and
+        can put one class of a bool template out of reach on one side. Every
+        other member leaves both sides spanning the same range.
+        """
+        if self.parity is None:
+            return tuple(values)
+        return tuple(
+            value for index, value in enumerate(values) if index % 2 == self.parity
+        )
+
+    def since(self, earliest: date) -> tuple[date, ...]:
+        """The split's days from *earliest* on, for a window that cannot open sooner."""
+        return tuple(day for day in self.days if day >= earliest)
+
+
+Sampler = Callable[[Random, datetime, Mapping[str, Any], Pools], dict[str, Any]]
 """Parameters drawn *from* an ``as_of`` — the forward and ``as_of``-relative families."""
 
-Builder = Callable[[Random, Mapping[str, Any]], tuple[dict[str, Any], date]]
+Builder = Callable[[Random, Mapping[str, Any], Pools], tuple[dict[str, Any], date]]
 """Parameters drawn first, returning the earliest ``as_of`` that can see them.
 
 The retrospective families: a ``{month}``, a ``{period}``, T04's ``{date}``,
@@ -147,13 +192,13 @@ the early one and, on T04, thins the wet class from the record's 1-in-6 to
 1-in-25. Drawing the window first and the cut afterwards leaves both uniform.
 """
 
-Draw = Callable[
-    [Random, Sequence[date], Mapping[str, Any]], tuple[datetime, dict[str, Any]]
-]
-"""One whole draw: an ``as_of`` and the parameters, from the split's own day pool.
+Draw = Callable[[Random, Pools, Mapping[str, Any]], tuple[datetime, dict[str, Any]]]
+"""One whole draw: an ``as_of`` and the parameters, out of the split's own pools.
 
-The pool is the split's because §1.7 stripes ``as_of`` rather than cutting it
-(T113); everything here takes it as given and never reaches for the band.
+The pools are the split's because §1.7 stripes ``as_of`` rather than cutting it
+and cuts every sampled parameter between train and test_seen (T113). Everything
+here takes them as given and never reaches for the band or for a module-level
+pool directly.
 """
 
 Requires = Callable[[Mapping[str, Any], datetime], tuple[Requirement, ...]]
@@ -181,10 +226,10 @@ def from_as_of(sampler: Sampler) -> Draw:
     """A :data:`Draw` that takes ``as_of`` first — the forward families' shape."""
 
     def draw(
-        rng: Random, days: Sequence[date], fixed: Mapping[str, Any]
+        rng: Random, pools: Pools, fixed: Mapping[str, Any]
     ) -> tuple[datetime, dict[str, Any]]:
-        as_of = as_of_at(rng.choice(list(days)))
-        return as_of, sampler(rng, as_of, fixed)
+        as_of = as_of_at(_pick(rng, pools.days))
+        return as_of, sampler(rng, as_of, fixed, pools)
 
     return draw
 
@@ -197,13 +242,13 @@ def after_window(builder: Builder) -> Draw:
     """
 
     def draw(
-        rng: Random, days: Sequence[date], fixed: Mapping[str, Any]
+        rng: Random, pools: Pools, fixed: Mapping[str, Any]
     ) -> tuple[datetime, dict[str, Any]]:
-        params, earliest = builder(rng, fixed)
-        reachable = [day for day in days if day >= earliest]
+        params, earliest = builder(rng, fixed, pools)
+        reachable = pools.since(earliest)
         if not reachable:
             raise Undrawable(f"no as_of in this split's pool falls on or after {earliest}")
-        return as_of_at(rng.choice(reachable)), params
+        return as_of_at(_pick(rng, reachable)), params
 
     return draw
 
@@ -330,19 +375,36 @@ def _roof(rng: Random, pool: str) -> str:
     return _pick(rng, pool_members(pool))
 
 
-def _band_window(rng: Random, length: int) -> tuple[date, date]:
-    """A *length*-day window lying wholly inside the band, drawn uniformly.
+def _band_window(rng: Random, length: int, pools: Pools) -> tuple[date, date]:
+    """A *length*-day window inside the band, ending on one of the split's own days.
 
     315 of them at 14 days over the band's 328, which is the pool
     ``findings.md`` § What the record supports as a heatwave definition measures
-    T08's acceptance rate against.
+    T08's acceptance rate against; a third of those ends belong to each split.
+
+    **The end day is where a ``{period}`` becomes disjoint** (T113). A window is
+    a continuum and cannot be enumerated into two halves, but its end is a band
+    day and the band is striped — so a train period and a test_seen period differ
+    in a value the case file carries, and per-parameter disjointness is checkable
+    on the parameter itself rather than on a summary of it.
     """
     earliest_end = BAND_START + timedelta(days=length - 1)
-    span = (BAND_END - earliest_end).days
-    if span < 0:
+    if earliest_end > BAND_END:
         raise Undrawable(f"no {length}-day window fits inside the band")
-    end = earliest_end + timedelta(days=rng.randrange(span + 1))
+    end = _pick(rng, pools.since(earliest_end))
     return end - timedelta(days=length - 1), end
+
+
+def _offset(rng: Random, days: int, pools: Pools) -> int:
+    """Which day of a *days*-long window a forcing lands on, striped like any pool.
+
+    ``{offset}`` counts today as 0 (``questions.md`` §2 T21) and its range follows
+    the horizon it sits inside, so it is a pool built per draw rather than a
+    module constant — striped all the same, because §1.7's disjointness is over
+    *every* sampled parameter and (``mm``, ``offset``) is the pair a memorized
+    counterfactual would be keyed on.
+    """
+    return _pick(rng, pools.of(tuple(range(days))))
 
 
 def _period(window: tuple[date, date]) -> str:
@@ -372,6 +434,38 @@ def _complete_months(table: str) -> tuple[str, ...]:
     if not months:
         raise Undrawable(f"{table} covers no whole month inside the band")
     return tuple(months)
+
+
+WIDEST_MONTH_TABLE = "swc"
+"""The table whose complete months contain every other table's, for :func:`_months`.
+
+``swc`` and ``wetter`` open on the same day and ``outflow`` eleven months later,
+so ``swc``'s month list is the superset every month draw in the catalog is a
+subset of. Named rather than assumed: a table that ever opened earlier would move
+this, and :func:`_months` asserts nothing else.
+"""
+
+
+def _months(table: str, pools: Pools) -> tuple[str, ...]:
+    """The split's months for *table* — striped once, over the record's widest list.
+
+    **A stripe taken over two different lists is not a stripe over the value**, and
+    that is a defect T113 found by reading the emitted parameters rather than the
+    sampler. T24a draws its ``{month}`` from ``outflow``'s eleven complete months
+    on the flux variant and from ``swc``'s twenty on the state one; striping each
+    list by position put ``2025-07`` at index 2 of the first (train) and index 11
+    of the second (test_seen), so one template's own parameter overlapped between
+    the splits and §1.7's memorized-constant detector was open on it.
+
+    Striping the widest list and narrowing afterwards makes a month's side a
+    property of the month, whichever template asks and through whichever table.
+    """
+    available = set(_complete_months(table))
+    return tuple(
+        month
+        for month in pools.of(_complete_months(WIDEST_MONTH_TABLE))
+        if month in available
+    )
 
 
 def _month_window(month: str) -> tuple[date, date]:
@@ -479,10 +573,10 @@ def _declined_aliases() -> tuple[str, ...]:
 
 
 def _build_month_outflow(
-    rng: Random, fixed: Mapping[str, Any]
+    rng: Random, fixed: Mapping[str, Any], pools: Pools
 ) -> tuple[dict[str, Any], date]:
     """T01 and T05's draw: a roof with a lysimeter and a month that roof shed into."""
-    month = _pick(rng, _complete_months("outflow"))
+    month = _pick(rng, _months("outflow", pools))
     return {"roof": _roof(rng, "P1f"), "month": month}, _month_window(month)[1]
 
 
@@ -491,10 +585,12 @@ def _requires_month_outflow(params: Mapping[str, Any], as_of: datetime) -> tuple
     return (roof_requirement(str(params["roof"]), "outflow", start, end),)
 
 
-def _build_t02(rng: Random, fixed: Mapping[str, Any]) -> tuple[dict[str, Any], date]:
-    window = _band_window(rng, 14)
+def _build_t02(
+    rng: Random, fixed: Mapping[str, Any], pools: Pools
+) -> tuple[dict[str, Any], date]:
+    window = _band_window(rng, 14, pools)
     return (
-        {"period": _period(window), "thr": _pick(rng, HOT_DAY_THRESHOLDS)},
+        {"period": _period(window), "thr": _pick(rng, pools.of(HOT_DAY_THRESHOLDS))},
         window[1],
     )
 
@@ -517,8 +613,10 @@ def _requires_station(
 
 
 def _build_period(length: int) -> Builder:
-    def build(rng: Random, fixed: Mapping[str, Any]) -> tuple[dict[str, Any], date]:
-        window = _band_window(rng, length)
+    def build(
+        rng: Random, fixed: Mapping[str, Any], pools: Pools
+    ) -> tuple[dict[str, Any], date]:
+        window = _band_window(rng, length, pools)
         return {"period": _period(window)}, window[1]
 
     return build
@@ -542,7 +640,9 @@ def _requires_extensive_pair(
     )
 
 
-def _build_t04(rng: Random, fixed: Mapping[str, Any]) -> tuple[dict[str, Any], date]:
+def _build_t04(
+    rng: Random, fixed: Mapping[str, Any], pools: Pools
+) -> tuple[dict[str, Any], date]:
     """A roof and one band day — the suite's tightest date pool.
 
     Daily outflow is exactly zero on 75–94 % of band days depending on roof, so
@@ -555,8 +655,7 @@ def _build_t04(rng: Random, fixed: Mapping[str, Any]) -> tuple[dict[str, Any], d
     the class prior the record's own 1-in-6 rather than the 1-in-25 an
     ``as_of``-first draw produces by burying the wet winter under the dry summer.
     """
-    earliest = max(BAND_START, RECORD_START["outflow"])
-    drawn = earliest + timedelta(days=rng.randrange((BAND_END - earliest).days + 1))
+    drawn = _pick(rng, pools.since(max(BAND_START, RECORD_START["outflow"])))
     return {"roof": _roof(rng, "P1f"), "date": drawn.isoformat()}, drawn
 
 
@@ -565,15 +664,19 @@ def _requires_day_outflow(params: Mapping[str, Any], as_of: datetime) -> tuple[R
     return (roof_requirement(str(params["roof"]), "outflow", day, day, kind="point"),)
 
 
-def _build_t15a(rng: Random, fixed: Mapping[str, Any]) -> tuple[dict[str, Any], date]:
-    window = _band_window(rng, 7)
+def _build_t15a(
+    rng: Random, fixed: Mapping[str, Any], pools: Pools
+) -> tuple[dict[str, Any], date]:
+    window = _band_window(rng, 7, pools)
     return {"past_period": _period(window)}, window[1]
 
 
 # --- Families B and C: lookup and weather -------------------------------------
 
 
-def _sample_nothing(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> dict[str, Any]:
+def _sample_nothing(
+    rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
+) -> dict[str, Any]:
     """Templates whose whole question is fixed — T06, T17a, T17b, T25.
 
     ``as_of`` still varies, which is the only axis these have, and for T25 it is
@@ -583,22 +686,36 @@ def _sample_nothing(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> d
 
 
 def _sample_horizon(pool: Sequence[int] = FORWARD_HORIZONS) -> Sampler:
-    def sample(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> dict[str, Any]:
-        return {"d": _pick(rng, pool)}
+    def sample(
+        rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
+    ) -> dict[str, Any]:
+        return {"d": _pick(rng, pools.of(pool))}
 
     return sample
 
 
-def _sample_t13(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> dict[str, Any]:
-    return {"thr": _pick(rng, RAIN_THRESHOLDS), "d": _pick(rng, FORWARD_HORIZONS)}
+def _sample_t13(
+    rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
+) -> dict[str, Any]:
+    return {
+        "thr": _pick(rng, pools.of(RAIN_THRESHOLDS)),
+        "d": _pick(rng, pools.of(FORWARD_HORIZONS)),
+    }
 
 
-def _sample_t18a(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> dict[str, Any]:
-    return {"ahead_days": _pick(rng, BEYOND_HORIZON_DAYS)}
+def _sample_t18a(
+    rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
+) -> dict[str, Any]:
+    return {"ahead_days": _pick(rng, pools.of(BEYOND_HORIZON_DAYS))}
 
 
-def _sample_t18b(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> dict[str, Any]:
-    return {"variable": _pick(rng, UNSERVED_VARIABLES), "d": _pick(rng, FORWARD_HORIZONS)}
+def _sample_t18b(
+    rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
+) -> dict[str, Any]:
+    return {
+        "variable": _pick(rng, pools.of(UNSERVED_VARIABLES)),
+        "d": _pick(rng, pools.of(FORWARD_HORIZONS)),
+    }
 
 
 def _requires_yesterday_station(
@@ -617,26 +734,34 @@ def _requires_yesterday_station(
 
 
 def _sample_roof_only(pool: str) -> Sampler:
-    def sample(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> dict[str, Any]:
+    def sample(
+        rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
+    ) -> dict[str, Any]:
         return {"roof": _roof(rng, pool)}
 
     return sample
 
 
-def _sample_t09(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> dict[str, Any]:
+def _sample_t09(
+    rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
+) -> dict[str, Any]:
     return {
         "roof": _roof(rng, "P2"),
-        "thr": _pick(rng, MOISTURE_THRESHOLDS),
-        "d": _pick(rng, FORWARD_HORIZONS),
+        "thr": _pick(rng, pools.of(MOISTURE_THRESHOLDS)),
+        "d": _pick(rng, pools.of(FORWARD_HORIZONS)),
     }
 
 
-def _sample_t10(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> dict[str, Any]:
-    return {"roof": _roof(rng, "P2"), "d": _pick(rng, FORWARD_HORIZONS)}
+def _sample_t10(
+    rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
+) -> dict[str, Any]:
+    return {"roof": _roof(rng, "P2"), "d": _pick(rng, pools.of(FORWARD_HORIZONS))}
 
 
-def _sample_t19(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> dict[str, Any]:
-    days = _pick(rng, PAST_HORIZONS)
+def _sample_t19(
+    rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
+) -> dict[str, Any]:
+    days = _pick(rng, pools.of(PAST_HORIZONS))
     if _day(as_of) - timedelta(days=days) < BAND_START - timedelta(days=30):
         raise Undrawable("the comparison window opens before the record is usable")
     return {"roof": _roof(rng, "P2"), "d": days}
@@ -672,17 +797,21 @@ def _requires_t19(params: Mapping[str, Any], as_of: datetime) -> tuple[Requireme
     )
 
 
-def _sample_t21(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> dict[str, Any]:
-    days = _pick(rng, FORWARD_HORIZONS)
+def _sample_t21(
+    rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
+) -> dict[str, Any]:
+    days = _pick(rng, pools.of(FORWARD_HORIZONS))
     return {
         "roof": _roof(rng, "P2"),
         "d": days,
-        "mm": _pick(rng, FORCED_RAIN_MM),
-        "offset": rng.randrange(days),
+        "mm": _pick(rng, pools.of(FORCED_RAIN_MM)),
+        "offset": _offset(rng, days, pools),
     }
 
 
-def _sample_t22(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> dict[str, Any]:
+def _sample_t22(
+    rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
+) -> dict[str, Any]:
     """An albedo that is not the roof's own default, which would probe nothing.
 
     The default is read off ``ROOF_PRESETS`` per draw rather than assumed flat, on
@@ -691,18 +820,22 @@ def _sample_t22(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> dict[
     """
     roof = _roof(rng, "P2")
     default = float(ROOF_PRESETS[roof]["albedo"])
-    return {"roof": roof, "a": _pick(rng, [a for a in ALBEDOS if a != default])}
+    return {"roof": roof, "a": _pick(rng, [a for a in pools.of(ALBEDOS) if a != default])}
 
 
-def _sample_t23(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> dict[str, Any]:
+def _sample_t23(
+    rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
+) -> dict[str, Any]:
     return {
         "roof": _roof(rng, "P2"),
-        "x": _pick(rng, MOISTURE_THRESHOLDS),
-        "d": _pick(rng, (2, 3, 4, 5, 7, 10)),
+        "x": _pick(rng, pools.of(MOISTURE_THRESHOLDS)),
+        "d": _pick(rng, pools.of((2, 3, 4, 5, 7, 10))),
     }
 
 
-def _sample_stated(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> dict[str, Any]:
+def _sample_stated(
+    rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
+) -> dict[str, Any]:
     """T16a and T16b's four stated values — the same draw, by construction.
 
     The pair supplies identical inputs and differs in one thing, which is the
@@ -710,25 +843,27 @@ def _sample_stated(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> di
     """
     return {
         "roof": _roof(rng, "P2"),
-        "x": _pick(rng, STATED_MOISTURE),
-        "tmax": _pick(rng, STATED_TMAX),
-        "y": _pick(rng, STATED_RAIN),
+        "x": _pick(rng, pools.of(STATED_MOISTURE)),
+        "tmax": _pick(rng, pools.of(STATED_TMAX)),
+        "y": _pick(rng, pools.of(STATED_RAIN)),
     }
 
 
-def _sample_t26(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> dict[str, Any]:
-    days = _pick(rng, FORWARD_HORIZONS)
+def _sample_t26(
+    rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
+) -> dict[str, Any]:
+    days = _pick(rng, pools.of(FORWARD_HORIZONS))
     params: dict[str, Any] = {
         "variant": fixed["variant"],
         "d": days,
-        "mm": _pick(rng, FORCED_RAIN_MM),
-        "offset": rng.randrange(days),
+        "mm": _pick(rng, pools.of(FORCED_RAIN_MM)),
+        "offset": _offset(rng, days, pools),
     }
     if fixed["variant"] == VARIANT_ALBEDO_AND_RAIN:
         roof = _roof(rng, "P2")
         default = float(ROOF_PRESETS[roof]["albedo"])
         params["roof"] = roof
-        params["a"] = _pick(rng, [a for a in ALBEDOS if a != default])
+        params["a"] = _pick(rng, [a for a in pools.of(ALBEDOS) if a != default])
     else:
         pair = rng.sample(list(pool_members("P2")), 2)
         params["roof_a"], params["roof_b"] = pair
@@ -744,7 +879,9 @@ def _requires_t26(params: Mapping[str, Any], as_of: datetime) -> tuple[Requireme
 # --- Family H: presentation ---------------------------------------------------
 
 
-def _build_t24a(rng: Random, fixed: Mapping[str, Any]) -> tuple[dict[str, Any], date]:
+def _build_t24a(
+    rng: Random, fixed: Mapping[str, Any], pools: Pools
+) -> tuple[dict[str, Any], date]:
     """One month plus the shape the stratified variant fixes.
 
     The month is complete at ``as_of`` on every variant — the measured half has
@@ -756,7 +893,7 @@ def _build_t24a(rng: Random, fixed: Mapping[str, Any]) -> tuple[dict[str, Any], 
     """
     variant = fixed["variant"]
     table = fixed.get("table", "swc")
-    month = _pick(rng, _complete_months(table if table == "outflow" else "swc"))
+    month = _pick(rng, _months(table if table == "outflow" else "swc", pools))
     params: dict[str, Any] = {"variant": variant, "month": month}
     if variant == MEASURED_PAIR:
         pool = list(pool_members("P1f" if table == "outflow" else "P1"))
@@ -772,7 +909,7 @@ def _build_t24a(rng: Random, fixed: Mapping[str, Any]) -> tuple[dict[str, Any], 
     elif variant == MODEL_OVERLAY:
         params["roof"] = _roof(rng, "P2")
     else:
-        params["alias"] = _pick(rng, _declined_aliases())
+        params["alias"] = _pick(rng, pools.of(_declined_aliases()))
     return params, _month_window(month)[1]
 
 
@@ -879,15 +1016,19 @@ def _t24a_strata(split: str) -> tuple[dict[str, Any], ...]:
     return ()
 
 
-def _build_t24b(rng: Random, fixed: Mapping[str, Any]) -> tuple[dict[str, Any], date]:
-    month = _pick(rng, _complete_months("swc"))
+def _build_t24b(
+    rng: Random, fixed: Mapping[str, Any], pools: Pools
+) -> tuple[dict[str, Any], date]:
+    month = _pick(rng, _months("swc", pools))
     return {"month": month}, _month_window(month)[1]
 
 
 # --- Family I: modelling availability -----------------------------------------
 
 
-def _sample_t27(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> dict[str, Any]:
+def _sample_t27(
+    rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
+) -> dict[str, Any]:
     """An alias that reaches the scope limit, plus the horizon the variant needs.
 
     ``calc_irrigation`` takes no date arguments, so (ii) carries no horizon; (i)
@@ -895,11 +1036,14 @@ def _sample_t27(rng: Random, as_of: datetime, fixed: Mapping[str, Any]) -> dict[
     ``decisions.md`` § Forward horizons are counted in days gives.
     """
     variant = fixed["variant"]
-    params: dict[str, Any] = {"alias": _pick(rng, _declined_aliases()), "variant": variant}
+    params: dict[str, Any] = {
+        "alias": _pick(rng, pools.of(_declined_aliases())),
+        "variant": variant,
+    }
     if variant != VARIANT_IRRIGATION:
-        params["d"] = _pick(rng, FORWARD_HORIZONS)
+        params["d"] = _pick(rng, pools.of(FORWARD_HORIZONS))
     if variant == VARIANT_FORCED_RAIN:
-        params["mm"] = _pick(rng, FORCED_RAIN_MM)
+        params["mm"] = _pick(rng, pools.of(FORCED_RAIN_MM))
     return params
 
 
@@ -980,7 +1124,7 @@ def _unbound(reason: str) -> Draw:
     """A placeholder draw for a template whose pool is read off the record at run time."""
 
     def draw(
-        rng: Random, days: Sequence[date], fixed: Mapping[str, Any]
+        rng: Random, pools: Pools, fixed: Mapping[str, Any]
     ) -> tuple[datetime, dict[str, Any]]:
         raise Undrawable(reason)
 

@@ -1058,6 +1058,50 @@ the `{d}` horizon the entry itself repaired in.
 *Verified:* the rule applied to the catalog's example strings, in
 `tests/eval/test_paraphrases.py`. *Date:* 2026-08-24.
 
+**A whole-catalog pass under the split cut holds every size, every balance and
+every disjointness — and the cut cost the sampler nothing.** 273 cases in 400
+draws (68.3 % accepted, against 70.5 % uncut): train 100/100, test_seen 125/125,
+test_unseen 48/48 with T26 held out of the pass, abstentions 13 / 16 / 16 and all
+ten bool templates balanced (2/2 in train, 2/3 or 3/2 in test_seen, 4/4 in the
+holdout). **`parameter_overlaps` is empty**: no template shares a value of any
+sampled parameter between train and test_seen. Language lands 50/50, 63/62 and
+24/24. The `as_of` evidence is three numbers per split and each separates a
+stripe from a cut: **longest consecutive run 1** in all three, 11 calendar months
+touched in all three, and spans of 2025-06-04 → 2026-04-24 (train), 2025-06-02 →
+2026-04-19 (test_seen), 2025-06-09 → 2026-04-23 (test_unseen) — the whole band on
+each side, from 56, 68 and 40 distinct days. Rejections split 77 balance, 49
+coverage, 20 oracle, 1 frozenness.
+*Verified:* one `eval.generation.instantiate.generate()` pass over 31 templates
+at seed 20260824, striped pools, live GR2L and Archive, cache written to a
+scratch directory. *Date:* 2026-08-24.
+
+**A stripe taken over two different lists is not a stripe over the value, and the
+disjointness report found it in T113's own output.** T24a draws its `{month}`
+from `outflow`'s eleven complete months on the flux variant of its measured pair
+and from `swc`'s twenty on the state one. Striping each list by position put
+`2025-07` at index 2 of the first (even → train) and index 11 of the second
+(odd → test_seen), so **one template's own parameter overlapped between the
+splits** while every other parameter in the catalog was clean. The stripe is now
+taken over the widest month list and narrowed to the table's own months
+afterwards, which makes a month's side a property of the month rather than of
+which template asked for it. The defect was invisible to the sampler — each pool
+was internally disjoint — and visible only in the emitted parameters, which is
+why `GenerationRun.report()` carries `parameter_overlaps` and why the exit
+criterion is asserted over cases as well as over draws.
+*Verified:* the overlap was reported by a full pass before the fix and is empty
+after it; `tests/eval/test_splits.py` carries the regression. *Date:* 2026-08-24.
+
+**T12's eleven qualifying events do cover 4 + 5 disjointly, as the catalog
+claims.** The 15 candidate windows stripe 8 to train and 7 to test_seen; of the
+11 that qualify, 6 land in train's stripe and 5 in test_seen's — exactly the
+margin `t12_rain_events.md` predicts, with no event drawn by both splits and both
+classes reachable on each side (2/2 and 2/3). This is the one cut that could have
+failed on the data rather than on the code, since the event pool is the record's
+and qualification is decided by the filter and the oracle rather than by the
+sampler.
+*Verified:* an offline generation pass over T12 in `tests/eval/test_splits.py`.
+*Date:* 2026-08-24.
+
 ## External sources on this machine
 
 Paths outside this repository, recorded here rather than in the plan because a

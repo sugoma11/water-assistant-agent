@@ -863,17 +863,37 @@ every time. Two independent confirmations, neither of which relies on the stamp.
 `_post_gr2l`; `scripts/generate_cases.py --check` from a cold cache;
 `scripts/capture_cache.py`. *Date:* 2026-08-25.
 
-**Discarding the eleven took the pilot's replay surface with it.** They were the
-prewarm `scripts/prewarm_pilot_cache.py` recorded for `eval/cases/pilot.json`,
-so the internal consistency noted above — "a replay of those three is still
-internally consistent" — no longer holds: the entries that made it so are gone,
-and the three T09 pilot cases now miss rather than replay. This is a statement
-of where things stand and not a repair. Re-running the pilot would move T107's
-recorded numbers for every model-bearing template, which is a measurement
-decision; leaving it is a suite that cannot replay three of its fourteen pilot
-cases. Neither was chosen here.
+**Discarding the eleven took part of the pilot's replay surface with it, and the
+part is smaller than it first looks.** They were the prewarm
+`scripts/prewarm_pilot_cache.py` recorded for `eval/cases/pilot.json`, so the
+internal consistency noted above — "a replay of those three is still internally
+consistent" — no longer holds. Measured rather than assumed: **11 of the 14
+pilot cases still replay, and 4 miss** — `T09-0001`…`0003`, whose windows were
+among the eleven, and `T24a-0002`, the model overlay needing the 28-day February
+2026 run. The three `T07` cases replay, which is independent confirmation that
+the irrigation chain never reaches GR2L; `T01`, `T06`, `T17a`, `T18a` and
+`T24a-0001` never touched the cache at all.
+
+**The pilot's gold answers did not move, which is a narrower exposure than a
+stale pin suggests.** All three T09 answers were recomputed against the current
+build and are **unchanged** — `True` at min 12.25 %θ against a threshold of 20,
+`False` at 13.38 against 10, `False` at 8.95 against 5. The series underneath
+moved, but these are booleans and no minimum sits near its threshold (margins
+7.8, 3.4 and 4.0 pp), so the answer class survives the model change. What is
+genuinely stale is the **provenance**: the three cases stamp
+`gr2l_canary: 0c39f945…` where the repository pins `c8f51c82…`, and T107's 48
+recorded rollouts had the *agent* calling the old build, so its own minima came
+from it. Those rollout booleans very probably land the same way for the same
+margin reason, but that is an inference and only a re-run would settle it —
+which is why it is stated rather than claimed. T107's headline results do not
+depend on GR2L in any case: T17a's 3/3 failure is a contract-encoding fault in
+the root instruction, and the coverage and recall ratios are structural.
+Re-running the pilot is therefore a measurement decision and not a cleanup, and
+nothing here made it.
 *Verified:* the eleven entries' request shapes against the prewarm script's
-windows. *Date:* 2026-08-25.
+windows; all 14 pilot cases replayed against the committed cache with
+`httpx.AsyncClient.send` blocked; the three T09 oracles re-answered live into a
+scratch cache. *Date:* 2026-08-25.
 
 **T22 materializes against the fixed build, and the override is monotone.** On
 the non-irrigated extensive roof at `as_of` 2026-04-20, tomorrow's predicted soil

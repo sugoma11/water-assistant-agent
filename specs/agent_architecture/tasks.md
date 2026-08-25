@@ -3721,15 +3721,22 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   `just pins`: **14 pinned, 4 unpinned, 0 moved**, with `c8f51c82…` as the GR2L
   canary. The 4 open slots are the candidate prompts, the reflection model and
   its canary, and the task model's canary — P8's to fill.
-  **One exposure, left as yours to decide.** `eval/cases/pilot.json` is T107's
-  record and is **not** part of this capture. Its three T09 cases are
-  model-bearing and stamp `gr2l_canary: 0c39f945…`, so their committed answer
-  numbers predate the fix; capturing fresh responses behind them would pair a
-  current cache with a stale answer, which is worse than leaving them
-  uncaptured. Discarding the 11 stale entries also removed the pilot's prewarm,
-  so **pilot.json can no longer replay at all** until it is re-run. Re-running
-  it would move T107's recorded numbers for every model-bearing template, which
-  is a measurement decision rather than a cleanup, so nothing here touched it.
+  **One exposure, left as yours to decide, and measured so the decision is an
+  informed one.** `eval/cases/pilot.json` is T107's record and is **not** part
+  of this capture. **11 of its 14 cases still replay; 4 miss** — `T09-0001`…
+  `0003`, whose GR2L windows were among the 11 discarded, and `T24a-0002`, the
+  model overlay needing the 28-day February 2026 run. The three `T07` cases
+  replay, confirming the irrigation chain never reaches GR2L. **No gold answer
+  moved:** all three T09 answers were recomputed against the current build and
+  are unchanged (`True` at min 12.25 %θ against 20, `False` at 13.38 against 10,
+  `False` at 8.95 against 5) — the series moved, but no minimum sits near its
+  threshold, so the booleans survive. What is stale is the provenance: those
+  three stamp `gr2l_canary: 0c39f945…` against the repository's `c8f51c82…`,
+  and T107's 48 rollouts had the *agent* on the old build. Re-running the pilot
+  would re-measure T107's baseline, which is a measurement decision rather than
+  a cleanup, so nothing here touched it; capturing the 4 missing entries without
+  re-running would leave a current cache behind an old-canary stamp, which is
+  the pairing this task avoided everywhere else.
   `uv run ruff check .` and `uv run pytest` clean — 1208 passed, 22 pre-existing
   findings, all in `notebooks/` and `src/experiments/` and none in the testbed.
 

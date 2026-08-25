@@ -968,8 +968,10 @@ for byte against the current build, so none of the three split files under
 `eval/cases/pilot.json` is the exception and is left standing: its three T09
 cases were answered against the old build and carry the old canary in their
 pins, which is exactly the mismatch `expectations.pins` exists to make visible.
-Re-running them is a measurement decision rather than a cleanup, so it is stated
-here and not performed.
+Their answers happen not to have moved — they are booleans, and no minimum sits
+near its threshold — which is worth knowing and is not a reason to leave the
+stamp wrong. Re-running them is a measurement decision rather than a cleanup, so
+it is stated here and not performed.
 
 **Validity condition:** a moved canary is a hard failure, and re-pinning one is
 an act with a date attached rather than a maintenance step. Any result quoted in

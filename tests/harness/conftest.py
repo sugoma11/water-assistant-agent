@@ -14,10 +14,18 @@ The :func:`registry` fixture is the second half: candidate text reaches a
 rollout only through a registry read (§6), so a test of that channel needs a
 registry. It stands a real MLflow one up on a throwaway SQLite file rather than
 faking ``load_prompt``, because what the tests are about is the read itself.
+
+The third half is the **search stub** — :class:`Recorded`, :func:`entry_point`,
+:func:`cases_dir`, :func:`scripted_rollouts`. It lives here rather than in
+``test_optimize.py`` because two modules now drive a search for two different
+reasons: T126 asks what the entry point was handed, and T127 asks what the run
+ledger recorded while it ran. One stub, so the two cannot end up testing two
+different searches.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncGenerator, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +39,8 @@ from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 from mlflow.prompt.registry_utils import PromptCache
 
+from harness.ledger import EXPERIMENT
+
 
 @pytest.fixture
 def registry(tmp_path: Path) -> Iterator[str]:
@@ -41,6 +51,12 @@ def registry(tmp_path: Path) -> Iterator[str]:
     ``agent_root_instruction`` version 1 against two different SQLite files would
     otherwise see each other's text, so the cache is cleared around each one —
     for the same reason a search's patch is reverted in a ``finally``.
+
+    A throwaway store has to be throwaway all the way down. The run ledger (T127)
+    logs a table and the pin file as *artifacts*, and MLflow's default artifact
+    root for a SQLite tracking uri is ``./mlruns`` in the working directory — so
+    the testbed's experiment is created here with an artifact location inside
+    ``tmp_path``, and a test run leaves nothing in the repository.
     """
     previous_registry = mlflow.get_registry_uri()
     previous_tracking = mlflow.get_tracking_uri()
@@ -48,6 +64,9 @@ def registry(tmp_path: Path) -> Iterator[str]:
     mlflow.set_tracking_uri(uri)
     mlflow.set_registry_uri(uri)
     PromptCache.get_instance().clear()
+    mlflow.create_experiment(
+        EXPERIMENT, artifact_location=str(tmp_path / "artifacts")
+    )
     try:
         yield uri
     finally:
@@ -125,3 +144,108 @@ def results_seen(request: LlmRequest) -> list[Any]:
         for part in _parts(request)
         if part.function_response
     ]
+
+
+class Recorded:
+    """Stands in for ``optimize_prompts``, keeping its arguments and driving rollouts.
+
+    The rollouts go through MLflow's own ``convert_predict_fn`` rather than
+    straight into the callable, because that function is where the entry point
+    decides the ``predict_fn``'s *shape*: it validates the signature against the
+    record's ``inputs`` keys and then calls ``predict_fn(**request)``. A stub
+    that called the callable with the mapping would exercise a contract
+    ``optimize_prompts`` does not have — and did, until a smoke run failed on it.
+    """
+
+    def __init__(self) -> None:
+        self.kwargs: dict[str, Any] = {}
+
+    def __call__(self, **kwargs: Any) -> Any:
+        from mlflow.genai.utils.trace_utils import convert_predict_fn
+
+        self.kwargs = kwargs
+        records = kwargs["train_data"]
+        # `sample_input=None` skips the library's own probe rollout, which would
+        # export traces into the throwaway sqlite store this suite points at. The
+        # splat is what it returns either way, and the splat is the shape being
+        # exercised; the signature half is checked in
+        # `test_the_adapter_satisfies_mlflows_own_signature_check`.
+        predict_fn = convert_predict_fn(
+            predict_fn=kwargs["predict_fn"], sample_input=None
+        )
+        # Records come pre-filtered; running each one leaves the candidate
+        # surface read, which is what the pass's exit assertion is watching.
+        for record in records:
+            predict_fn(record["inputs"])
+        return SearchOutcome()
+
+
+class SearchOutcome:
+    """What ``optimize_prompts`` returns, reduced to what the harness reads off it."""
+
+    initial_eval_score = 0.5
+    final_eval_score = 0.75
+    initial_eval_score_per_scorer: dict[str, float] = {}
+    final_eval_score_per_scorer: dict[str, float] = {}
+    optimized_prompts: list[Any] = []
+
+
+@pytest.fixture
+def entry_point(monkeypatch: pytest.MonkeyPatch) -> Recorded:
+    """``optimize_prompts`` replaced by a recorder that still drives one rollout."""
+    from harness import optimize as optimize_module
+
+    recorder = Recorded()
+    monkeypatch.setattr(optimize_module.mlflow.genai, "optimize_prompts", recorder)
+    return recorder
+
+
+@pytest.fixture
+def cases_dir(tmp_path: Path) -> Path:
+    """A three-record ``train.json`` of real committed cases.
+
+    Real records, because the pre-filter replays each one against the committed
+    cache and a fabricated case would only prove the filter runs. A small file,
+    because every test here would otherwise replay the whole split for an answer
+    ``test_train_data.py`` already gives once.
+    """
+    from harness.train_data import load_split
+
+    directory = tmp_path / "cases"
+    directory.mkdir()
+    (directory / "train.json").write_text(
+        json.dumps(load_split("train")[:3], indent=2), encoding="utf-8"
+    )
+    return directory
+
+
+@pytest.fixture
+def scripted_rollouts(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """``run_case`` replaced by a fixed answer, so no model and no service is needed.
+
+    The rollout itself is T100's and T121's, tested there against the real
+    toolset. What these files are about is the arguments around it, so the
+    cheapest honest stand-in is one that still goes through ``predict_fn`` — the
+    candidate is read per record, which is what the read assertion is watching.
+    """
+    seen: list[dict[str, Any]] = []
+
+    def run_case(inputs: Any, **kwargs: Any) -> Any:
+        seen.append({"inputs": dict(inputs), **{k: v for k, v in kwargs.items()}})
+        from harness.contract import parse_contract
+        from harness.run_case import CaseResult
+
+        text = '{"status": "answered", "answer": 1.0, "unit": "L", "explanation": "…"}'
+        return CaseResult(
+            case_id=str(inputs.get("case_id", "")),
+            template_id=str(inputs.get("template_id", "")),
+            contract=parse_contract(text),
+            final_text=text,
+            trajectory=(),
+            harness_error=False,
+            exclusions=(),
+            diagnostics={},
+        )
+
+    monkeypatch.setattr("harness.predict.run_case", run_case)
+    return seen

@@ -4129,9 +4129,66 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   Verified by 14 tests in `tests/harness/test_optimize.py`.
   `uv run ruff check .` and `uv run pytest` clean — 1280 passed, same 22
   pre-existing findings, none in the testbed.
-- [ ] T127 Run ledger into MLflow: candidate id, case id, served model id, every
+- [x] T127 Run ledger into MLflow: candidate id, case id, served model id, every
   pin, trajectory and cost per rollout, on top of what `optimize_prompts` already
   logs. → T034
+  Done in `harness/ledger.py`, wired into `harness/optimize.py` so a search keeps
+  one. §6 states the division and this module is only the difference: MLflow
+  already logs per-iteration candidate text, per-scorer metrics and an
+  eval-results table, and nothing here re-logs a score.
+  **The candidate id is the text, and it has to be.** Candidate text arrives as a
+  process-global patch of `PromptVersion.template` and every read still resolves
+  the *same* pinned version, so a ledger keyed on `candidate_prompt_versions`
+  would file every candidate a search proposed under one id — a hundred rollouts
+  of a dozen candidates, indistinguishable. `candidate_id` hashes the seven
+  components' text in `CANDIDATE_COMPONENTS` order, length-delimited per
+  component so two components cannot trade bytes across their boundary and hash
+  alike.
+  **The served model id is witnessed, not copied from the pin.** ADK fills
+  `LlmResponse.model_version` from litellm's `response.model`, which is the one
+  place in a rollout where the endpoint states its own identity; the pin records
+  what was *requested*. Those two diverging is exactly what
+  `task_model_canary_sha256` exists to detect, so the row keeps both and
+  normalizes neither — the requested column stays in litellm's
+  `<provider>/<model>` spelling and the served column in the endpoint's own,
+  because rewriting either to match the other is how a divergence gets hidden by
+  the code meant to surface it. A rollout that was never witnessed reports
+  `None`.
+  **The witness covers the task model, and the sub-agent chain is reported rather
+  than repaired.** `make_predict_fn` already takes a `model_factory` called once
+  per record, so one `WitnessedLiteLlm` per rollout attributes a served id with
+  no thread bookkeeping at all. The text-to-SQL chain's three models are built
+  inside the frozen sub-agent, which has no such seam: their served ids are not
+  witnessed and stay pinned by identity alone. Reaching them means editing frozen
+  code, so this is a stated limit (T107).
+  **Both pin sets, because they answer different questions.** The run's
+  `eval/pins.json` goes in whole as an artifact and per row as a digest — what
+  the *rollout* ran against. The case's own `expectations.pins` goes in per row
+  as itself — what the *oracle's answer* was computed against, and it differs
+  case by case (60 of 100 train cases carry `duckdb_sha256` alone, 4 carry four
+  pins). An answer is comparable with a rollout only where both agree.
+  **Cost is derived from the tokens the rollout already reported**, at the six
+  `PRICE_*` rates `experiments.text2sql.cost_meter` already defines — one pricing
+  definition in the repository rather than two that both say EUR. Not litellm's
+  `response_cost`: these endpoints serve open-weight models litellm has no price
+  table for, so it returns 0, and a fabricated 0 is worse than an absence. Where
+  the variables are unset the ledger reports `None` per row and says so in its
+  summary.
+  **The search had to be given its own MLflow run for any of this to land.** GEPA
+  starts a run when none is active and *ends the one it started*
+  (`gepa/logging/experiment_tracker.py`), so a ledger written after
+  `optimize_prompts` returned would have opened a second, empty run and logged
+  into that — beside the iteration tables it belongs with. `experiment_run` opens
+  it first, in a named experiment (`agent-architecture-testbed`) rather than
+  MLflow's default, and GEPA reuses it.
+  `ledgered` sits **inside** `guarded`, so a rollout that raised is a row before
+  it is a declared residual; both observe and neither intervenes.
+  The three search stubs moved from `tests/harness/test_optimize.py` into
+  `conftest.py`, since two modules now drive a search for two different
+  questions and two copies would drift into testing two different searches.
+  Verified by 14 tests in `tests/harness/test_ledger.py`.
+  `uv run ruff check .` and `uv run pytest` clean — 1294 passed, same 22
+  pre-existing findings, none in the testbed.
 - [ ] T128 Statistics on the **measurement** path, never on the optimizer's
   internal scores: three repeats per condition at one pinned seed with the LLM
   cache off, paired on identical cases; a paired bootstrap resampling

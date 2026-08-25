@@ -13,6 +13,10 @@ reflection model's endpoint. And the GR2L service, because the search runs in
 record mode — a miss on a window the candidate chose is recorded rather than
 excluded (§5), and recording is gated on a canary the service has to answer.
 
+``.env`` is loaded here rather than left to the shell, because the run ledger
+(T127) prices a rollout's tokens from the six ``PRICE_*`` variables and an
+unpriced run is one whose cost was never measured.
+
 **A short run first.** ``--limit`` searches over the first few captured train
 records and ``--max-metric-calls`` bounds the rollouts; the pair is the smoke
 test that the whole loop closes. A real run is the whole split at a budget
@@ -36,12 +40,15 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT))
 
 import mlflow  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
 
 from harness.optimize import (  # noqa: E402
     DEFAULT_MAX_METRIC_CALLS,
     OPTIMIZED_ARM,
     run_search,
 )
+
+load_dotenv()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -92,7 +99,8 @@ def main(argv: list[str] | None = None) -> int:
     for prompt in result.optimized_prompts:
         print(f"  optimized {prompt.name} → v{prompt.version} ({len(prompt.template)} chars)")
 
-    print(f"\n{search.residuals.summary()}")
+    print(f"\n{search.ledger.summary()}")
+    print(f"{search.residuals.summary()}")
     if search.residuals.residual_cases:
         print(
             "Residual failures are declared 0s, not exclusions. Compare this count "

@@ -13,13 +13,13 @@ GEPA, and that is the smoke run's job (``just search-smoke``); what is checked
 here is everything decided *around* it — the record mode, the cache switch, the
 pre-filtered records, the reflection binding and the read assertion — because
 each of those is a decision that would otherwise only surface as a number that
-looked plausible.
+looked plausible. The stub itself lives in ``conftest.py``, because
+``test_ledger.py`` drives the same search for a different question (T127).
 """
 
 from __future__ import annotations
 
 import inspect
-import json
 from pathlib import Path
 from typing import Any
 
@@ -42,107 +42,8 @@ from harness.optimize import (
 from harness.scorers import SCORERS
 from harness.scoring import METRICS, aggregate_scores
 from harness.train_data import load_split
+from tests.harness.conftest import Recorded, SearchOutcome
 from water_assistant_agent.assistant.settings import AssistantSettings, get_settings
-
-
-class Recorded:
-    """Stands in for ``optimize_prompts``, keeping its arguments and driving rollouts.
-
-    The rollouts go through MLflow's own ``convert_predict_fn`` rather than
-    straight into the callable, because that function is where the entry point
-    decides the ``predict_fn``'s *shape*: it validates the signature against the
-    record's ``inputs`` keys and then calls ``predict_fn(**request)``. A stub
-    that called the callable with the mapping would exercise a contract
-    ``optimize_prompts`` does not have — and did, until a smoke run failed on it.
-    """
-
-    def __init__(self) -> None:
-        self.kwargs: dict[str, Any] = {}
-
-    def __call__(self, **kwargs: Any) -> Any:
-        from mlflow.genai.utils.trace_utils import convert_predict_fn
-
-        self.kwargs = kwargs
-        records = kwargs["train_data"]
-        # `sample_input=None` skips the library's own probe rollout, which would
-        # export traces into the throwaway sqlite store this suite points at. The
-        # splat is what it returns either way, and the splat is the shape being
-        # exercised; the signature half is checked in
-        # `test_the_adapter_satisfies_mlflows_own_signature_check`.
-        predict_fn = convert_predict_fn(
-            predict_fn=kwargs["predict_fn"], sample_input=None
-        )
-        # Records come pre-filtered; running each one leaves the candidate
-        # surface read, which is what the pass's exit assertion is watching.
-        for record in records:
-            predict_fn(record["inputs"])
-        return _Result()
-
-
-class _Result:
-    initial_eval_score = 0.5
-    final_eval_score = 0.75
-    initial_eval_score_per_scorer: dict[str, float] = {}
-    final_eval_score_per_scorer: dict[str, float] = {}
-    optimized_prompts: list[Any] = []
-
-
-@pytest.fixture
-def entry_point(monkeypatch: pytest.MonkeyPatch) -> Recorded:
-    """``optimize_prompts`` replaced by a recorder that still drives one rollout."""
-    recorder = Recorded()
-    monkeypatch.setattr(optimize_module.mlflow.genai, "optimize_prompts", recorder)
-    return recorder
-
-
-@pytest.fixture
-def cases_dir(tmp_path: Path) -> Path:
-    """A three-record ``train.json`` of real committed cases.
-
-    Real records, because the pre-filter replays each one against the committed
-    cache and a fabricated case would only prove the filter runs. A small file,
-    because every test here would otherwise replay the whole split for an answer
-    ``test_train_data.py`` already gives once.
-    """
-    directory = tmp_path / "cases"
-    directory.mkdir()
-    (directory / "train.json").write_text(
-        json.dumps(load_split("train")[:3], indent=2), encoding="utf-8"
-    )
-    return directory
-
-
-@pytest.fixture
-def scripted_rollouts(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
-    """``run_case`` replaced by a fixed answer, so no model and no service is needed.
-
-    The rollout itself is T100's and T121's, tested there against the real
-    toolset. What this file is about is the arguments around it, so the cheapest
-    honest stand-in is one that still goes through ``predict_fn`` — the candidate
-    is read per record, which is what the read assertion is watching.
-    """
-    seen: list[dict[str, Any]] = []
-
-    def run_case(inputs: Any, **kwargs: Any) -> Any:
-        seen.append({"inputs": dict(inputs), **{k: v for k, v in kwargs.items()}})
-        from harness.contract import parse_contract
-        from harness.run_case import CaseResult
-
-        text = '{"status": "answered", "answer": 1.0, "unit": "L", "explanation": "…"}'
-        return CaseResult(
-            case_id=str(inputs.get("case_id", "")),
-            template_id=str(inputs.get("template_id", "")),
-            contract=parse_contract(text),
-            final_text=text,
-            trajectory=(),
-            harness_error=False,
-            exclusions=(),
-            diagnostics={},
-        )
-
-    monkeypatch.setattr("harness.predict.run_case", run_case)
-    return seen
-
 
 # ── The aggregation is asserted, not assumed ─────────────────────────────────
 
@@ -392,7 +293,7 @@ def test_an_unread_candidate_component_fails_the_pass(
 
     register_candidates(baseline_texts())
     monkeypatch.setattr(
-        optimize_module.mlflow.genai, "optimize_prompts", lambda **kwargs: _Result()
+        optimize_module.mlflow.genai, "optimize_prompts", lambda **kwargs: SearchOutcome()
     )
 
     with pytest.raises(UnreadCandidateError):

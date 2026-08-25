@@ -40,6 +40,14 @@ rollout; and ``mlflow`` and ``gepa`` are in ``dependency_versions`` because
 candidate injection rests on a process-global patch of ``PromptVersion.template``
 whose failure is a log warning (``findings.md``) — a version bump that moved it
 would produce a search that optimized nothing and said so nowhere.
+
+**The search owns its MLflow run, and that is what makes the ledger possible.**
+GEPA starts a run when none is active and ends the one it started
+(``gepa/logging/experiment_tracker.py``), so a ledger written after
+``optimize_prompts`` returned would land in a *second*, empty run — beside the
+iteration tables it is supposed to sit with. Opening the run here means GEPA
+reuses it, and the per-rollout ledger of T127 shares it with the per-iteration
+artifacts of §6.
 """
 
 from __future__ import annotations
@@ -56,7 +64,8 @@ from mlflow.genai.optimize.optimizers import GepaPromptOptimizer
 from mlflow.genai.optimize.types import PromptOptimizationResult
 
 from harness.candidates import candidate_uris, evaluation_pass, seed_versions
-from harness.predict import as_keyword_fn, make_predict_fn
+from harness.ledger import RunLedger, ledgered, experiment_run
+from harness.predict import as_keyword_fn
 from harness.reflection import pinned_reflection_lm
 from harness.run_case import EVAL_CACHE_DIR, PINNED_DB
 from harness.scorers import SCORERS
@@ -100,19 +109,22 @@ class SearchResult:
 
     ``residuals`` is beside ``result`` rather than inside it because §7 reads
     them together: a score improved over an arm that lost four cases to an
-    outage is not an improvement anybody measured.
+    outage is not an improvement anybody measured. ``ledger`` is beside both for
+    the same kind of reason: the score says how well the run did and the ledger
+    says what it did it against (T127).
     """
 
     result: PromptOptimizationResult
     residuals: ResidualReport
     records: int
     reflection_model: str
+    ledger: RunLedger
 
     def summary(self) -> str:
         return (
             f"{self.records} record(s), "
             f"{self.result.initial_eval_score} → {self.result.final_eval_score}; "
-            f"{self.residuals.summary()}"
+            f"{self.residuals.summary()}; {self.ledger.summary()}"
         )
 
 
@@ -253,25 +265,34 @@ def run_search(
     preflight(AGGREGATION)
 
     ledger = ResidualLedger()
+    run_ledger = RunLedger(arm=arm, split=split, settings=settings)
     before = cache_entries(cache_dir)
-    # `as_keyword_fn` last, because it is the outermost shape the entry point
-    # inspects: `convert_predict_fn` validates the signature against the record's
-    # `inputs` keys and then calls `predict_fn(**request)` (`findings.md`).
+    # `ledgered` innermost, so it sees a raising rollout before `guarded` does and
+    # the row exists for the failure too; `as_keyword_fn` outermost, because that
+    # is the shape the entry point inspects — `convert_predict_fn` validates the
+    # signature against the record's `inputs` keys and then calls
+    # `predict_fn(**request)` (`findings.md`).
     predict_fn = as_keyword_fn(
         guarded(
-            make_predict_fn(
+            ledgered(
+                run_ledger,
                 versions=pinned,
                 db_path=db_path,
                 cache_dir=cache_dir,
                 # Record mode: §7's second search-path protection. A miss on a
                 # window the candidate chose is a discovery, not an exclusion.
                 allow_live=True,
+                expectations={
+                    record["inputs"]["case_id"]: record.get("expectations", {})
+                    for record in records
+                },
             ),
             ledger,
         )
     )
 
     with (
+        experiment_run(f"search-{arm}-{split}"),
         search_llm_cache(settings),
         pinned_reflection_lm(settings) as reflection_uri,
         evaluation_pass(),
@@ -296,6 +317,9 @@ def run_search(
             # Mandatory, and checked by preflight() rather than assumed (§6).
             aggregation=AGGREGATION,
         )
+        # Inside the run GEPA has been sharing, so the per-rollout ledger sits
+        # with the per-iteration tables rather than in a run of its own (T127).
+        run_ledger.log()
 
     search = SearchResult(
         result=result,
@@ -308,6 +332,7 @@ def run_search(
         ),
         records=len(records),
         reflection_model=reflection_uri,
+        ledger=run_ledger,
     )
     logger.info("Search complete", arm=arm, summary=search.summary())
     return search

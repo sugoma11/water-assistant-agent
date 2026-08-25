@@ -407,6 +407,46 @@ of 2025-06-05**. Enforced concurrency: each record's model waits on a shared
 *Verified:* `tests/harness/test_predict.py::
 test_two_records_with_different_as_of_run_concurrently`. *Date:* 2026-08-25.
 
+**GEPA starts an MLflow run when none is active, and ends the one it started.**
+`gepa.logging.experiment_tracker` calls `mlflow.start_run()` if `active_run()` is
+`None` (`:87-88`), records that it created it, and terminates it on the way out
+(`:253`); given an already-active run it uses that one and leaves it open. So a
+run ledger written *after* `optimize_prompts` returns lands in a second,
+auto-created run — beside the per-iteration tables it is supposed to sit with,
+and looking for all the world like a complete record of a search that logged
+nothing else. `harness/optimize.py` therefore opens the run itself, in a named
+experiment, and GEPA joins it.
+*Verified:* read from installed gepa 0.1.1 source, and by
+`tests/harness/test_ledger.py::test_the_ledger_and_the_pins_land_in_the_active_run`.
+*Date:* 2026-08-25.
+
+**A candidate cannot be identified by its registered version, so the ledger
+hashes its text.** The patch that injects candidate text replaces
+`PromptVersion.template` on the *class* and matches on the prompt **name**
+(§ Candidate text is injected by a process-global patch), so every candidate GEPA
+evaluates is read back through the same pinned `candidate_prompt_versions`. A
+per-rollout ledger keyed on those versions files a whole search — every
+candidate, every iteration — under one id, and the table looks complete while
+answering no question anyone would ask of it. `harness.ledger.candidate_id`
+hashes the seven components' text instead, in `CANDIDATE_COMPONENTS` order and
+length-delimited per component.
+*Verified:* `tests/harness/test_ledger.py::
+test_the_candidate_id_is_the_text_and_never_the_version`. *Date:* 2026-08-25.
+
+**ADK's `LlmResponse.model_version` is the served model id, and it is the only
+place a rollout carries one.** `_model_response_to_generate_content_response`
+sets `model_version=response.model` (`google/adk/models/lite_llm.py:1769`), and
+`Event` extends `LlmResponse`, so the field survives into the event stream —
+but `harness/run_case.py`'s `CaseResult.diagnostics` does not carry it and that
+module is frozen. The ledger reaches it through `make_predict_fn`'s existing
+`model_factory` seam instead: one `WitnessedLiteLlm` per rollout, so attribution
+is by construction rather than by thread. The requested id is litellm's
+`<provider>/<model>` and the endpoint echoes the model half alone, so the two
+columns are compared on that half and neither is normalized to the other.
+*Verified:* read from installed google-adk 2.3.0 source, and by
+`tests/harness/test_ledger.py::
+test_the_witness_records_what_the_endpoint_said_it_served`. *Date:* 2026-08-25.
+
 ## Weather source measurements
 
 **Station vs ERA5 (Open-Meteo Archive) biases.** Against ERA5 (Open-Meteo's

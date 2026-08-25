@@ -3759,13 +3759,60 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
 
 ## Phase 8 — Optimizer
 
-- [ ] T120 Candidate surface in the MLflow prompt registry: the root instruction
+- [x] T120 Candidate surface in the MLflow prompt registry: the root instruction
   and **one prompt per optimizable tool docstring**, including the sub-agent's
   outward `description` — never one concatenated blob. Prompt names and seed
   versions join `eval/pins.json`. **Assert that every registered candidate prompt
   was read during an evaluation pass**: a component never read is silently frozen
   while appearing optimizable, and the framework's warning is the only signal.
   → T030, T034
+  Done in `harness/candidates.py`: **seven components, seven prompt names** —
+  `root_instruction` plus one per entry of `TOOL_NAMES`, the sub-agent's among
+  them as its outward `description`. The names are prefixed (`agent_root_
+  instruction`, `agent_tool_<name>`) because the registry is shared with the
+  text2sql experiments' `text2sql_system`, and a collision would have one study's
+  optimizer reading the other's candidate.
+  **The seed is read off the built objects, never transcribed.** `baseline_texts`
+  calls `build_toolset(production_context())` and reads each tool's declared text
+  back — the agent's `description` through the `AgentTool`, the plot tool's
+  through the `FunctionTool`'s `func`, the rest off the callables — so what is
+  registered is what ADK would declare. Transcribing it would have created the
+  second copy T125's row exists to forbid, one row early.
+  **The assertion is a pass, not an inspection.** `evaluation_pass()` is a
+  context manager holding a thread-guarded read log; `read_candidate` records
+  after a successful load, and the exit raises `UnreadCandidateError` naming
+  exactly the components no record read. It is guarded because the reads arrive
+  from MLflow's `ThreadPoolExecutor` (`findings.md`), and it asks a question
+  about the *pass* — some record read the component — not about each record.
+  Two refusals fall out of the same mechanism. A pass **cannot nest**: the
+  candidate patch is process-global, so an inner pass would be scoring the outer
+  pass's candidate while believing it read its own. And a pass whose body
+  **raised** does not re-report its missing reads — a crashed run has a better
+  explanation for them than this assertion does.
+  **The pin is split in two, because the two halves are verifiable differently.**
+  `candidate_prompts` is `{component: {prompt, sha256}}`, recomputed offline by
+  `check_pins.py` from this module, and it is what makes the T107 freeze
+  checkable: an edit to the handwritten instruction or to any tool docstring
+  moves a hash and `just pins` fails. `candidate_prompt_versions` is what the
+  registry *assigned*, which no offline run can derive, so it joins
+  `LIVE_ONLY_PINS` beside the two canaries and is T125's to fill. Reading
+  `@latest` instead was rejected outright — it would let a re-registration move
+  the reference arm silently, which is the drift T125 exists to prevent, so
+  `seed_versions()` raises on an unpinned slot rather than falling back.
+  `just pins` now reports **15 pinned, 4 unpinned, 0 moved**; `candidate_prompts`
+  is closed and the open slots are the candidate versions, the reflection model
+  and its canary, and the task model's canary.
+  Verified by 11 tests in `tests/harness/test_candidates.py` against a **real**
+  MLflow registry on a throwaway SQLite file (the new `registry` fixture; the
+  prompt cache is a process-global singleton with no default TTL, so it is
+  cleared around each test or two tests would read each other's version 1). The
+  exit criterion is `test_the_unread_prompt_assertion_fires`: six of the seven
+  are read, `lookup_reference` is not, and the pass raises naming that one and no
+  other — the shape a `predict_fn` that forgot to thread one docstring through
+  would produce.
+  `uv run ruff check .` and `uv run pytest` clean — 1219 passed, 22 pre-existing
+  findings, all in `notebooks/`, `src/experiments/` and `scripts/count_tokens.py`,
+  none in the testbed.
 - [ ] T121 `predict_fn(inputs) -> dict`: build the `ScenarioContext` from
   `inputs["as_of"]`, read candidate text back through the registry, build the
   toolset and agent, and delegate the rollout to T100's `run_case`. Per record, no

@@ -795,6 +795,22 @@ scenario context and reads candidate text back through the registry.
   batch (`findings.md`, Optimizer internals): one candidate per process, and
   any other in-process reader of those prompts sees candidate text.
 
+**The surface is pinned in two slots, not one, because its halves are
+verifiable in different ways.** `candidate_prompts` carries each component's
+registered *name* and the sha256 of its *seed text* and is recomputed offline
+from the code, so it makes the T107 freeze checkable — an edit to the
+handwritten instruction or to any tool docstring moves a hash and `just pins`
+fails on it. `candidate_prompt_versions` carries the version numbers the
+registry assigned, which no offline run can derive, so it is pinned by
+registration and reported like the canaries. Collapsing the two would cost the
+recomputable half its check.
+
+**And the seed is read by version, never by `@latest`.** An alias read would
+resolve to whatever was registered most recently, so a re-registration — the
+routine consequence of re-pinning — would move the reference arm and the search's
+seed under a measurement already in flight, silently and in the direction
+nobody chose. An unpinned slot is therefore an error rather than a fallback.
+
 ---
 
 ## Candidate selection and the scorers' aggregation

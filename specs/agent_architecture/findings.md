@@ -207,6 +207,38 @@ a pure function. An agent testbed needs N+1 registered prompts and a
 candidate surface, so the existing wiring cannot be reused unmodified.
 *Verified:* read from source. *Date:* unrecorded.
 
+**The unused-prompt signal is a `logger.warning`, and it is the only one.**
+`_build_eval_fn` collects the names its patched `template` property served into
+a `used_prompts` set and, after the batch, logs
+`"The following prompts were not used during evaluation: …"` at WARNING
+(`optimize/optimize.py:337-344`). Nothing raises, nothing enters the returned
+`EvaluationResultRecord`s, and nothing reaches the run's metrics: a component
+left unread is invisible in the results and visible only in stderr, which is
+why `harness/candidates.py` asserts on it instead.
+*Verified:* read from installed mlflow 3.13.0 source. *Date:* 2026-08-25.
+
+**MLflow's prompt cache is a process-global singleton with no default TTL for a
+version-keyed read.** `PromptCache` is a thread-safe singleton
+(`mlflow/prompt/registry_utils.py:332-370`) keyed on name plus version-or-alias;
+`load_prompt`'s `cache_ttl_seconds` defaults to `MLFLOW_ALIAS_PROMPT_CACHE_TTL_
+SECONDS` (60 s) for an alias read and to `MLFLOW_VERSION_PROMPT_CACHE_TTL_
+SECONDS` — unset, so **no expiry** — for a version read. Two consequences here.
+Caching a `PromptVersion` is safe inside a search, because the candidate patch
+replaces `template` on the *class* and a cached instance therefore still yields
+candidate text. And a test suite that points the registry at a throwaway file
+per test must clear the singleton, or the second test reading
+`agent_root_instruction` version 1 gets the first test's text.
+*Verified:* read from installed mlflow 3.13.0 source, and by the version-2 read
+in `tests/harness/test_candidates.py`. *Date:* 2026-08-25.
+
+**A prompt name admits alphanumerics, hyphens, underscores and dots — no
+slashes.** `register_prompt(name="water_assistant/root_instruction")` raises
+`MlflowException: Prompt name can only contain alphanumeric characters,
+hyphens, underscores, and dots.`, so the candidate surface's namespacing is a
+prefix (`agent_tool_<name>`) rather than a path.
+*Verified:* registered against a local SQLite registry on mlflow 3.13.0.
+*Date:* 2026-08-25.
+
 ## Weather source measurements
 
 **Station vs ERA5 (Open-Meteo Archive) biases.** Against ERA5 (Open-Meteo's

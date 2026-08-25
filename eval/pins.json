@@ -1,7 +1,37 @@
 {
   "_comment": "Architecture \u00a75's pin list. Verified by `just pins`; rewritten only by `just pins-write`. A null is an unpinned slot \u2014 the artifact does not exist yet, or the value needs a live capture.",
   "pins": {
-    "candidate_prompts": null,
+    "candidate_prompt_versions": null,
+    "candidate_prompts": {
+      "calc_irrigation": {
+        "prompt": "agent_tool_calc_irrigation",
+        "sha256": "14251cf62fe9af33317380ead84bac7f6bd0fa9290d1f4a180b86ded7bc9feaf"
+      },
+      "get_weather_forecast_tool": {
+        "prompt": "agent_tool_get_weather_forecast_tool",
+        "sha256": "7b08b4ba3e83ba1426574f304ea36be0a09cdfc1cb177d71b76946eae1a18f4b"
+      },
+      "lookup_reference": {
+        "prompt": "agent_tool_lookup_reference",
+        "sha256": "72dc2782ae528b676c41bd22e64e5189f887774155374ed3938645a15ceceb7a"
+      },
+      "plot_timeseries": {
+        "prompt": "agent_tool_plot_timeseries",
+        "sha256": "7b7ca73432323844b23a018c3641f68bdc26cf7aa3ca3bd5d843dee72fcee9c6"
+      },
+      "predict_green_roof_water_balance_tool": {
+        "prompt": "agent_tool_predict_green_roof_water_balance_tool",
+        "sha256": "2697ed203a4fd2a164bd3ba9487cab6f6f4054232a722c2ce68d79c37660dfb4"
+      },
+      "root_instruction": {
+        "prompt": "agent_root_instruction",
+        "sha256": "86ad4fe270ff25979d08c7cce45f5d79585f4eda56c92365ddbd6acf1d591f6c"
+      },
+      "text_to_sql_agent": {
+        "prompt": "agent_tool_text_to_sql_agent",
+        "sha256": "7fb2526719669bcb2becccf9af18376dea122d24df4b485d5ea8c0adbcff116e"
+      }
+    },
     "card_store_sha256": "9348c18386c970a339b65f34f332bbce21c0750c421e139638bfbf39006f4afc",
     "dependency_versions": {
       "duckdb": "1.5.3",

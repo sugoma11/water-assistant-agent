@@ -46,6 +46,10 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
+# `harness/` sits at the repository root and is deliberately outside the
+# installed distribution (plan.md §3), so importing `harness.candidates` for the
+# candidate-surface pin needs the root on the path as well.
+sys.path.insert(0, str(REPO_ROOT))
 
 PINS_PATH = REPO_ROOT / "eval" / "pins.json"
 DB_PATH = REPO_ROOT / "data" / "water.duckdb"
@@ -62,6 +66,7 @@ LIVE_ONLY_PINS = frozenset(
         "gr2l_canary_response_sha256",
         "task_model_canary_sha256",
         "reflection_model_canary_sha256",
+        "candidate_prompt_versions",
     }
 )
 """Pins whose value only a live service can produce, so this check cannot recompute one.
@@ -72,6 +77,13 @@ and compares it byte for byte before recording any new entry, which is a
 (``decisions.md`` § The response cache). What this script can honestly say about
 them is which build was captured and when, so a committed value is reported as
 pinned rather than failed as uncomputable.
+
+``candidate_prompt_versions`` joins them for the same reason with a different
+service behind it: a version number is what the MLflow registry *assigned*, and
+no offline run can derive one. Its companion ``candidate_prompts`` is fully
+recomputable, so the pair is verified where it can be — the seed text a version
+was registered from is hashed here, and a post-freeze edit to any of the seven
+components moves that hash whatever the registry says.
 """
 
 _CHUNK = 1 << 20
@@ -180,6 +192,7 @@ def compute_pins() -> dict[str, Any]:
     ``None`` means "cannot be computed here" — the artifact does not exist yet,
     or the value needs a live capture — and is what leaves a pin unpinned.
     """
+    from harness.candidates import candidate_prompts_pin
     from water_assistant_agent.assistant.llm import (
         sql_builder_model_pin,
         sql_fixer_model_pin,
@@ -216,7 +229,14 @@ def compute_pins() -> dict[str, Any]:
         "sql_fixer_model": sql_fixer_model_pin(settings),
         "reflection_model": None,
         "reflection_model_canary_sha256": None,
-        "candidate_prompts": None,
+        # The candidate surface, in two halves. `candidate_prompts` is the
+        # registered name and the seed text's hash per optimizable component —
+        # seven entries, one per component, never one blob — and it is what makes
+        # the T107 freeze checkable: an edit to the handwritten instruction or to
+        # a tool docstring moves a hash here. `candidate_prompt_versions` is what
+        # the registry assigned and is filled by `just candidates`.
+        "candidate_prompts": candidate_prompts_pin(),
+        "candidate_prompt_versions": None,
         "station_derivation": _station_derivation(),
         "dependency_versions": _dependency_versions(),
     }

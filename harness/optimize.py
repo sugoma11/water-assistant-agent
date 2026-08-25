@@ -41,6 +41,16 @@ candidate injection rests on a process-global patch of ``PromptVersion.template`
 whose failure is a log warning (``findings.md``) — a version bump that moved it
 would produce a search that optimized nothing and said so nowhere.
 
+**A search reports how it differs from the pre-registration; it does not refuse
+to differ.** ``eval/preregistration.json`` fixes the budget and the
+hyperparameters before any test run (§7), and every run logs the registration's
+digest beside the list of its own deviations — empty for the registered search,
+and naming the budget for ``just search-smoke``. Refusing here would forbid the
+smoke run, which is a legitimate thing to do and an illegitimate thing to
+publish; the measurement driver is where a deviating run is refused, because a
+*test number* under an unregistered budget is the failure the protocol exists to
+prevent (T129).
+
 **The search owns its MLflow run, and that is what makes the ledger possible.**
 GEPA starts a run when none is active and ends the one it started
 (``gepa/logging/experiment_tracker.py``), so a ledger written after
@@ -64,12 +74,14 @@ from mlflow.genai.optimize.optimizers import GepaPromptOptimizer
 from mlflow.genai.optimize.types import PromptOptimizationResult
 
 from harness.candidates import candidate_uris, evaluation_pass, seed_versions
-from harness.ledger import RunLedger, ledgered, experiment_run
+from harness.ledger import RunLedger, experiment_run, ledgered
 from harness.predict import as_keyword_fn
+from harness.preregistration import SEARCH
+from harness.preregistration import run_params as prereg_params
 from harness.reflection import pinned_reflection_lm
 from harness.run_case import EVAL_CACHE_DIR, PINNED_DB
 from harness.scorers import SCORERS
-from harness.scoring import ABSTENTION, SKIPPED, TRAJECTORY
+from harness.scoring import ABSTENTION, SELECTION_WEIGHTS, SKIPPED, TRAJECTORY
 from harness.scoring import aggregate_scores as AGGREGATION
 from harness.train_data import (
     CASES_DIR,
@@ -297,6 +309,25 @@ def run_search(
         pinned_reflection_lm(settings) as reflection_uri,
         evaluation_pass(),
     ):
+        # Reported, never refused. A short search at a smoke budget is a useful
+        # thing to run and a useless thing to report as the registered one, and
+        # the difference belongs in the run's own record rather than in whoever
+        # reads it afterwards (T129).
+        mlflow.log_params(
+            prereg_params(
+                SEARCH,
+                {
+                    "split": split,
+                    "limit": limit,
+                    "max_metric_calls": max_metric_calls,
+                    "reflection_model": settings.reflection_model,
+                    "gepa_kwargs": {},
+                    "llm_cache": "on",
+                    "response_cache_mode": "record",
+                    "selection_weights": dict(SELECTION_WEIGHTS),
+                },
+            )
+        )
         logger.info(
             "Search starting",
             arm=arm,

@@ -4196,9 +4196,52 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   score; the two generalization gaps reported separately; test_unseen's trajectory
   as a per-template win/loss table, never an accuracy with an interval. → T102,
   T126
-- [ ] T129 Pre-register the budget and hyperparameters before any test run, record
+- [x] T129 Pre-register the budget and hyperparameters before any test run, record
   that all method debugging happened on train, and report every arm on test —
   never "best of". → T128
+  **Done before T128 despite the number, because that is the whole content of the
+  rule.** A pre-registration written after the numbers exist is not one: nothing
+  distinguishes a budget chosen in advance from a budget chosen after a
+  favourable result. Committed at `1a1b5d8` — T127, the last commit before any
+  test rollout exists — with the three case files' sha256 beside it, so what was
+  registered is checkable against the suite it was registered over.
+  Done in `eval/preregistration.json` (the registration) and
+  `harness/preregistration.py` (the check). Reasoning in `decisions.md § The
+  pre-registration is an artifact a run is checked against`.
+  **Registered, not merely written down.** Prose in `decisions.md` would have
+  been committed, dated and diffable, and still nothing would compare a run
+  against it — a smoke run at 8 rollouts and the registered run at 100 read
+  identically to every tool in the repository. So the registration is data: the
+  entry point, the split, `max_metric_calls: 100`, the reflection model, the
+  empty `gepa_kwargs`, both cache modes, `runs: 1`, and the selection weights;
+  then the measurement's arms, splits, three repeats, pinned decoding and
+  pairing; then the analysis plan, key by key.
+  **Two statements of one number drift, so the tests assert they agree.** The
+  registered selection weights *are* `harness/scoring.py`'s `SELECTION_WEIGHTS`,
+  the registered budget *is* `DEFAULT_MAX_METRIC_CALLS`, the registered decoding
+  *is* the settings' pinned temperature and seed, and the registered reflection
+  model *is* the configured one. A run selecting on one weighting while reporting
+  another is the drift nothing else would surface.
+  **Reported for a search, refused for a measurement**, and the asymmetry is the
+  point. `run_search` logs `prereg.sha256` beside `prereg.deviations`, so
+  `just search-smoke` is self-labelling — it runs, and its own record says it was
+  not the registered search. Refusing there would forbid the smoke run and push
+  it into a second entry point, which is the one thing §6 keeps single. A
+  measurement that deviates raises `PreregistrationViolation` unless it declares
+  itself exploratory, and a declared-exploratory run still carries its deviation
+  list: the flag exists so silence never has to be interpreted.
+  **The baseline's known defect is registered in advance.** T107 left T17a's
+  contract-encoding failure for the search — correct reasoning, wrong encoding,
+  and the encoding lives in the optimizable instruction — so the baseline enters
+  at 0.50 abstention accuracy by choice. Writing that down *before* the run is
+  what stops a candidate repairing it from being read afterwards as an
+  improvement over a baseline quietly weakened to make room for one.
+  The optimized arm is registered by definition rather than by version — "whatever
+  candidate the one registered search selects" — because a version-keyed
+  registration could only be written after the search it is meant to constrain.
+  Verified by 16 tests in `tests/harness/test_preregistration.py`.
+  `uv run ruff check .` and `uv run pytest` clean — 1310 passed, same 22
+  pre-existing findings, none in the testbed.
 
 ---
 

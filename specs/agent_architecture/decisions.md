@@ -1813,3 +1813,57 @@ restored together, including when the search raises.
 **Validity condition:** the search's record mode grows `eval/cache/`, so the
 count of newly recorded entries is published per arm. Diverging counts mean the
 arms explored different argument space; that is reported and not repaired.
+
+---
+
+## The pre-registration is an artifact a run is checked against
+
+Budget, hyperparameters, arms and analysis plan are committed to
+`eval/preregistration.json` **before the search and before any test rollout**,
+its sha256 travels with every run, and a run's parameters are compared against
+it: reported for a search, refused for a measurement.
+
+This is the concrete form of §7's last reporting rule, and it carries the role
+the fourth split does not exist to carry. The entry point exposes one dataset
+channel (**Splits, sizing and the holdout**), so choosing between arms,
+reflection models and budgets cannot be delegated to a held-out set; it is
+delegated to a commitment made in advance instead. A commitment is only that if
+something can tell whether it was kept.
+
+**Rejected:**
+
+- *Writing the pre-registration into the thesis prose after the run.* The common
+  form, and it is not a pre-registration: nothing distinguishes a budget chosen
+  in advance from a budget chosen after a favourable number, and the reader has
+  no way to check either. The whole content of the rule is the ordering, so the
+  ordering is what has to be evidenced.
+- *A section in this file.* Better — committed, dated, diffable — and still
+  prose, so nothing compares a run against it. A smoke run at eight rollouts and
+  the registered run at a hundred would read identically to every tool in the
+  repository, and the only reader who could tell them apart is the one who
+  already knew.
+- *Refusing a deviating search as well as a deviating measurement.* It would
+  forbid `just search-smoke`, which is how the loop is checked at all, and would
+  push the smoke run into a second entry point — the one thing §6 keeps single. A
+  short search is a useful thing to run and a useless thing to report as the
+  registered one, so it is labelled rather than banned.
+- *Registering the arms by their prompt versions.* The optimized arm has no
+  version until the search has produced it, so a version-keyed registration could
+  only be written *after* the run it is supposed to constrain. The arms are
+  registered by definition: the pinned seed, and whatever the one search selects.
+
+**Validity conditions:**
+
+- The digest travels with every run, so a number can be traced to the
+  registration it was produced under, and an edit after the fact moves the hash
+  rather than quietly redefining what was promised.
+- An amendment is **appended with its reason**, never applied by rewriting a
+  value in place. The digest moves either way; only one of the two leaves a
+  record of what moved.
+- The baseline arm's known 0.50 abstention entry is registered **in advance**
+  (T107's T17a finding), so a candidate repairing it cannot afterwards be read as
+  an improvement over a baseline quietly weakened to make room for one.
+- The registered selection weights are asserted to be `harness/scoring.py`'s own
+  table, and the registered budget to be the module's default. Two statements of
+  one number drift, and a run selecting on one weighting while reporting another
+  is the drift that would not surface anywhere else.

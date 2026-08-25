@@ -1,0 +1,126 @@
+{
+  "_comment": [
+    "The pre-registration of agent_architecture.md §7's last reporting rule: budget",
+    "and hyperparameters are fixed before any test run, all method debugging happens",
+    "on train, and every arm is reported on test — never 'best of'. Committed before",
+    "the registered search and before any test rollout; its sha256 travels with every",
+    "run (harness/preregistration.py), so an edit after the fact moves the hash rather",
+    "than quietly redefining what was promised. Amendments are appended to",
+    "'amendments' with their reason, never applied by rewriting a value in place."
+  ],
+  "registered_on": "2026-08-25",
+  "registered_against": {
+    "commit": "1a1b5d823d4f7441be649e62a980ac6dc99dff43",
+    "note": "T127, the run ledger. The last commit before any test rollout exists.",
+    "case_files": {
+      "train.json": "d66cc411ec89da4a06172657de075f0bcfd653832273f1f9d536823d599bd634",
+      "test_seen.json": "a0d0a016121b595ffe3a740978588ca85300da24f9d2f1230a78c01c42409a11",
+      "test_unseen.json": "a4c67c89df11c96a1465128016177f3dc367e8cc4a775823eef9ab364bc3ce4c"
+    },
+    "splits": {
+      "train": {"cases": 100, "templates": 25},
+      "test_seen": {"cases": 125, "templates": 25},
+      "test_unseen": {"cases": 56, "templates": 7}
+    }
+  },
+
+  "arms": {
+    "baseline": [
+      "The handwritten seed candidate at the pinned candidate_prompt_versions — the",
+      "evaluation root instruction plus the six tool texts, registered once and read",
+      "twice (T125), so the reference arm and the search's seed cannot drift apart.",
+      "It enters at 0.50 abstention accuracy by choice: T107 found T17a failing 3/3",
+      "on the handwritten instruction with correct reasoning and a wrong contract",
+      "encoding, and left it for the search, because the encoding lives in the",
+      "optimizable text. A candidate repairing it is measuring what the thesis claims",
+      "to measure, and this sentence exists so that improvement cannot later be read",
+      "as a baseline that was quietly weakened."
+    ],
+    "optimized": [
+      "Whatever candidate the one registered search selects. Not the best of several",
+      "searches, not the best iteration by test score, not a hand-picked candidate:",
+      "the search's own selection, on the aggregated scalar, over train alone."
+    ]
+  },
+
+  "search": {
+    "entry_point": "mlflow.genai.optimize_prompts",
+    "optimizer": "GepaPromptOptimizer",
+    "split": "train",
+    "limit": null,
+    "max_metric_calls": 100,
+    "reflection_model": "openai/qwen3.5-397b-a17b",
+    "gepa_kwargs": {},
+    "llm_cache": "on",
+    "response_cache_mode": "record",
+    "runs": 1,
+    "selection_weights": {
+      "answer": 0.4,
+      "trajectory": 0.3,
+      "abstention": 0.2,
+      "card_recall": 0.1
+    }
+  },
+
+  "measurement": {
+    "arms": ["baseline", "optimized"],
+    "splits": ["train", "test_seen", "test_unseen"],
+    "repeats": 3,
+    "temperature": 0.0,
+    "seed": 42,
+    "llm_cache": "off",
+    "response_cache_mode": "replay",
+    "pairing": "the identical committed cases, in file order, for every arm and every repeat"
+  },
+
+  "analysis": {
+    "unit_of_analysis": "template_id",
+    "repeat_reduction": "mean over the three repeats per case, before any aggregation over cases",
+    "bootstrap": {
+      "paired": true,
+      "unit": "template_id",
+      "resamples": 10000,
+      "rng_seed": 42,
+      "interval": "percentile",
+      "level": 0.95
+    },
+    "primary_estimand": "the paired difference optimized - baseline, per metric, on test_seen",
+    "train_number": "selection score",
+    "gaps": ["train->test_seen", "test_seen->test_unseen"],
+    "test_unseen_trajectory": "per-template win/loss table; no accuracy and no interval",
+    "abstention": "accuracy over the unanswerable cases and the false-abstention rate over the answerable ones, reported separately and never blended",
+    "exclusion": "harness_error cases leave every aggregate and are counted per arm with their sources broken out; invalid_argument never excludes",
+    "diagnostics": [
+      "fixer_iterations",
+      "steps",
+      "tokens",
+      "latency_s",
+      "mean_extra_calls",
+      "parse_failures"
+    ],
+    "parse_failure": "reported apart from answer accuracy, so a candidate degrading the output format stays distinguishable from one degrading reasoning",
+    "residual_nondeterminism": "the share of cases whose three repeats do not agree, per arm and split, reported as the noise floor every arm difference is read against",
+    "multiplicity": "no correction across the four metrics. They are four declared quantities, not a family searched over for a winner; the interval and the noise floor carry the uncertainty and the suite is stated to detect large effects only"
+  },
+
+  "protocol": {
+    "method_debugging": [
+      "train only. Every defect the pilot and the packets found was found on train",
+      "or on the pilot's own cases; the two test splits have never been run."
+    ],
+    "reporting": [
+      "Both arms on all three splits, whatever the numbers are. A repeated run is",
+      "reported as a repeat, and §7's own repeat condition is the only one that",
+      "licenses it: residual failure counts diverging between arms mean the arms",
+      "were not measured under the same conditions. Diverging newly-recorded cache",
+      "entry counts are reported and never repaired."
+    ],
+    "stopping": [
+      "The measurement is complete when both arms have three repeats on all three",
+      "splits. It is not stopped early on a favourable interval, and it is not",
+      "extended on an unfavourable one."
+    ]
+  },
+
+  "amendments": []
+}

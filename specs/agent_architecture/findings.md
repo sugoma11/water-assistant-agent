@@ -447,6 +447,207 @@ columns are compared on that half and neither is normalized to the other.
 `tests/harness/test_ledger.py::
 test_the_witness_records_what_the_endpoint_said_it_served`. *Date:* 2026-08-25.
 
+**GEPA spends `len(trainset)` metric calls before it proposes anything, so a
+budget equal to the split's size is a no-op that reports itself as a search.**
+`GepaPromptOptimizer` passes `trainset` and **no `valset`**
+(`gepa_optimizer.py:349-359`), so GEPA evaluates the seed candidate over the
+whole split first; each accepted candidate then costs another full evaluation,
+with reflection minibatches of 3 in between (`gepa/api.py:328`,
+`core/engine.py:480,563`). At 100 train cases a `max_metric_calls=100` therefore
+buys **zero** proposals and returns the seed unchanged — and the run looks
+complete, because it is: it evaluated the thing it was given. Caught before any
+test rollout and amended in the pre-registration rather than discovered from a
+flat result.
+*Verified:* read from installed gepa 0.1.1 / mlflow 3.13.0 source, and by
+`just search-smoke` at 3 records / 6 calls producing 7 rollouts — the initial
+full evaluation of 3, one minibatch of 3, and one over.
+*Date:* 2026-08-25.
+
+**A canary detects a swap only where the swap changes the reply, and both
+reflection models answered identically.** Re-capturing
+`reflection_model_canary_sha256` after moving from `openai/qwen3.5-397b-a17b` to
+`openai/qwen3.5-122b-a10b` produced **the same hash**,
+`335fb27d41c9ba573d7af52d762e8ccb867f02c24a313c7f753b8338ac29d103` — the probe
+asks for exact compliance and both models comply exactly, byte for byte. So the
+canary is not an identity check and was never one: what caught this move was the
+`reflection_model` pin's served id and endpoint, and the canary's job is the
+narrower one of catching a model that started answering *differently*. Worth
+stating plainly, because a matching canary reads as "nothing moved" and here
+everything did.
+*Verified:* `just pins-reflection --accept-moved` against both models.
+*Date:* 2026-08-25.
+
+**T115's loop-bound GR2L client is a *search*-path hazard too, and it can wedge
+the run rather than fail it.** `gr2l_client` keeps its `httpx.AsyncClient` in a
+module-level `_ClientHolder` (`:157-165`) created on the first live call and
+bound to that call's event loop, while `run_case` runs `asyncio.run` per
+rollout — so every rollout has a new loop and the client does not. `run_case`'s
+own docstring scopes this to the capture pass, on the ground that "replay never
+reaches the client at all". **The search is the third pass and it does reach the
+client**: record mode is `allow_live=True`, so a window the *candidate* chose
+and the capture pass never recorded goes out live (§5).
+Under MLflow's `ThreadPoolExecutor` the failure is worse than the documented
+one. A registered search over the 100-case train split logged
+`Event loop is closed` ×4 and `connection pool` ×4, completed 324 rollouts, and
+then **stopped dead** — 0 % CPU, no open sockets, no log output, no progress for
+twenty minutes. Not a slow retry: a wedged pool.
+`gr2l_client.py` is frozen (T107), so this is reported and not repaired. The
+**measurement path is not exposed** — it replays, and `ReplayCache` refuses to
+call out at all — so what it costs is search reliability, not any measured
+number. Two mitigations need no frozen code: fewer eval workers, and the fact
+that a re-run replays what the wedged run *recorded* (16 new `eval/cache/`
+entries) plus its LLM responses, so the same ground is re-covered without a live
+call.
+*Verified:* the killed search's log, its socket table and CPU while stalled.
+*Date:* 2026-08-25.
+
+## The measurement run (P8c)
+
+Two arms, three splits, **one repeat** (pre-registration amendment 1), on
+`google/gemma-4-31b-it` via OpenRouter, LLM response cache off, response cache
+replaying. Written to `eval/measurements/20260825T174410Z.json`; the report
+re-renders from that file with no model in reach.
+
+**The run cost \$4.963 of the \$5 available** — the registered search \$2.76 and
+the six measured conditions \$2.20, with \$0.037 left. Amendment 3 ordered the
+splits so that train, whose number is a selection score rather than an
+inference, was the one at risk; in the event nothing was lost.
+
+**§7's repeat condition fires, and it governs how all of this may be read.**
+Exclusion counts diverge between the arms on the split that carries the primary
+estimand: **14 of 125 baseline against 25 of 125 optimized on test_seen**, driven
+by `upstream` (20 vs 34) and `text_to_sql_agent` (1 vs 9). §7 is explicit —
+"diverging failure counts between arms mean the run is repeated" — so the
+comparison below is **not established**, and one repeat is exactly what the
+budget did not buy. The direction is worth recording; the interval is not worth
+believing until a repeat says the arms were measured under the same conditions.
+
+| condition | included | excluded | selection | answer | trajectory |
+|---|---|---|---|---|---|
+| baseline / train | 93/100 | 7 | 0.812 | 0.713 | 0.817 |
+| optimized / train | 90/100 | 10 | 0.904 | 0.909 | 0.889 |
+| baseline / test_seen | 111/125 | 14 | 0.788 | 0.677 | 0.838 |
+| optimized / test_seen | 100/125 | 25 | 0.869 | 0.889 | 0.880 |
+| baseline / test_unseen | 26/56 | 30 | 0.872 | 0.750 | 0.923 |
+| optimized / test_unseen | 28/56 | 28 | 0.845 | 0.625 | 0.964 |
+
+**The primary estimand.** Paired bootstrap over `template_id`, 10 000 resamples,
+`default_rng(42)`, percentile 95 %: on test_seen the **answer** metric moves
+**+0.179 [+0.012, +0.369]** over 21 templates — an interval that excludes zero —
+while trajectory moves +0.040 [−0.080, +0.160] and the blended selection score
++0.060 [−0.025, +0.144], both spanning it. The one metric that moved is the
+deliverable; the routing judgement did not measurably move.
+
+**The optimizer traded abstention for answers, which is what blending permits.**
+On test_seen, abstention accuracy over the unanswerable cases falls **0.800 →
+0.562** while the false-abstention rate stays at ~0.01, and the paired difference
+is −0.052 [−0.136, +0.000]. `aggregate_scores` weights answer 0.40 against
+abstention 0.20 and protects nothing, so a candidate buying 0.18 of answer with
+0.05 of abstention is selected — precisely the trade
+`decisions.md § Candidate selection and the scorers' aggregation` says the
+weights license. It is visible only because §7 refuses to average the two
+abstention numbers into one.
+
+**Both generalization gaps are small and neither excludes zero.** train →
+test_seen is +0.018 [−0.017, +0.060] for the baseline and +0.026 [−0.056,
++0.112] for the optimized arm; test_seen → test_unseen is −0.080 and −0.020, as
+point estimates over disjoint template sets. No evidence of the memorized
+constants or the per-template routing table the two gaps exist to catch — on a
+suite this size that is a weak statement, not a clean bill.
+
+**The holdout as a table, and two rows of it are empty.** T16b, T17b, T18b and
+T20 tie at 1.000 trajectory in both arms; T26 is the one win (0.500 → 0.857);
+**T22 has no data in either arm and T23 none in the optimized arm**, every case
+excluded on a replay miss. 1 win, 0 loss, 4 ties, 2 no data — which is why §7
+asks for a table and forbids an accuracy: an accuracy would have quietly averaged
+over the two templates nobody measured.
+
+**test_unseen lost more than half its cases to replay misses** — 30 of 56
+baseline, 28 of 56 optimized, almost all `upstream`. The capture pass recorded
+the windows each case's *oracle* asked for; a rollout picks its own, and on the
+measurement path a miss is an exclusion by design (§7). It is the same asymmetry
+the search answers with record mode, and here it costs the holdout half its
+population.
+
+**Diagnostics, reported and never scored.** The optimized arm is consistently
+more expensive: mean steps 1.78 → 1.89 on test_seen and 2.54 → 3.57 on
+test_unseen, mean extra calls 0.87 → 0.92 and 1.58 → 2.68, mean tokens 23.2k →
+24.3k and 24.6k → 27.4k, mean latency 12.6 s → 18.0 s. `parse_failure` tracks
+`step_cap_exceeded` exactly in all six conditions — every unparseable final
+message came from a rollout that spent the 7-call cap, not from a candidate that
+mangled the format. `fixer_iterations` is unmeasurable from the root side and is
+reported as absent in all six.
+
+**No noise floor.** One repeat cannot disagree with itself, so residual
+nondeterminism is reported as unmeasured rather than as zero, and every
+difference above is read without knowing what "small" means on this endpoint.
+That is amendment 1's stated cost, arriving exactly where it was said it would.
+
+## External endpoints and what they can carry
+
+Measured while sizing P8c's measurement run, and the reason the run is routed the
+way it is. None of it is a result; all of it is infrastructure that decides
+whether a result can exist.
+
+**`saia.gwdg.de` stopped serving chat completions.** `GET /v1/models` answers
+200 in 0.11 s and lists 16 models; `POST /v1/chat/completions` for
+`qwen3.6-35b-a3b` either hangs past 110 s or returns an **empty HTTP 500** with
+`content-length: 0` and `x-kong-upstream-latency: 10` — the gateway is fine and
+the model backend is not. Rate-limit headers read healthy at the time
+(`x-ratelimit-remaining-day: 365` of 400), so it is a backend fault rather than
+metering. This is the endpoint T107 re-pinned to and the one every P8 packet up
+to T126 ran against.
+*Verified:* repeated `curl` against both endpoints, and `just pins-task` failing
+through litellm's retries. *Date:* 2026-08-25.
+
+**`chat-ai.academiccloud.de` serves the models but returns empty 500s in
+bursts.** `gemma-4-31b-it` came back 6/8 and `qwen3.5-122b-a10b` 3/8 across
+successive probes, with the same empty-500 signature. Quota is **30/minute,
+200/hour, 1000/day, 3000/month — per key**, and `.env` holds two keys against
+this host. Because a rollout takes up to `MAX_LLM_CALLS` turns, an unretried
+rollout completes with probability (1−p)^7; at the observed p that is a minority
+of rollouts, and the exclusions it produces are a fact about the endpoint rather
+than about the candidate. Hence `AssistantSettings.llm_num_retries`, which is a
+litellm-side count: it never reaches the provider, so it moves no pin.
+*Verified:* 8 probes per model per key, and the rate-limit headers on each.
+*Date:* 2026-08-25.
+
+**A rollout costs about 13 requests, which is what the daily caps meter.**
+Measured off the quota counter rather than from the diagnostics: three rollouts
+plus two probes moved `x-ratelimit-remaining-day` from 486 to 445. The gap
+between that and `model_turns` (2, 0, 3 for those three) is the text-to-SQL
+chain's own calls — the sub-agent runs on its own `Runner` and its turns never
+enter the root event stream — plus the retries the 500s force. So the
+measurement run's 562 rollouts are ~7300 requests against a 1000/day cap: four
+to nine days across two keys, which is why the task model is routed to
+OpenRouter instead.
+*Verified:* quota counter before and after three live rollouts.
+*Date:* 2026-08-25.
+
+**OpenRouter prices and reliability, measured over 11 rollouts.**
+`qwen/qwen3.6-35b-a3b` at \$0.14/\$1.00 per Mtok cost **\$0.0063 per rollout**
+across a seven-template spread (T01, T06, T09, T13, T17a, T21, T24a, T27), read
+from the provider's own usage counter and not estimated — the ledger's
+token-derived estimate was 2.3× higher, which prompt caching accounts for.
+`google/gemma-4-31b-it` is cheaper at \$0.10/\$0.34 and measured **€0.0025 per
+rollout** on the smoke search. No request failed. So the registered protocol —
+2 arms × 281 cases × 3 repeats = 1686 rollouts — is about \$10.60 on
+qwen3.6-35b, against a \$5 budget; that arithmetic is what amendment 1 responds
+to.
+*Verified:* OpenRouter `/api/v1/key` usage deltas around each batch.
+*Date:* 2026-08-25.
+
+**Two baseline failures visible in the very first live rollouts, and both are
+what the search exists to move.** On `qwen3.6-35b-a3b`, **T13 and T21 spent the
+whole 7-call step cap without producing a final message** — `parse_failure` with
+`step_cap_exceeded`, which §7 reports apart from answer accuracy precisely so
+this stays distinguishable from wrong reasoning. And **T09 came back
+`harness_error`** under replay: the rollout chose a window the capture pass never
+recorded, so the miss became an `upstream` error and the case excluded. That is
+the measurement path's exclusion channel working as specified, and the per-arm
+count of it is what §7 asks to be published beside the results.
+*Verified:* eight live rollouts on the handwritten baseline. *Date:* 2026-08-25.
+
 ## Weather source measurements
 
 **Station vs ERA5 (Open-Meteo Archive) biases.** Against ERA5 (Open-Meteo's

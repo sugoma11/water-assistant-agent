@@ -98,13 +98,43 @@ def test_the_registration_covers_every_reporting_rule_of_section_7() -> None:
     analysis = load()["analysis"]
 
     assert analysis["bootstrap"]["unit"] == "template_id"
-    assert analysis["repeat_reduction"].startswith("mean over the three repeats")
+    assert analysis["repeat_reduction"].startswith("mean over the repeats per case")
     assert analysis["train_number"] == "selection score"
     assert analysis["gaps"] == ["train->test_seen", "test_seen->test_unseen"]
     assert "no interval" in analysis["test_unseen_trajectory"]
     assert "never blended" in analysis["abstention"]
     assert "mean_extra_calls" in analysis["diagnostics"]
     assert "apart from answer accuracy" in analysis["parse_failure"]
+
+
+def test_an_amendment_is_appended_with_its_reason_and_its_cost() -> None:
+    """Never a value rewritten in place: the digest moves either way, only one leaves a record.
+
+    An amendment made *before any test rollout* is legitimate — nothing it could
+    be responding to exists yet — and that is exactly what has to be evidenced,
+    so every entry states it. What it must never do is arrive quietly: an
+    amendment that gave up a reporting rule has to say which, and why, and what
+    the run no longer measures because of it.
+    """
+    for amendment in load()["amendments"]:
+        assert amendment["before_any_test_rollout"] is True
+        assert amendment["what"] and amendment["why"] and amendment["cost"]
+        assert amendment["not_amended"]
+
+
+def test_a_run_of_one_repeat_measures_no_noise_floor_and_the_registration_says_so() -> None:
+    """The cost of amendment 1, written where a reader of the numbers will meet it.
+
+    Three repeats were the replication. One repeat cannot disagree with itself,
+    so the quantity every arm difference was to be read against is *unmeasured* —
+    which is a different claim from zero, and the registration is where the
+    difference is stated rather than left to whoever reads the report.
+    """
+    registered = load()
+
+    assert registered["measurement"]["repeats"] == 1
+    assert registered["analysis"]["residual_nondeterminism"].startswith("NOT MEASURED")
+    assert registered["measurement"]["llm_cache"] == "off"
 
 
 def test_the_protocol_records_where_debugging_happened_and_what_is_reported() -> None:
@@ -237,5 +267,8 @@ def test_a_search_records_its_own_deviations(
     )
     params = run.data.params
     assert params["prereg.sha256"] == digest(PREREG_FILE)
-    assert "search.max_metric_calls: registered 100, ran 4" in params["prereg.deviations"]
+    assert (
+        f"search.max_metric_calls: registered {DEFAULT_MAX_METRIC_CALLS}, ran 4"
+        in params["prereg.deviations"]
+    )
     assert "search.limit: registered None, ran 2" in params["prereg.deviations"]

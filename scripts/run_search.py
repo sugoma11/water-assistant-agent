@@ -42,6 +42,7 @@ sys.path.insert(0, str(REPO_ROOT))
 import mlflow  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 
+from harness.measure import write_optimized_arm  # noqa: E402
 from harness.optimize import (  # noqa: E402
     DEFAULT_MAX_METRIC_CALLS,
     OPTIMIZED_ARM,
@@ -98,6 +99,22 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {label:<8}{scores}")
     for prompt in result.optimized_prompts:
         print(f"  optimized {prompt.name} → v{prompt.version} ({len(prompt.template)} chars)")
+
+    if result.optimized_prompts:
+        # The optimized arm is *defined* as what this search selected (T129), and
+        # this file is what turns that definition into something the measurement
+        # can read. Written by the search rather than transcribed afterwards: a
+        # typed version number is the one way the arm being measured could stop
+        # being the arm that was selected.
+        versions = write_optimized_arm(
+            result.optimized_prompts,
+            split=args.split,
+            max_metric_calls=args.max_metric_calls,
+            records=search.records,
+            reflection_model=search.reflection_model,
+            selection_score=[result.initial_eval_score, result.final_eval_score],
+        )
+        print(f"  recorded the optimized arm: {versions}")
 
     print(f"\n{search.ledger.summary()}")
     print(f"{search.residuals.summary()}")

@@ -51,6 +51,24 @@ class AssistantSettings(BaseSettings):
     llm_api_base: str | None = None
     llm_api_key: str | None = None
 
+    # The reflection model's own endpoint and key, defaulting to the shared pair.
+    # It is a *second, distinct* model (§5) and may be served somewhere else or
+    # under a different key — these deployments meter per key, and the optimizer's
+    # proposals competing with the rollouts for one key's quota is a way for a
+    # search to fail that has nothing to do with either model. `None` means "use
+    # the shared pair", so nothing changes for a deployment that does not split.
+    reflection_api_base: str | None = None
+    reflection_api_key: str | None = None
+
+    # Retries litellm performs before an error reaches the caller. A litellm-side
+    # parameter: it never reaches the provider and never enters the cache key, so
+    # it moves no pin and changes no request. It exists because these endpoints
+    # return empty HTTP 500s in bursts (`findings.md`), and a rollout takes up to
+    # `MAX_LLM_CALLS` turns — so at a per-call failure rate of p, an unretried
+    # rollout completes with probability (1-p)^7, and the exclusions that produces
+    # are a fact about the endpoint rather than about the candidate.
+    llm_num_retries: int = 5
+
     # --- Decoding, pinned (agent_architecture.md §5; decisions.md § Model pinning) ---
     # Greedy decoding plus one fixed seed, sent on every call. The seed is **sent
     # but not verifiably honoured** — these endpoints serve open-weight models
@@ -122,11 +140,31 @@ class AssistantSettings(BaseSettings):
             "temperature": self.llm_temperature,
             "seed": self.llm_seed,
             "caching": self.llm_cache_enabled,
+            "num_retries": self.llm_num_retries,
         }
         if self.llm_api_base is not None:
             extra["api_base"] = self.llm_api_base
         if self.llm_api_key is not None:
             extra["api_key"] = self.llm_api_key
+        return extra
+
+    def reflection_extra(self) -> dict[str, Any]:
+        """The same, for the reflection model's own endpoint and key.
+
+        Falls back to the shared pair wherever the reflection-specific one is
+        unset, so a deployment serving both models from one endpoint is
+        unaffected and the split is opt-in. This is what
+        ``harness/reflection.py`` binds onto GEPA's bare ``litellm.completion``,
+        and what ``reflection_model_pin`` records — the two read one function, so
+        a pin cannot describe an endpoint the call did not use.
+        """
+        extra = self.litellm_extra()
+        base = self.reflection_api_base or self.llm_api_base
+        key = self.reflection_api_key or self.llm_api_key
+        if base is not None:
+            extra["api_base"] = base
+        if key is not None:
+            extra["api_key"] = key
         return extra
 
 

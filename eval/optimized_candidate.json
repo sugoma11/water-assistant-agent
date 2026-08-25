@@ -1,0 +1,19 @@
+{
+  "max_metric_calls": 500,
+  "records": 100,
+  "reflection_model": "openai:/qwen3.5-122b-a10b",
+  "selection_score": [
+    0.8077777777777778,
+    0.82
+  ],
+  "split": "train",
+  "versions": {
+    "calc_irrigation": 5,
+    "get_weather_forecast_tool": 5,
+    "lookup_reference": 5,
+    "plot_timeseries": 5,
+    "predict_green_roof_water_balance_tool": 5,
+    "root_instruction": 5,
+    "text_to_sql_agent": 5
+  }
+}

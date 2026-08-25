@@ -1867,3 +1867,65 @@ something can tell whether it was kept.
   table, and the registered budget to be the module's default. Two statements of
   one number drift, and a run selecting on one weighting while reporting another
   is the drift that would not surface anywhere else.
+
+---
+
+## The measurement run moved to the endpoints that could carry it
+
+The task model is `google/gemma-4-31b-it` served by OpenRouter, and the
+reflection model is `qwen3.5-122b-a10b` served by `chat-ai.academiccloud.de`
+under its own key. Five pins moved to say so, and the pre-registration carries
+the move as an amendment made before any test rollout.
+
+**None of this is a result, and all of it decides whether a result can exist.**
+`saia.gwdg.de` — the endpoint T107 re-pinned to and every P8 packet ran
+against — stopped serving chat completions: `/v1/models` answers 200 in 0.11 s
+while `/v1/chat/completions` hangs past 110 s or returns an empty 500 from the
+model backend (`findings.md`). `chat-ai.academiccloud.de` serves both models but
+returns empty 500s at 25–60 % and meters 1000 requests per day **per key**,
+against a measured ~13 requests per rollout — four to nine days for this run.
+OpenRouter serves gemma reliably at €0.0025 a rollout.
+
+**Rejected:**
+
+- *Waiting for `saia` to come back.* The honest option, and the one with no
+  information in it: the outage has no announced end, the same host's quota is
+  400/day even when healthy, and the run needs ~7300 requests.
+- *Keeping the pinned `qwen3.6-35b-a3b` and paying OpenRouter for it.* It would
+  have kept the task model identical to every earlier packet's, which is worth
+  something — but at \$0.14/\$1.00 per Mtok the registered protocol is \$10.60
+  against a \$5 budget, and gemma at \$0.10/\$0.34 is the same experiment on a
+  model the budget can actually run. The model under test is a **pinned
+  dependency, not a claim**: the thesis is about optimizing prompts, and which
+  model the prompts are optimized for is recorded rather than argued.
+- *Running everything on the free `chat-ai` quota.* Free, and four to nine days
+  of wall clock during which a burst of 500s converts rollouts into exclusions
+  that are facts about the endpoint. §7 already says diverging failure counts
+  between arms mean the run is repeated; an endpoint failing a quarter of its
+  calls makes that condition a coin toss.
+- *Putting the reflection model on OpenRouter too.* Simpler, and about \$0.5
+  more. A search makes roughly thirty proposal calls, which fits comfortably in
+  free quota that eight thousand rollout calls do not — so the split costs
+  nothing except the seam that makes it possible.
+- *Leaving `eval/pins.json` naming `saia` and running through environment
+  overrides.* Cheapest to undo, and it would have made every ledger row record
+  pins that do not describe the run — which is the exact failure the pin list
+  exists to prevent, arriving through the door marked convenience.
+
+**Validity conditions:**
+
+- The reflection model needs its **own** endpoint and key, so
+  `AssistantSettings.reflection_extra()` exists and both
+  `reflection_model_pin` and `harness/reflection.py`'s binding read it. One
+  function, because a pin naming a host the call never reached is worse than no
+  pin.
+- `llm_num_retries` is a litellm-side count that never reaches the provider, so
+  it moves no pin and changes no request. It is not in the reflection canary's
+  hashed parameters for the same reason: pinning it would claim a dependency
+  that does not exist.
+- Everything measured is measured against gemma. Nothing measured before this
+  move is comparable with anything measured after it — and nothing had been:
+  the pilot's numbers are T107's and no arm had yet been run.
+- `task_model_canary_sha256` was captured **immediately before** the run and is
+  the last slot in §5's list to close. `just pins` now reports 19 pinned, 0
+  unpinned, 0 moved for the first time.

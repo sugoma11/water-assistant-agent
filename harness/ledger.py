@@ -443,6 +443,92 @@ def experiment_run(run_name: str, *, nested: bool = False) -> Iterator[Any]:
         yield run
 
 
+def probe_task_canary(settings: AssistantSettings | None = None) -> tuple[str, str, str]:
+    """Ask the live task model the canary question; return its reply, served id and hash.
+
+    **The last open pin, and the one this packet's comparability rests on.** The
+    endpoints serve open-weight models under undated aliases, so there is no
+    version string to require and a provider-side swap is invisible by
+    construction (``decisions.md`` § Model pinning). T107 recorded the exposure
+    rather than closing it: the task-model endpoint moved during that packet with
+    nothing in place to catch a swap under the move. A swap landing *between* the
+    two arms of one measurement is exactly what this detects — and detecting it
+    afterwards is the most the mechanism ever offers, which is the argument for
+    capturing it immediately before the run rather than at some convenient time.
+
+    **Sent through ADK's own wrapper**, which is where the difference from the
+    reflection canary lies. GEPA issues a bare ``litellm.completion`` and
+    ``harness/reflection.py`` binds the pin at that seam; a rollout goes through
+    :class:`~google.adk.models.lite_llm.LiteLlm`, so the probe does too — through
+    :class:`WitnessedLiteLlm`, so the served id comes back with the reply and the
+    pin is a fact about the request a rollout issues.
+
+    The probe text is :data:`~harness.reflection.CANARY_PROMPT`, the same one the
+    reflection model answers. Two models, one question: a second probe would make
+    the two pins answer different questions for no gain, and this one asks for
+    exact compliance, which is the first thing a swap disturbs.
+
+    Returns:
+        ``(content, served_model_id, sha256)`` — the reply, what the endpoint said
+        it served, and the pin value.
+
+    Raises:
+        RuntimeError: the reply carried no text at all. Not a canary that moved: a
+            canary that cannot be taken.
+    """
+    import asyncio
+
+    from google.adk.models.llm_request import LlmRequest as Request
+    from google.genai import types
+
+    from harness.reflection import CANARY_PROMPT
+
+    settings = settings or get_settings()
+    model = WitnessedLiteLlm(
+        model=settings.root_agent_model, **settings.litellm_extra()
+    )
+    request = Request(
+        model=settings.root_agent_model,
+        contents=[
+            types.Content(role="user", parts=[types.Part(text=CANARY_PROMPT)])
+        ],
+    )
+
+    async def ask() -> str:
+        parts: list[str] = []
+        async for response in model.generate_content_async(request):
+            if response.partial or response.content is None:
+                continue
+            parts.extend(part.text or "" for part in response.content.parts or ())
+        return "".join(parts)
+
+    content = asyncio.run(ask())
+    if not content.strip():
+        raise RuntimeError(
+            "The task model returned no text for the canary probe. That is not a "
+            "canary that moved — it is one that cannot be taken, and a rollout "
+            "against this endpoint would produce a parse failure per case."
+        )
+    return content, ", ".join(model.served), task_canary_sha256(content)
+
+
+def task_canary_sha256(content: str) -> str:
+    """The pin value: sha256 over the probe **and** the reply, canonically joined.
+
+    Both halves in one hash, on ``harness/reflection.py``'s reasoning: a
+    response-only hash would let an edited probe redefine the canary in place —
+    the pin would still match, against a different question. The served model id
+    is deliberately *not* in the hash: it is evidence the ledger keeps per
+    rollout, and folding it in would make the canary fail on a provider that
+    merely started spelling its own name differently.
+    """
+    from harness.reflection import CANARY_PROMPT
+
+    payload: Mapping[str, Any] = {"prompt": CANARY_PROMPT, "response": content}
+    text = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def candidate_id(texts: Mapping[str, str]) -> str:
     """sha256 over the candidate's seven components, in :data:`CANDIDATE_COMPONENTS` order.
 
@@ -517,6 +603,8 @@ __all__ = [
     "WitnessedLiteLlm",
     "candidate_id",
     "ledgered",
+    "probe_task_canary",
+    "task_canary_sha256",
     "task_prices",
     "experiment_run",
 ]

@@ -26,6 +26,14 @@ pins-canary:
 pins-reflection:
     uv run python scripts/check_pins.py --capture-reflection-canary
 
+# Probe the live task model and pin its canary reply hash — run this IMMEDIATELY
+# before a measurement run. The agent under test is served under an undated alias,
+# so a provider-side swap moves every number while leaving every recorded surface
+# identical; a swap landing between the two arms is what this detects, and
+# detecting it afterwards is the most the mechanism ever offers.
+pins-task:
+    uv run python scripts/check_pins.py --capture-task-canary
+
 # The candidate surface is seven registered prompts — the root instruction, the five
 # tool docstrings and the sub-agent's outward description — and the handwritten
 # baseline is registered once as their seed. It is simultaneously the reference arm
@@ -85,3 +93,22 @@ search-smoke:
 # Replay the same cases with the network blocked; fails on any miss or any live call
 capture-verify:
     uv run python scripts/capture_cache.py --verify
+
+# The measurement run is the search's opposite on both switches: it replays (a miss
+# excludes the case, which is §7's exclusion channel and exists only here) and the LLM
+# response cache is OFF, because the three repeats per condition are the replication
+# and a prompt-keyed hit would hand the first repeat's bytes to the other two. Run
+# `just pins-task` immediately before: a provider swap between the two arms is what
+# that canary exists to catch. Needs the registry and the task model's endpoint.
+
+# Two arms × three splits × three repeats, then §7's report
+measure:
+    uv run python scripts/run_measurement.py
+
+# What was pre-registered, and its sha256 — read this before reading any number
+prereg:
+    uv run python scripts/run_measurement.py --show-preregistration
+
+# Re-render §7's report from a written measurement; needs no model and no service
+measure-report file:
+    uv run python scripts/run_measurement.py --analyze {{file}}

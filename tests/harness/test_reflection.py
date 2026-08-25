@@ -43,12 +43,21 @@ TASK = "openai/the-task-model"
 
 
 def settings(**overrides: Any) -> AssistantSettings:
-    """Settings with both models named explicitly, so no ambient value decides."""
+    """Settings with both models named explicitly, so no ambient value decides.
+
+    ``reflection_api_base`` and ``reflection_api_key`` are pinned to ``None``
+    rather than left out. ``AssistantSettings`` reads ``.env`` for every field a
+    caller does not pass, so a deployment that splits the reflection model onto
+    its own endpoint would otherwise reach in here and decide these tests —
+    which is the ambient value this helper exists to exclude.
+    """
     fields: dict[str, Any] = {
         "reflection_model": REFLECTION,
         "root_agent_model": TASK,
         "llm_api_base": "https://example.invalid/v1",
         "llm_api_key": "a-key",
+        "reflection_api_base": None,
+        "reflection_api_key": None,
         "llm_temperature": 0.0,
         "llm_seed": 42,
     }
@@ -100,16 +109,54 @@ def test_the_reflection_model_is_a_second_distinct_model() -> None:
 
 
 def test_the_pin_records_the_endpoint_and_the_decoding_it_binds() -> None:
-    """Four fields, and the binding fills exactly those four.
+    """Five fields bound, four of them pinned, and the fifth deliberately not.
 
-    Stated as an equality rather than a list in prose, so a parameter added to
-    the pin without being bound — or bound without being pinned — fails here.
+    Stated as an equality rather than as prose, so a parameter added to the pin
+    without being bound — or bound without being pinned — fails here.
+    ``num_retries`` is the one exception and it is named as such: a litellm-side
+    retry count never reaches the provider, so it changes no request and no
+    result, and pinning it would claim a dependency that does not exist.
     """
     pin = reflection_model_pin(settings())
 
-    assert set(BOUND_PARAMETERS) == {"api_base", "api_key", "temperature", "seed"}
+    assert set(BOUND_PARAMETERS) == {
+        "api_base",
+        "api_key",
+        "temperature",
+        "seed",
+        "num_retries",
+    }
     assert pin["endpoint"] == "https://example.invalid/v1"
     assert pin["decoding"] == {"temperature": 0.0, "seed": 42}
+
+
+def test_the_reflection_model_can_be_given_its_own_endpoint_and_key() -> None:
+    """A second, distinct model may be served somewhere else — and metered there.
+
+    These deployments meter per key, so the optimizer's proposals competing with
+    the rollouts for one key's quota is a way for a search to fail that has
+    nothing to do with either model. Unset, the pair falls back to the shared
+    one, so a deployment that does not split is unaffected.
+    """
+
+    split = settings(
+        llm_api_base="https://shared.invalid/v1",
+        llm_api_key="shared",
+        reflection_api_base="https://reflection.invalid/v1",
+        reflection_api_key="its-own",
+    )
+
+    assert split.reflection_extra()["api_base"] == "https://reflection.invalid/v1"
+    assert split.reflection_extra()["api_key"] == "its-own"
+    assert split.litellm_extra()["api_base"] == "https://shared.invalid/v1"
+    # The pin reads the same function the binding does, so it cannot name a host
+    # the reflection call never reached.
+    assert (
+        reflection_model_pin(split)["endpoint"] == "https://reflection.invalid/v1"
+    )
+
+    shared = settings(llm_api_base="https://shared.invalid/v1")
+    assert reflection_model_pin(shared)["endpoint"] == "https://shared.invalid/v1"
 
 
 def test_the_committed_canary_is_pinned() -> None:

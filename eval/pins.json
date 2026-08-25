@@ -58,8 +58,8 @@
         "seed": 42,
         "temperature": 0.0
       },
-      "endpoint": "https://saia.gwdg.de/v1",
-      "model_id": "openai/qwen3.5-397b-a17b"
+      "endpoint": "https://chat-ai.academiccloud.de/v1",
+      "model_id": "openai/qwen3.5-122b-a10b"
     },
     "reflection_model_canary_sha256": "335fb27d41c9ba573d7af52d762e8ccb867f02c24a313c7f753b8338ac29d103",
     "roofs_version": "1.0",
@@ -69,16 +69,16 @@
         "seed": 42,
         "temperature": 0.0
       },
-      "endpoint": "https://saia.gwdg.de/v1",
-      "model_id": "openai/qwen3.6-35b-a3b"
+      "endpoint": "https://openrouter.ai/api/v1",
+      "model_id": "openrouter/google/gemma-4-31b-it"
     },
     "sql_fixer_model": {
       "decoding": {
         "seed": 42,
         "temperature": 0.0
       },
-      "endpoint": "https://saia.gwdg.de/v1",
-      "model_id": "openai/qwen3.6-35b-a3b"
+      "endpoint": "https://openrouter.ai/api/v1",
+      "model_id": "openrouter/google/gemma-4-31b-it"
     },
     "station_derivation": {
       "derivation_sha256": "da6c872647ed04026a92d0127323cda5ce65002bc4fd077bb300463041109ae3",
@@ -90,18 +90,18 @@
         "seed": 42,
         "temperature": 0.0
       },
-      "endpoint": "https://saia.gwdg.de/v1",
-      "model_id": "openai/qwen3.6-35b-a3b"
+      "endpoint": "https://openrouter.ai/api/v1",
+      "model_id": "openrouter/google/gemma-4-31b-it"
     },
     "task_model": {
       "decoding": {
         "seed": 42,
         "temperature": 0.0
       },
-      "endpoint": "https://saia.gwdg.de/v1",
-      "model_id": "openai/qwen3.6-35b-a3b"
+      "endpoint": "https://openrouter.ai/api/v1",
+      "model_id": "openrouter/google/gemma-4-31b-it"
     },
-    "task_model_canary_sha256": null,
+    "task_model_canary_sha256": "5bbf7327070d9d52067f0617e1afc8c86402cdb89e815fe260361025e4edfeb8",
     "water_duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
   }
 }

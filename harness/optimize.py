@@ -100,8 +100,18 @@ logger = structlog.get_logger(__name__)
 BASELINE_ARM = "baseline"
 OPTIMIZED_ARM = "optimized"
 
-DEFAULT_MAX_METRIC_CALLS = 100
-"""GEPA's budget, in rollouts. Pre-registered per run (T129), never tuned on a result."""
+DEFAULT_MAX_METRIC_CALLS = 500
+"""GEPA's budget, in rollouts. Pre-registered per run (T129), never tuned on a result.
+
+**It has to clear the trainset's size before it buys anything.** MLflow passes
+``trainset`` and no ``valset``, so GEPA evaluates the seed candidate over the
+whole split before proposing — ``len(trainset)`` metric calls — and each accepted
+candidate costs another full evaluation, with reflection minibatches of 3 in
+between (``gepa/api.py:328``). A budget equal to the split's size is therefore
+spent entirely on measuring the seed and the search returns it unchanged, which
+is a no-op that reports itself as a completed search. At 100 train cases, 500
+leaves 400 after the seed's evaluation.
+"""
 
 
 class AggregationNotWiredError(RuntimeError):

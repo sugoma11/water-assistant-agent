@@ -48,8 +48,8 @@
     "optimizer": "GepaPromptOptimizer",
     "split": "train",
     "limit": null,
-    "max_metric_calls": 100,
-    "reflection_model": "openai/qwen3.5-397b-a17b",
+    "max_metric_calls": 500,
+    "reflection_model": "openai/qwen3.5-122b-a10b",
     "gepa_kwargs": {},
     "llm_cache": "on",
     "response_cache_mode": "record",
@@ -64,8 +64,8 @@
 
   "measurement": {
     "arms": ["baseline", "optimized"],
-    "splits": ["train", "test_seen", "test_unseen"],
-    "repeats": 3,
+    "splits": ["test_seen", "test_unseen", "train"],
+    "repeats": 1,
     "temperature": 0.0,
     "seed": 42,
     "llm_cache": "off",
@@ -75,7 +75,7 @@
 
   "analysis": {
     "unit_of_analysis": "template_id",
-    "repeat_reduction": "mean over the three repeats per case, before any aggregation over cases",
+    "repeat_reduction": "mean over the repeats per case, before any aggregation over cases",
     "bootstrap": {
       "paired": true,
       "unit": "template_id",
@@ -99,7 +99,7 @@
       "parse_failures"
     ],
     "parse_failure": "reported apart from answer accuracy, so a candidate degrading the output format stays distinguishable from one degrading reasoning",
-    "residual_nondeterminism": "the share of cases whose three repeats do not agree, per arm and split, reported as the noise floor every arm difference is read against",
+    "residual_nondeterminism": "NOT MEASURED under amendment 1 — one repeat cannot disagree with itself. Reported as unmeasured rather than as zero, and every arm difference in this run is therefore read without a noise floor",
     "multiplicity": "no correction across the four metrics. They are four declared quantities, not a family searched over for a winner; the interval and the noise floor carry the uncertainty and the suite is stated to detect large effects only"
   },
 
@@ -122,5 +122,102 @@
     ]
   },
 
-  "amendments": []
+  "amendments": [
+    {
+      "id": 1,
+      "on": "2026-08-25",
+      "before_any_test_rollout": true,
+      "what": [
+        "measurement.repeats: 3 → 1.",
+        "search.reflection_model: openai/qwen3.5-397b-a17b → openai/qwen3.5-122b-a10b.",
+        "task model: openai/qwen3.6-35b-a3b @ saia.gwdg.de → openrouter/google/gemma-4-31b-it,",
+        "and the same for the three text-to-SQL chain models, which share its endpoint.",
+        "reflection endpoint: split from the task model's onto its own base and key."
+      ],
+      "why": [
+        "Infrastructure, measured rather than assumed, and none of it is a result.",
+        "saia.gwdg.de stopped serving chat completions entirely — /v1/models answers 200",
+        "in 0.1 s while /v1/chat/completions hangs past 110 s or returns an empty 500 with",
+        "x-kong-upstream-latency: 10. chat-ai.academiccloud.de serves both models but",
+        "returns empty 500s at 25–60 %, and meters 1000 requests/day/key against a measured",
+        "~13 requests per rollout — 8600 requests for this run, four to nine days across two",
+        "keys. OpenRouter serves gemma-4-31b-it reliably at $0.10/$0.34 per Mtok against a",
+        "$5 budget; the run costs about $2.6 there. The reflection model stays on free quota",
+        "because a search makes ~30 proposal calls, which fits what 8600 rollout calls do not.",
+        "Repeats fell to 1 for the same budget: three repeats of both arms on all three",
+        "splits is 1686 rollouts and about $10.60."
+      ],
+      "cost": [
+        "The three repeats were the replication, so this run does not measure residual",
+        "nondeterminism at all — the quantity every arm difference was to be read against",
+        "is unmeasured, not zero. decisions.md § Replication and the LLM cache already",
+        "considered dropping replication and rejected it on exactly this ground: the error",
+        "term becomes stated rather than bounded, on a suite already limited to large",
+        "effects. That is the price, and it is paid knowingly.",
+        "The LLM response cache stays OFF regardless. With one repeat it can no longer",
+        "collapse replicates, but off is the measurement path's setting and a run that",
+        "turned it on would not be comparable with a later three-repeat run."
+      ],
+      "not_amended": [
+        "The arms, the splits, the pairing, the bootstrap unit and its seed, the two gaps,",
+        "the win/loss table, the exclusion rule, the diagnostics, and the whole protocol",
+        "section. Nothing here was relaxed because of a number: no test rollout has run."
+      ]
+    },
+    {
+      "id": 2,
+      "on": "2026-08-25",
+      "before_any_test_rollout": true,
+      "what": ["search.max_metric_calls: 100 → 500."],
+      "why": [
+        "The registered 100 buys zero proposals, and that is arithmetic rather than a",
+        "result. MLflow passes `trainset` and no `valset`, so GEPA evaluates the seed",
+        "candidate over the whole trainset before proposing anything — len(trainset) = 100",
+        "metric calls — and each accepted candidate costs another full evaluation, with",
+        "reflection minibatches of 3 in between (gepa/api.py:328, core/engine.py). A budget",
+        "equal to the trainset size is therefore spent entirely on measuring the seed, and",
+        "the search returns it unchanged. 500 leaves 400 after the seed's evaluation: about",
+        "three accepted candidates at a full evaluation each, plus their minibatches.",
+        "Chosen on GEPA's budget accounting and the split's size, both of which are known",
+        "without running anything. No test rollout has run."
+      ],
+      "cost": [
+        "About €1.0 more of task-model spend than the registered 100 would have cost, and",
+        "roughly two hours of wall clock. The budget is still a fixed, pre-registered",
+        "number and the search still gets exactly one run."
+      ],
+      "not_amended": [
+        "Everything else, including the fact that this remains one search whose selection",
+        "defines the optimized arm — not the best of several."
+      ]
+    },
+    {
+      "id": 3,
+      "on": "2026-08-25",
+      "before_any_test_rollout": true,
+      "what": [
+        "measurement.splits: order changed from [train, test_seen, test_unseen] to",
+        "[test_seen, test_unseen, train]. The set is unchanged and so is everything",
+        "measured on each."
+      ],
+      "why": [
+        "Budget ordering, decided before any test rollout and on no test number. The",
+        "registered search cost $2.76 of the $5 available, and the measurement's 562",
+        "rollouts are estimated at $1.7-2.7 against $2.24 remaining — close enough that",
+        "the run may not finish. Which split is at risk if it does not is a choice, and",
+        "the honest one is to put the splits that carry the primary estimand and the",
+        "template-overfit holdout first. Train is last because its number is a selection",
+        "score rather than an inference, and because losing it costs one of the two gaps",
+        "rather than the comparison itself.",
+        "This changes no measurement, no metric and no analysis — only which result is",
+        "missing if the money runs out, and that this was decided in advance."
+      ],
+      "cost": [
+        "If the budget is exhausted during train, the train → test_seen gap cannot be",
+        "computed and is reported as not measured. The test_seen paired comparison, the",
+        "test_unseen win/loss table and the test_seen → test_unseen gap are unaffected."
+      ],
+      "not_amended": ["Everything else."]
+    }
+  ]
 }

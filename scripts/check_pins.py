@@ -403,8 +403,12 @@ def capture_reflection_canary(*, accept_moved: bool = False) -> int:
     from water_assistant_agent.assistant.settings import get_settings
 
     settings = get_settings()
+    # The reflection model's *own* endpoint, not the shared one. It may be served
+    # somewhere else entirely, and printing the shared base here would report a
+    # host the probe never reached — about the one field the split exists over.
+    endpoint = settings.reflection_extra().get("api_base")
     print(f"Probing the reflection model {settings.reflection_model} at "
-          f"{settings.llm_api_base or 'the provider default'}")
+          f"{endpoint or 'the provider default'}")
     print(f"  prompt: {CANARY_PROMPT!r}")
     try:
         content, digest = probe_canary(settings)
@@ -429,6 +433,69 @@ def capture_reflection_canary(*, accept_moved: bool = False) -> int:
     committed["reflection_model_canary_sha256"] = digest
     _write(committed, committed)
     print(f"Pinned   reflection_model_canary_sha256: {digest}")
+    return 0
+
+
+def capture_task_canary(*, accept_moved: bool = False) -> int:
+    """Probe the live task model and pin the hash of its canary reply.
+
+    **The last open slot in §5's pin list, and the one a measurement run depends
+    on.** The task model is the agent under test and the only optimized one; it
+    is served under an undated alias, so a provider-side swap changes every
+    measured number while leaving every recorded surface identical. T107 froze
+    the testbed with this slot null and the exposure written down: the endpoint
+    had moved during that packet and there was nothing in place to catch a swap
+    under the move.
+
+    The probe goes out through ``harness/ledger.py``'s witnessed wrapper — ADK's
+    own :class:`LiteLlm`, built with the pinned decoding parameters, which is the
+    construction a rollout uses — so what is pinned is a fact about the request a
+    rollout issues. The served model id comes back with the reply and is printed
+    beside it; it is not in the hash, because a provider that merely spells its
+    own name differently has not swapped the model.
+
+    Capture this **immediately before a measurement run**. A swap landing between
+    the two arms is what the canary exists to detect, and detecting it after the
+    fact is the most this mechanism ever offers.
+
+    *accept_moved* is the deliberate way past a moved canary, on
+    :func:`capture_gr2l_canary`'s reasoning — and here it is the heaviest of the
+    three, because everything measured against the old value is every number the
+    thesis reports.
+    """
+    from harness.ledger import probe_task_canary
+    from harness.reflection import CANARY_PROMPT
+    from water_assistant_agent.assistant.settings import get_settings
+
+    settings = get_settings()
+    print(f"Probing the task model {settings.root_agent_model} at "
+          f"{settings.llm_api_base or 'the provider default'}")
+    print(f"  prompt: {CANARY_PROMPT!r}")
+    try:
+        content, served, digest = probe_task_canary(settings)
+    except Exception as exc:  # noqa: BLE001 - the message is the whole output
+        print(f"FAILED to reach the task model: {type(exc).__name__}: {exc}")
+        print("No rollout can run against it, so no measurement can either.")
+        return 1
+
+    print(f"  reply:  {content.strip()!r}")
+    print(f"  served: {served or '(the endpoint named no model)'}")
+    committed = _load_committed()
+    previous = committed.get("task_model_canary_sha256")
+    if previous is not None and previous != digest:
+        print(f"MOVED    task_model_canary_sha256\n           committed {previous}")
+        print(f"           served    {digest}")
+        if not accept_moved:
+            print("\nThe task model has moved under the pin. Every number measured")
+            print("before and after is measured on a different agent; resolve that")
+            print("before re-pinning. If the move was deliberate, --accept-moved.")
+            return 1
+        print("\n--accept-moved: re-pinning to the served build.")
+        print("Everything measured against the committed hash is now incomparable.")
+
+    committed["task_model_canary_sha256"] = digest
+    _write(committed, committed)
+    print(f"Pinned   task_model_canary_sha256: {digest}")
     return 0
 
 
@@ -481,6 +548,11 @@ def main() -> int:
         help="probe the live reflection model and pin its canary reply hash",
     )
     parser.add_argument(
+        "--capture-task-canary",
+        action="store_true",
+        help="probe the live task model and pin its canary reply hash",
+    )
+    parser.add_argument(
         "--accept-moved",
         action="store_true",
         help=(
@@ -495,6 +567,8 @@ def main() -> int:
         return capture_gr2l_canary(accept_moved=args.accept_moved)
     if args.capture_reflection_canary:
         return capture_reflection_canary(accept_moved=args.accept_moved)
+    if args.capture_task_canary:
+        return capture_task_canary(accept_moved=args.accept_moved)
 
     computed = compute_pins()
     if args.write:

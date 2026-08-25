@@ -107,13 +107,28 @@ def reflection_model_pin(settings: AssistantSettings | None = None) -> dict[str,
     surface of the agent untouched. A run recording only the task model is
     unrepeatable for that reason (``decisions.md`` § Model pinning).
 
+    **Its endpoint is its own.** These deployments meter per key, so the second
+    model may be served somewhere else or under a different key — and a pin
+    reading the *shared* endpoint would then name a host the reflection call
+    never reached. The record comes from ``reflection_extra()``, which is the
+    same function ``harness/reflection.py`` binds onto GEPA's call, so the two
+    cannot disagree.
+
     The binding that makes these numbers true of the request actually sent is
     ``harness/reflection.py``: GEPA builds its reflection call as a bare
     ``litellm.completion(model=…, messages=…)`` and would otherwise carry none
     of them.
     """
     settings = settings or get_settings()
-    return _model_pin(settings.reflection_model, settings)
+    extra = settings.reflection_extra()
+    return {
+        "model_id": settings.reflection_model,
+        "endpoint": extra.get("api_base") or _DIRECT_ENDPOINT,
+        "decoding": {
+            "temperature": extra["temperature"],
+            "seed": extra["seed"],
+        },
+    }
 
 
 def configure_llm_cache(

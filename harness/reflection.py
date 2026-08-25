@@ -64,12 +64,26 @@ provider-side swap disturbs. Its bytes are inside the pinned hash, so editing
 it moves the pin rather than quietly redefining it.
 """
 
-BOUND_PARAMETERS: tuple[str, ...] = ("api_base", "api_key", "temperature", "seed")
+BOUND_PARAMETERS: tuple[str, ...] = (
+    "api_base",
+    "api_key",
+    "temperature",
+    "seed",
+    "num_retries",
+)
 """What :func:`pinned_reflection_lm` fills in, and the whole of it.
 
-Each is a field the pin records and GEPA's bare call omits. Nothing else is
-added: a parameter this repo invented would be one the pin does not carry, which
-is the failure this module exists to prevent, pointing the other way.
+Each is a field GEPA's bare call omits, and the first four are fields the pin
+records. ``num_retries`` is the exception and is deliberately *not* pinned: it
+is a litellm-side count that never reaches the provider, so it changes no
+request and no result — what it changes is whether a burst of empty HTTP 500s
+from the endpoint (``findings.md``) ends a search that was otherwise fine.
+Nothing beyond these is added: a parameter this repo invented and the pin did not
+carry would be the failure this module exists to prevent, pointing the other way.
+
+The values come from ``AssistantSettings.reflection_extra()``, which is also what
+:func:`~water_assistant_agent.assistant.llm.reflection_model_pin` reads — one
+function, so a pin cannot describe an endpoint the call did not use.
 """
 
 
@@ -115,12 +129,8 @@ def pinned_reflection_lm(
     """
     settings = settings or get_settings()
     model_id = settings.reflection_model
-    bound = {
-        "api_base": settings.llm_api_base,
-        "api_key": settings.llm_api_key,
-        "temperature": settings.llm_temperature,
-        "seed": settings.llm_seed,
-    }
+    extra = settings.reflection_extra()
+    bound = {name: extra.get(name) for name in BOUND_PARAMETERS}
     original = litellm.completion
 
     def completion(*args: Any, **kwargs: Any) -> Any:

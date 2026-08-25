@@ -4189,13 +4189,81 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   Verified by 14 tests in `tests/harness/test_ledger.py`.
   `uv run ruff check .` and `uv run pytest` clean — 1294 passed, same 22
   pre-existing findings, none in the testbed.
-- [ ] T128 Statistics on the **measurement** path, never on the optimizer's
+- [x] T128 Statistics on the **measurement** path, never on the optimizer's
   internal scores: three repeats per condition at one pinned seed with the LLM
   cache off, paired on identical cases; a paired bootstrap resampling
   `template_id` rather than `case_id`; the train number reported as a selection
   score; the two generalization gaps reported separately; test_unseen's trajectory
   as a per-template win/loss table, never an accuracy with an interval. → T102,
   T126
+  Done in `harness/measure.py` (the path) and `harness/stats.py` (the report),
+  driven by `scripts/run_measurement.py` behind `just measure`, `just prereg` and
+  `just measure-report`. The run is written to
+  `eval/measurements/20260825T174410Z.json` and the report re-renders from that
+  file with no model in reach — the statistics are a function of the outcomes and
+  nothing else.
+  **One repeat, not three.** Pre-registration amendment 1, made before any test
+  rollout and for a reason that is not a result: the registered protocol is 1686
+  rollouts and about \$10.60, against \$5. Its stated cost arrives exactly where
+  it was written down — residual nondeterminism is reported as **unmeasured**
+  rather than as zero, so every difference below is read without a noise floor.
+  **The task model moved, and everything else with it.** `saia.gwdg.de` stopped
+  serving chat completions entirely during this packet, and `chat-ai` meters 1000
+  requests/day/key against a measured ~13 requests per rollout. The run is
+  `google/gemma-4-31b-it` on OpenRouter with the reflection model
+  `qwen3.5-122b-a10b` on `chat-ai` under its own key — which needed
+  `AssistantSettings.reflection_extra()`, since one shared endpoint pair cannot
+  express "a second, distinct model" served somewhere else. Five pins moved
+  deliberately; reasoning in `decisions.md § The measurement run moved to the
+  endpoints that could carry it`.
+  **`task_model_canary_sha256` is closed, captured immediately before the run.**
+  The last open slot in §5's list, open since T107 recorded the exposure. `just
+  pins` now reports **19 pinned, 0 unpinned, 0 moved** for the first time. The
+  probe goes through ADK's own `LiteLlm` — a rollout's construction, not
+  `litellm.completion` — and came back witnessed as `google/gemma-4-31b-it`.
+  A finding rather than a reassurance: re-capturing the *reflection* canary after
+  changing that model produced **the same hash**, because both models comply
+  exactly with the probe. A canary detects a swap only where the swap changes the
+  reply; what caught this move was the model-id pin.
+  **The budget as pre-registered by amendment 2, and why 100 was a no-op.** MLflow
+  passes `trainset` and no `valset`, so GEPA evaluates the seed over the whole
+  split before proposing — `len(trainset)` calls — and each accepted candidate
+  costs another full evaluation. At 100 train cases a budget of 100 buys zero
+  proposals and returns the seed unchanged, looking for all the world like a
+  completed search. Raised to 500. The registered search then moved the train
+  selection score **0.808 → 0.820** over 567 rollouts and 11 candidates.
+  **The search wedged once, on a hazard the freeze forbids fixing.** `gr2l_client`
+  holds its `httpx.AsyncClient` in a module-level singleton bound to the loop that
+  created it, while `run_case` runs `asyncio.run` per rollout — T115's hazard,
+  documented as a capture-pass one. The **search** is the third pass that reaches
+  it, because record mode calls live. Under MLflow's `ThreadPoolExecutor` it did
+  not fail, it **stopped**: 324 rollouts, then 0 % CPU, no sockets, no progress.
+  Reported, not repaired — `tools/` is frozen. The measurement path is not
+  exposed, since replay never reaches the client. The re-run replayed what the
+  wedged run had recorded and finished.
+  **The results, and the caveat that governs them.** §7's repeat condition fires:
+  exclusions diverge between arms on test_seen, **14/125 baseline against 25/125
+  optimized**, so the comparison is *not established* and the repeat is what the
+  budget did not buy. Recorded because the direction is worth having, not because
+  the interval is believable. On test_seen the **answer** metric moves **+0.179
+  [+0.012, +0.369]** over 21 templates, trajectory +0.040 [−0.080, +0.160] and
+  the selection score +0.060 [−0.025, +0.144]. Both gaps are small and neither
+  excludes zero. The holdout is 1 win, 0 loss, 4 ties and **2 templates with no
+  data at all** — an accuracy would have averaged over those two silently, which
+  is the whole argument for the table.
+  **The optimizer traded abstention for answers**, which blending permits and
+  §7's split-reporting is what reveals: abstention accuracy over the unanswerable
+  cases falls 0.800 → 0.562 on test_seen while the false-abstention rate holds.
+  `aggregate_scores` weights answer 0.40 against abstention 0.20 and protects
+  nothing.
+  **The measurement path's own defect, found by running it.** `Measurement.write`
+  runs once at the end, so a run killed part-way leaves nothing on disk even
+  though every condition has completed and logged. It survived only because the
+  budget lasted; recorded for T130 rather than patched under a running experiment.
+  Verified by 16 tests in `tests/harness/test_stats.py` and 10 in
+  `tests/harness/test_measure.py`, and by the run itself.
+  `uv run ruff check .` and `uv run pytest` clean — 1339 passed, same 22
+  pre-existing findings, none in the testbed.
 - [x] T129 Pre-register the budget and hyperparameters before any test run, record
   that all method debugging happened on train, and report every arm on test —
   never "best of". → T128

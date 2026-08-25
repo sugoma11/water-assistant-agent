@@ -1000,23 +1000,26 @@ that would have supplied it. It fills at 4/4 all the same, so this is a cost
 rather than a limit.
 *Verified:* per-template rejection counts from the same pass. *Date:* 2026-08-24.
 
-**T26's cross-roof variants cannot be emitted through the case schema, and two
-frozen surfaces disagree.** `_t26_cross_roof` answers **the winning roof's
-canonical name** — a deliberate choice recorded in its own docstring, since a
-signed gap would need a convention about which way round it is written — and
-`eval/schema/case.schema.json` admits an `answer` that is a boolean, a number, an
-ISO-day string (`^\d{4}-\d{2}-\d{2}$`) or null. `"semi_intensive"` matches none
-of the four, so **T26(ii) and T26(iii) produce a valid oracle answer that no case
-file can carry**, while T26(i) — which answers a boolean against the dry
-threshold — materializes and balances 4/4 normally. The generator raises
-`Unemittable` rather than resampling, because every draw of those two variants
-fails identically and resampling would report "the pool is too tight" about a
-pool that is fine. Not fixed here: the repair is a specification change in the
-schema's `answer` or in the oracle's return, and both are frozen as of T107.
-This is why the pass above lands 48 of test_unseen's 56.
-*Verified:* the oracle over `test_unseen`-shaped draws for all three variants,
-and a hand-built envelope validated against the committed schema. *Date:*
-2026-08-24.
+**T26's cross-roof variants could not be emitted, and the answer contract is why
+it was the oracle that moved.** `_t26_cross_roof` answered **the winning roof's
+canonical name**, and `eval/schema/case.schema.json` admits an `answer` that is a
+boolean, a number, an ISO-day string (`^\d{4}-\d{2}-\d{2}$`) or null, so
+`"semi_intensive"` matched none of the four and **T26(ii) and T26(iii) produced a
+valid oracle answer that no case file could carry**. T111 recorded this as two
+frozen surfaces disagreeing. It is not symmetric: the **root instruction states
+the same three shapes to the candidate** — "`true` or `false` for a yes/no
+question, a bare number for a quantity, `"YYYY-MM-DD"` for a date"
+(`harness/contract.py`) — so a roof name was a shape the agent was never told it
+could return. Two surfaces agreed and the oracle was the outlier, which is what
+ruled out widening the schema: the answer vocabulary lives in
+`EVALUATION_ROOT_INSTRUCTION`, the search's own starting point, so widening it
+would make a gold answer's reachability a function of candidate text.
+**Repaired at T114** — the comparison is answered over the ordered pair, `detail`
+still records the winner, and the suite went 276 → 281
+(`decisions.md § A comparison is answered as a boolean over an ordered pair`).
+*Verified:* the oracle over all three variants against a forcing-aware stub,
+asserted both ways round on one draw; a hand-built envelope validated against the
+committed schema. *Date:* 2026-08-24, repaired 2026-08-25.
 
 **The German paraphrase pool was spot-checked before splits were cut, and it
 found two defects and no ambiguous reference.** The check covered all **136
@@ -1102,33 +1105,45 @@ sampler.
 *Verified:* an offline generation pass over T12 in `tests/eval/test_splits.py`.
 *Date:* 2026-08-24.
 
-**The emitter is byte-stable across two runs, and the suite is 276 of 281.**
+**The emitter is byte-stable across two runs, and the suite is the whole 281.**
 `scripts/generate_cases.py` run twice into two directories produced
 byte-identical files — `train.json` `d66cc411…`, `test_seen.json` `a0d0a016…`,
-`test_unseen.json` `6a725e71…` on both passes — and `--check` against the
-committed files exits 0. Train 100/100 and test_seen 125/125 are exactly
-`templates × m`; test_unseen is **51 of 56**, five short, all of them T26's two
-cross-roof variants. `parameter_overlaps` is empty, `as_of` is inside each
-split's own stripe on every case, and the languages land 50/50, 63/62 and 26/25.
-The three files load through MLflow's own `_convert_eval_set_to_df` and
-`validate_train_data` with columns `['expectations', 'inputs']`, so the search and
-the measurement run pass them straight in as `train_data`.
+`test_unseen.json` `a4c67c89…` on both passes — and `--check` against the
+committed files exits 0. All three splits are exactly `templates × m`: 100 / 125
+/ 56, **zero shortfalls**, 413 draws (68.0 % accepted). `parameter_overlaps` is
+empty, `as_of` is inside each split's own stripe on every case, abstentions land
+13 / 16 / 16, and the languages land 50/50, 63/62 and 28/28. The three files load
+through MLflow's own `_convert_eval_set_to_df` and `validate_train_data` with
+columns `['expectations', 'inputs']`, so the search and the measurement run pass
+them straight in as `train_data`.
 *Verified:* two full passes at seed 20260824 against the live GR2L and Archive,
-diffed and hashed; `tests/eval/test_emit.py`. *Date:* 2026-08-24.
+diffed and hashed; `tests/eval/test_emit.py`. *Date:* 2026-08-24, re-taken
+2026-08-25 after T26's repair.
 
-**T26 emits three of its eight instances rather than none, which is a better
-suite than T111 could hand over.** T111 raised `Unemittable` for the whole
-template, so a whole-catalog pass had to exclude T26 and the holdout landed 48.
-Emission carries the shortfall per instance instead: variant (i) answers a
-boolean and materializes normally, so its **3 stratified instances are emitted**,
-and only (ii) and (iii)'s 5 are withheld. The holdout therefore keeps a live T26
-probe in the committed files rather than only in principle, and the compositional
-headline is reported over what exists. The five withheld instances are named in
-the run report with the schema error each produced — `'semi_intensive' is not
-valid under any of the given schemas` and the same for the other roofs — so the
-shortfall is legible without rerunning anything.
-*Verified:* the emitted `test_unseen.json` carries 3 T26 cases, all variant (i);
-the report lists 5 shortfalls. *Date:* 2026-08-24.
+**Repairing T26 moved the holdout file and nothing else, which is what a
+holdout-only template should do.** `train.json` and `test_seen.json` kept their
+hashes across the change — `d66cc411…` and `a0d0a016…` before and after — and
+only `test_unseen.json` moved, `6a725e71…` → `a4c67c89…`. Worth recording
+because it is the emitter's own claim under test: a change confined to one
+template appears as a change to one file, so a diff in `eval/cases/` localizes
+what moved instead of being a whole-suite rewrite.
+*Verified:* `sha256sum` before and after. *Date:* 2026-08-25.
+
+**T26's three variants were three labels over two probes, and the albedo is what
+now separates them.** `_sample_t26` gave the `albedo` override to variant (i)
+alone, so (ii) "override plus cross-roof comparison" and (iii) "the same
+comparison with no `albedo` anywhere" drew identical parameters, took the same
+code path in `_t26_cross_roof`, carried the same gold set and — after T112 —
+rendered from the same sketch. Nothing distinguished them but the string in
+`params["variant"]`, which made (iii)'s stated purpose vacuous: it exists to
+contrast with a double-transfer variant and had none to contrast with. (ii) now
+carries the override across the pair, applied to **both** runs so the roof stays
+the only difference, and the three variants are three shapes with three sketches.
+The emitted holdout carries 3 / 3 / 2 with 6 of the 8 carrying an albedo, and
+T26 balances 4/4 — it is a balanced template as of this repair, since every
+variant answers a boolean.
+*Verified:* draws over all three variants asserted to differ in `a` and in shape;
+the emitted `test_unseen.json`. *Date:* 2026-08-25.
 
 ## External sources on this machine
 

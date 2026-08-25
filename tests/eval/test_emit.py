@@ -10,6 +10,7 @@ hand, which is the thing ``eval/schema/README.md`` says must never happen.
 
 from __future__ import annotations
 
+import collections
 import json
 from datetime import datetime
 from pathlib import Path
@@ -224,19 +225,45 @@ def test_the_committed_files_are_in_the_emitted_form():
         assert path.read_text(encoding="utf-8") == emit.serialize(COMMITTED[split])
 
 
-def test_the_committed_suite_carries_the_ledger_it_can():
-    """§1.7's 100 / 125, and a test_unseen short by a stated amount.
+def test_the_committed_suite_is_the_whole_ledger():
+    """§1.7's 25×4, 25×5 and 7×8 — 281, with nothing withheld.
 
-    Train and test_seen are exactly `templates × m`. The holdout is 51 of 56: five
-    instances of T26's two cross-roof variants answer the winning roof's canonical
-    name, which `case.schema.json`'s `answer` does not admit, and both surfaces are
-    frozen as of T107. Stated here rather than rounded away — the number is what
-    the suite has, and `findings.md` carries why.
+    The holdout was 51 of 56 until T26's comparison variants stopped answering a
+    roof name: five instances answered a shape no case file could carry and no
+    agent was told to return. They answer over the ordered pair now, so the
+    suite is exactly `templates × m` on every split.
     """
     assert len(COMMITTED["train"]) == 100
     assert len(COMMITTED["test_seen"]) == 125
-    assert len(COMMITTED["test_unseen"]) == 51
-    assert len(ALL_CASES) == 276
+    assert len(COMMITTED["test_unseen"]) == 56
+    assert len(ALL_CASES) == 281
+
+
+def test_the_holdout_carries_all_three_of_t26s_variants():
+    """The compositional headline needs (iii) present, not only (i).
+
+    (i) and (ii) compose `albedo`, an axis that is itself holdout, so they are
+    interpretable only where T22 passes and are reported conditionally. (iii)
+    composes only train-taught axes and is what keeps the headline off double
+    transfer — a suite carrying (i) alone has no unconditional compositional
+    probe at all.
+    """
+    t26 = [case for case in COMMITTED["test_unseen"] if case["inputs"]["template_id"] == "T26"]
+    assert len(t26) == 8
+    variants = collections.Counter(case["inputs"]["params"]["variant"] for case in t26)
+    assert variants == {"albedo_and_rain": 3, "rain_cross_roof": 3, "train_taught": 2}
+    # Every one answers a boolean, and the template balances across its eight.
+    assert all(isinstance(case["expectations"]["answer"], bool) for case in t26)
+    assert collections.Counter(
+        case["expectations"]["answer"] for case in t26
+    ) == {True: 4, False: 4}
+    # (i) and (ii) carry the albedo override; (iii) deliberately does not.
+    carried = {
+        case["inputs"]["params"]["variant"]
+        for case in t26
+        if case["inputs"]["params"].get("a") is not None
+    }
+    assert carried == {"albedo_and_rain", "rain_cross_roof"}
 
 
 def test_every_committed_case_id_is_unique_across_the_whole_suite():

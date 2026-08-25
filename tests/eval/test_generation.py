@@ -52,10 +52,16 @@ from eval.generation.templates import (
     t24a_roof_pool,
 )
 from eval.oracles import ORACLES
-from eval.oracles.counterfactual import VARIANT_ALBEDO_AND_RAIN, VARIANT_RAIN_CROSS_ROOF
+from eval.oracles.counterfactual import (
+    VARIANT_ALBEDO_AND_RAIN,
+    VARIANT_RAIN_CROSS_ROOF,
+    VARIANT_TRAIN_TAUGHT,
+)
 from eval.oracles.pins import stamp
 from eval.oracles.presentation import MEASURED_PAIR, MODEL_OVERLAY, NON_MODELLABLE_OVERLAY
+from harness.contract import EVALUATION_ROOT_INSTRUCTION
 from harness.run_case import make_case_context
+from water_assistant_agent.assistant.tools.gr2l_client import ROOF_PRESETS
 from water_assistant_agent.assistant.tools.roofs import ROOFS
 
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -464,9 +470,18 @@ def test_every_gold_card_resolves_in_the_store():
 
 
 def test_every_bool_template_the_catalog_names_is_balanced():
-    """Eight in train and two more in the holdout, which is why train's `m` is even."""
+    """Eight in train and three in the holdout, which is why train's `m` is even.
+
+    T26 is one of them as of T114: its comparison variants used to answer the
+    winning roof's canonical name and now answer over the ordered pair, so every
+    variant of it answers a boolean and §1.6's balance rule reaches it. Train's
+    count is untouched — T26 is holdout-only — so `m = 4` still follows from the
+    eight bool templates train carries.
+    """
     balanced = {name for name, t in TEMPLATES.items() if t.balanced}
-    assert balanced == {"T04", "T07", "T09", "T11", "T12", "T13", "T16a", "T16b", "T20", "T25"}
+    assert balanced == {
+        "T04", "T07", "T09", "T11", "T12", "T13", "T16a", "T16b", "T20", "T25", "T26",
+    }
     assert len([n for n in balanced if "train" in TEMPLATES[n].splits]) == 8
     assert M["train"] % 2 == 0
 
@@ -538,48 +553,108 @@ def test_as_of_carries_the_sites_offset_and_never_z():
     assert as_of_at(date(2026, 1, 15)).isoformat().endswith("+01:00")
 
 
-# --- What the packet found and did not fix -------------------------------------
+# --- T26's answer shape, and the collision that is now repaired -----------------
 
 
-def test_t26s_cross_roof_answer_is_a_shape_the_case_schema_cannot_carry():
-    """Two frozen surfaces disagree about the shape of an answer, and it is recorded.
+def test_a_roof_name_is_a_shape_no_case_can_carry_and_no_agent_was_told_to_return():
+    """Why T26's comparison variants were rewritten rather than the schema widened.
 
-    `_t26_cross_roof` answers **the winning roof's canonical name** — deliberate,
-    since a signed gap would need a convention about which way round it is
-    written — and the case schema's `answer` admits a boolean, a number, an
-    ISO-day string or null. `"semi_intensive"` matches none of the four, so
-    T26(ii) and T26(iii) raise `Unemittable` rather than resampling: every draw
-    fails identically and the repair is a specification change in the schema or
-    in the oracle, both frozen as of T107.
+    `case.schema.json`'s `answer` admits a boolean, a number, an ISO day or null,
+    and the **agent's own instruction states the same three** — so a roof name was
+    not merely unwritable to a case file, it was a shape the candidate was never
+    told it could return. Widening the schema alone would have emitted a case with
+    an unreachable gold answer, and widening the instruction is worse: it is the
+    search's starting point, so the answer would depend on candidate text.
 
-    Asserted against the schema directly, with no model run behind it, so the
-    test states the collision rather than depending on a service to reproduce it.
-    The day either surface moves, this is what says so.
+    Kept as a standing test because it is the argument for the repair. The day
+    someone widens `answer`, this is what asks whether the contract moved with it.
     """
     envelope = case_envelope(
         TEMPLATES["T26"],
         case_id="T26-0001",
         as_of=BAND_CEILING,
         params={"variant": VARIANT_RAIN_CROSS_ROOF, "d": 3, "mm": 30.0, "offset": 1,
-                "roof_a": "irrigated_extensive", "roof_b": "semi_intensive"},
+                "a": 0.6, "roof_a": "irrigated_extensive", "roof_b": "semi_intensive"},
         materialized={
             "status": "answered",
-            "answer": "semi_intensive",  # what the oracle returns on (ii) and (iii)
+            "answer": "semi_intensive",  # what the oracle returned before T114
             "unit": None,
             "pins": {},
         },
     )
-    errors = validate(envelope)
-    assert any("semi_intensive" in message for message in errors), errors
+    assert any("semi_intensive" in message for message in validate(envelope))
+    assert 'bool | number | "YYYY-MM-DD" | null' in EVALUATION_ROOT_INSTRUCTION
 
-    # And the variant that does not compare roofs is unaffected: (i) answers a
-    # boolean against the dry threshold, so the holdout keeps a live T26 probe.
-    ok = case_envelope(
-        TEMPLATES["T26"],
-        case_id="T26-0002",
-        as_of=BAND_CEILING,
-        params={"variant": VARIANT_ALBEDO_AND_RAIN, "d": 3, "mm": 30.0, "offset": 1,
-                "roof": "irrigated_extensive", "a": 0.6},
-        materialized={"status": "answered", "answer": True, "unit": None, "pins": stamp()},
-    )
-    assert validate(ok) == ()
+
+def test_every_t26_variant_now_answers_a_shape_the_schema_admits():
+    """The repair, over all three variants and with no model run behind it.
+
+    (i) answers whether one roof stays above its threshold; (ii) and (iii) answer
+    whether the first of the pair ends wetter than the second. All three are
+    booleans, which is what makes T26 a balanced template and what lets the
+    holdout carry it whole.
+    """
+    for index, params in enumerate(
+        (
+            {"variant": VARIANT_ALBEDO_AND_RAIN, "d": 3, "mm": 30.0, "offset": 1,
+             "roof": "irrigated_extensive", "a": 0.6},
+            {"variant": VARIANT_RAIN_CROSS_ROOF, "d": 3, "mm": 30.0, "offset": 1,
+             "a": 0.6, "roof_a": "irrigated_extensive", "roof_b": "semi_intensive"},
+            {"variant": VARIANT_TRAIN_TAUGHT, "d": 3, "mm": 30.0, "offset": 1,
+             "roof_a": "irrigated_extensive", "roof_b": "semi_intensive"},
+        )
+    ):
+        envelope = case_envelope(
+            TEMPLATES["T26"],
+            case_id=f"T26-000{index + 1}",
+            as_of=BAND_CEILING,
+            params=params,
+            materialized={
+                "status": "answered", "answer": True, "unit": None, "pins": stamp()
+            },
+        )
+        assert validate(envelope) == (), params["variant"]
+
+
+def test_t26s_three_variants_are_three_distinct_probes():
+    """(ii) and (iii) were identical until T114, and the difference is the albedo.
+
+    The sampler gave the override to (i) alone, so both comparison variants drew
+    the same parameters and took the same code path — three labels over two
+    probes, with (iii)'s stated purpose (contrasting with a double-transfer
+    variant) having nothing to contrast against. (ii) now carries it.
+    """
+    rng = Random(26)
+    drawn: dict[str, list[dict]] = {}
+    for fragment in TEMPLATES["T26"].strata("test_unseen"):
+        for _ in range(10):
+            _, params = TEMPLATES["T26"].draw(rng, Pools(band_days()), fragment)
+            drawn.setdefault(str(params["variant"]), []).append(params)
+
+    assert all(p.get("a") is not None for p in drawn[VARIANT_ALBEDO_AND_RAIN])
+    assert all(p.get("a") is not None for p in drawn[VARIANT_RAIN_CROSS_ROOF])
+    assert all(p.get("a") is None for p in drawn[VARIANT_TRAIN_TAUGHT])
+    # (i) is one roof and the other two are a pair, which is the other axis.
+    assert all(p.get("roof") for p in drawn[VARIANT_ALBEDO_AND_RAIN])
+    for variant in (VARIANT_RAIN_CROSS_ROOF, VARIANT_TRAIN_TAUGHT):
+        assert all(p["roof_a"] != p["roof_b"] for p in drawn[variant])
+    # And three shapes, so no two of them are asked in the same words.
+    assert len({TEMPLATES["T26"].shape(p) for group in drawn.values() for p in group}) == 3
+
+
+def test_a_t26_albedo_is_never_the_default_of_a_roof_it_is_applied_to():
+    """A counterfactual equal to the baseline scores a candidate that never passed it.
+
+    The comparison variant applies one overlay to two roofs, so the draw has to
+    miss *both* defaults rather than one — read off `ROOF_PRESETS` per draw, on
+    the ground the oracles refuse such a draw.
+    """
+    rng = Random(226)
+    for fragment in TEMPLATES["T26"].strata("test_unseen"):
+        for _ in range(20):
+            _, params = TEMPLATES["T26"].draw(rng, Pools(band_days()), fragment)
+            if params.get("a") is None:
+                continue
+            roofs = [params[key] for key in ("roof", "roof_a", "roof_b") if params.get(key)]
+            defaults = {float(ROOF_PRESETS[roof]["albedo"]) for roof in roofs}
+            assert float(params["a"]) not in defaults, params

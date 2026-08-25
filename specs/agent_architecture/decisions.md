@@ -1401,38 +1401,87 @@ every other case and records the missing instances as a **shortfall** — the
 template, the split, the count and the schema error. It neither withholds the
 suite nor invents a representation for the answer.
 
-**Because the two frozen surfaces are what disagree, and neither is emission's to
-move.** T26(ii) and T26(iii) answer the winning roof's canonical name;
-`case.schema.json`'s `answer` admits a boolean, a number, an ISO day or null. The
-repair is a specification change in the schema or in the oracle, and both are
-frozen as of T107 — so the honest outcome is a suite of 276 that says which five
-instances are missing and why, rather than a suite of 281 with five coerced
-answers or no suite at all.
+**The suite currently has none**: T26's comparison variants were the case this
+was built for, and they were repaired rather than carried (§ A comparison is
+answered as a boolean over an ordered pair). The mechanism stays, because the
+alternative to it is a generator that either crashes or lies, and the next such
+collision should not have to choose between those.
+
+**Because the two surfaces that disagree are not emission's to move.** The repair
+for a shape mismatch is a specification change in the schema or in the oracle,
+and a packet that discovers one mid-run is not the packet that decides it. The
+honest interim outcome is a suite that says which instances are missing and why,
+rather than one with coerced answers or no suite at all.
 
 **This refines T111's `Unemittable` rather than reversing it.** That decision —
 "an answer the schema cannot carry is not resampled" — stands: the draw is not
 put back, because every draw fails identically. What changes is the blast radius.
 T111 raised for the whole template, so a whole-catalog pass had to exclude T26
-and the holdout landed at 48. Carrying the shortfall per *instance* lets variant
-(i), which answers a boolean, emit its three stratified instances — so the
-holdout keeps a live T26 probe in the committed files.
+entirely and the holdout landed at 48. Carrying the shortfall per *instance*
+meant variant (i) still emitted its three, which is what made the gap legible as
+"two variants" rather than "one template".
 
 **Rejected:**
 
 - *Failing the whole emission.* One holdout variant would then block every other
   case in the catalog from being committed, and the packet that could fix it is a
-  specification change nobody is in the middle of.
-- *Backfilling the five instances from variant (i).* It fills the ledger and
-  silently deletes a probe — (iii) exists to keep the compositional headline off
-  double transfer — and `decisions.md § An answer the schema cannot carry is not
-  resampled` already rejects it for that reason.
-- *Emitting the five with `answer: null` and `answer_metric: "skipped"`.* Valid
+  specification change nobody is necessarily in the middle of.
+- *Backfilling the missing instances from a sibling variant.* It fills the ledger
+  and silently deletes a probe — T26(iii) exists to keep the compositional
+  headline off double transfer — and § An answer the schema cannot carry is not
+  resampled already rejects it for that reason.
+- *Emitting them with `answer: null` and `answer_metric: "skipped"`.* Valid
   against the schema, and it records a case with an answer as a case without one:
-  the abstention metric would then score five answerable cases as abstentions.
+  the abstention metric would score answerable cases as abstentions.
 
 **Validity condition:** a shortfall is reported per instance with the cause that
 produced it, and the suite's stated size is what it contains. Any total quoted
-against `templates × m` names the difference — 276 of 281, not "about 281".
+against `templates × m` names the difference rather than rounding to it.
+
+---
+
+## A comparison is answered as a boolean over an ordered pair
+
+T26's cross-roof variants ask whether the **first** roof the question names ends
+the window wetter than the second, and answer `true`/`false`. They answered the
+winning roof's canonical name until T114.
+
+**Because a roof name is a shape nothing in the testbed admits, the agent
+included.** `case.schema.json`'s `answer` takes a boolean, a number, an ISO day
+or null — and the root instruction states the same three to the candidate:
+"`true` or `false` for a yes/no question, a bare number for a quantity,
+`"YYYY-MM-DD"` for a date". So the mismatch was never symmetric. Two surfaces
+agreed with each other and the oracle was the outlier, and the consequence was
+not merely that no case file could carry the answer: **no candidate had been told
+it could give one.** Five holdout instances were unemittable and, had they been
+emitted, unanswerable.
+
+**Rejected:**
+
+- *Widening the schema's `answer` to admit a categorical string.* It makes the
+  file writable and leaves the case unanswerable, because the answer vocabulary
+  the agent is given lives in `EVALUATION_ROOT_INSTRUCTION` — the search's own
+  starting point. Widening that too would make the gold answer's reachability a
+  function of candidate text, which is not ground truth. It would also score by
+  exact string equality, so "the semi-intensive roof" fails where
+  `semi_intensive` passes.
+- *Answering the signed gap in pp.* The oracle already computes both finals, so
+  it costs the same edit — and it turns a comparison probe into a quantity probe:
+  a candidate with the direction right and the magnitude outside tolerance fails,
+  and a near-tie draw is scored on noise. The tie guard exists precisely because
+  the interesting content is the direction.
+- *Leaving the suite at 276 with the two variants withheld.* The cheapest option
+  and the most expensive consequence: (i) and (ii) both compose `albedo`, an axis
+  that is itself holdout, so with (iii) absent the compositional headline is
+  **entirely** conditional on T22 — there is no unconditional compositional probe
+  in the suite at all.
+
+**Validity condition:** the pair is drawn in the order the question names it and
+is never sorted, so both classes are reachable by construction and the balance
+rule has something to balance. A tie is still refused rather than broken. And the
+answer contract, the case schema and every oracle state the same answer
+vocabulary — a fourth shape appearing in one of them is the defect this entry
+records, not a fact about the question.
 
 ---
 

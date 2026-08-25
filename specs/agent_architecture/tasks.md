@@ -3475,11 +3475,11 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   as MLflow `train_data` by both the search and the measurement run. → T113, T110
   Done. `eval/generation/emit.py` writes the three files and
   `scripts/generate_cases.py` is the one command from the catalog to them
-  (`just cases`, `just cases-check`). **276 cases committed**: train 100/100,
-  test_seen 125/125, test_unseen 51/56.
+  (`just cases`, `just cases-check`). **281 cases committed**: train 100/100,
+  test_seen 125/125, test_unseen 56/56 — the whole ledger, zero shortfalls.
   **Byte-stable, measured rather than asserted.** Two full passes into two
   directories produced byte-identical files (`train.json` `d66cc411…`,
-  `test_seen.json` `a0d0a016…`, `test_unseen.json` `6a725e71…`), and
+  `test_seen.json` `a0d0a016…`, `test_unseen.json` `a4c67c89…`), and
   `just cases-check` against the committed files exits 0. It takes three things at
   once and only one of them is the seed: the **key order is written out** rather
   than inherited from dict insertion order, which is a property of a code path —
@@ -3499,18 +3499,44 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   file in `tests/eval/test_emit.py`; columns come out `['expectations', 'inputs']`
   and validation passes, so the claim is about mlflow 3.13.0 as installed rather
   than about our reading of it.
-  **T26 emits three of eight instead of none, and that is a better suite than
-  T111 could hand over.** T111 raised `Unemittable` for the whole template, so a
-  whole-catalog pass had to exclude T26 and the holdout landed at 48. Emission
-  carries the shortfall **per instance**: variant (i) answers a boolean and
-  materializes normally, so its 3 stratified instances are emitted and only (ii)
-  and (iii)'s 5 are withheld — the holdout keeps a live T26 probe in the committed
-  files rather than only in principle. **The schema was not edited**, per this
-  packet's constraint: the five are reported with the error each produced, and the
-  repair remains a specification change in the schema's `answer` or the oracle's
-  return, both frozen as of T107 (`decisions.md § A shortfall is stated in the
-  suite, not resolved by coercion`). Any total quoted against `templates × m` says
-  276 of 281, never "about 281".
+  **T26's shortfall was reported, then repaired on the user's call, and the
+  schema was never edited.** As emitted first, T26 was 3 of 8: variant (i)
+  answers a boolean and materialized, while (ii) and (iii) answered the winning
+  roof's **canonical name** — a shape `case.schema.json` does not admit — so five
+  instances were unemittable and the suite stood at 276 with the gap stated per
+  instance (`decisions.md § A shortfall is stated in the suite, not resolved by
+  coercion`; that mechanism stays and now fires zero times).
+  **What reading `harness/contract.py` changed about the diagnosis.** T111 recorded
+  this as two frozen surfaces disagreeing, which made widening the schema look
+  like half a fix. It is not symmetric: the **root instruction states the same
+  three answer shapes to the candidate**, so a roof name was not merely unwritable
+  to a case file — it was a shape the agent was never told it could return. Two
+  surfaces agreed and the oracle was the outlier. Widening the schema would have
+  emitted five cases with an unreachable gold answer; widening the instruction is
+  worse, since it is the search's own starting point and the answer would then
+  depend on candidate text. **So the repair went into the oracle**: the comparison
+  is answered over the **ordered pair** — does `roof_a` end wetter than `roof_b` —
+  `detail` still records the winner, and the suite is 281 (`decisions.md § A
+  comparison is answered as a boolean over an ordered pair`).
+  **Left as it was, the cost was the thesis's own headline.** (i) composes
+  `albedo`, an axis that is itself holdout, so it is reported conditionally on
+  T22; (iii) is what keeps the compositional result off double transfer. With
+  (iii) withheld there was **no unconditional compositional probe in the suite at
+  all**. The freeze exists to keep results comparable across a change, and P8 has
+  not run — there are no results yet, which made this the cheapest moment the
+  repair will ever have.
+  **A second defect, found while diagnosing the first: (ii) and (iii) were
+  identical.** The sampler gave the `albedo` override to (i) alone, so both
+  comparison variants drew the same parameters, took the same code path and
+  carried the same gold set — three labels over two probes, with (iii)'s stated
+  purpose having nothing to contrast against. (ii) now carries the override across
+  the pair, applied to both runs so the roof stays the only difference, and the
+  three variants render from three sketches. **T26 is a balanced template as of
+  this repair**, since every variant answers a boolean; it balances 4/4 over its
+  eight instances and train's bool count is untouched, T26 being holdout-only.
+  **Repairing it moved one file.** `train.json` and `test_seen.json` kept their
+  hashes and only `test_unseen.json` changed, which is the emitter's own claim
+  under test: a change confined to one template shows up as a change to one file.
   **Generation writes to `.generation-cache/`, never `eval/cache/`.** The second is
   the replay cache T116 captures and commits, and it holds what the *cases* ask
   for; a generation run fetches for every draw it rejected as well, so committing
@@ -3522,8 +3548,12 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   test_seen is empty on every sampled parameter, and every `as_of` sits in its own
   split's stripe. Those last two are T113's exit criteria asserted against files a
   reviewer can open, with no generator in the loop.
-  23 tests in `tests/eval/test_emit.py`. `uv run ruff check .` and `uv run pytest`
-  clean.
+  24 tests in `tests/eval/test_emit.py`, and the T26 repair carries its own in
+  `tests/eval/test_oracles.py` (the boolean asserted both ways round on one draw,
+  the albedo reaching both runs) and `tests/eval/test_generation.py` (the three
+  variants asserted distinct, and a standing test that the schema and the
+  instruction still state the same answer vocabulary). `uv run ruff check .` and
+  `uv run pytest` clean — 1208 passed.
 - [x] T115 Stand up the GR2L service, record its served build, and commit the
   canary request/response hash to `eval/pins.json`. Capture cannot start without
   it, and a diverging canary is a hard failure by design. **Pull forward — run it

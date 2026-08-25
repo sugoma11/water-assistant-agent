@@ -441,11 +441,21 @@ async def t26_composed_override(
       never refused, because the case probes composing a forcing with a card
       lookup either way, and the conditional-reporting rule is what covers the
       gap when the albedo axis is not measurable.
-    * **(ii)** ``forcings`` plus a cross-roof comparison: which of two roofs ends
-      the window wetter under the same forced rain.
-    * **(iii)** the same comparison with no ``albedo`` anywhere, so the headline
-      does not rest on double transfer. Its parents — T21's forcings and
+    * **(ii)** ``albedo`` **and** ``forcings`` across **two roofs**: does the
+      first of the pair end the window wetter than the second, under one overlay
+      applied to both. Double transfer like (i), one axis further — the
+      composition is carried across a roof comparison rather than read off a
+      single run.
+    * **(iii)** the same comparison with **no** ``albedo`` anywhere, so the
+      headline does not rest on double transfer. Its parents — T21's forcings and
       T09/T10's model chain — are all train-taught.
+
+    **(ii) and (iii) were identical until T114 and the difference is the albedo.**
+    The sampler gave the override to (i) alone, so both comparison variants drew
+    the same parameters, took the same code path and carried the same gold set:
+    three labels over two probes, and (iii)'s stated purpose — contrasting with a
+    double-transfer variant — had nothing to contrast with. (ii) now carries the
+    override it is named for.
 
     **The threshold on (i) is the dry rung, not the wilting point**, for T06's
     reason: the question asks whether the roof stays above the level irrigation
@@ -453,7 +463,7 @@ async def t26_composed_override(
     The card is read for the ground and the constant for the number, which is
     :mod:`eval.oracles.reference`'s rule and not a second one.
 
-    **Both roofs run the same window with the same forcing on the comparison
+    **Both roofs run the same window with the same overlay on the comparison
     variants**, so what the answer compares is the roofs and nothing else. A tie
     is refused rather than broken: two roofs ending the window at the same %θ
     give the question two defensible answers (§1.6).
@@ -462,7 +472,8 @@ async def t26_composed_override(
         variant: one of :data:`T26_VARIANTS`.
         roof: the roof, on (i).
         roof_a, roof_b: the pair, on (ii) and (iii).
-        a: the albedo, on (i).
+        a: the albedo, on (i) and (ii); absent on (iii), which is the axis
+            (iii) deliberately does not compose.
         mm: the rain to force, on every variant.
         offset: which day of the window is forced, counting today as 0.
         d: the horizon in whole days.
@@ -540,13 +551,24 @@ async def _t26_cross_roof(
     forced: date,
     variant: str,
 ) -> OracleAnswer:
-    """Variants (ii) and (iii): one forcing, two roofs, and which ends wetter.
+    """Variants (ii) and (iii): two roofs under one overlay, compared in order.
 
-    Two runs over one window with one overlay, so the only thing that differs
-    between them is the roof — its presets, its substrate depth and its own
-    measured seed. Answered as the winning roof's canonical name rather than as a
-    difference, because the question names roofs and a signed gap would need a
-    convention about which way round it is written.
+    Two runs over one window with the same forcing — and on (ii) the same albedo —
+    so the only thing that differs between them is the roof: its presets, its
+    substrate depth and its own measured seed.
+
+    **Answered as a boolean over the pair in the order the question names them**,
+    ``roof_a`` against ``roof_b``. The earlier form answered the winning roof's
+    canonical name, which is a fourth answer shape: ``case.schema.json`` admits a
+    boolean, a number, an ISO day or null, and the agent's own contract instructs
+    the same three (``harness/contract.py``). So a roof name was not merely
+    unwritable to a case file — it was a shape the candidate was never told it
+    could return, and no draw of these two variants could be emitted at all
+    (``decisions.md`` § A comparison is answered as a boolean over an ordered pair).
+    The comparison is unchanged; only its spelling is.
+
+    A tie is still refused rather than broken: two roofs ending the window at the
+    same %θ give the question two defensible answers (§1.6).
     """
     names = [params.get("roof_a"), params.get("roof_b")]
     if any(name is None for name in names):
@@ -560,10 +582,20 @@ async def _t26_cross_roof(
             "question compares two roofs."
         )
 
+    # (ii) carries the albedo override and (iii) deliberately does not: (iii)'s
+    # whole purpose is to compose only train-taught axes, so that the
+    # compositional headline does not rest on double transfer (questions.md §2).
+    overrides: dict[str, Any] = {}
+    if params.get("a") is not None:
+        albedo = float(params["a"])
+        if not 0.0 <= albedo <= 1.0:
+            raise OracleInputError(f"albedo must be between 0.0 and 1.0, got {albedo}.")
+        overrides["albedo"] = albedo
+
     finals: dict[str, float] = {}
     sources: list[str] = []
     for roof_type in roofs:
-        run = await modelled_run(ctx, roof_type, window, forcings=forcings)
+        run = await modelled_run(ctx, roof_type, window, forcings=forcings, **overrides)
         if not run.days or run.days[-1].swc_pct is None:
             raise OracleInputError(
                 f"the {roof_type} run over {window[0]}..{window[1]} returned no soil "
@@ -575,12 +607,12 @@ async def _t26_cross_roof(
     if finals[roofs[0]] == finals[roofs[1]]:
         raise OracleInputError(
             f"both roofs end {window[1]} at {finals[roofs[0]]} %θ, so "
-            "'which is wetter' has two defensible answers (questions.md §1.6)."
+            "'does the first end wetter' has two defensible answers "
+            "(questions.md §1.6)."
         )
-    wetter = max(finals, key=lambda roof: finals[roof])
 
     return OracleAnswer(
-        answer=wetter,
+        answer=bool(finals[roofs[0]] > finals[roofs[1]]),
         unit=None,
         pins=stamp(weather_source=sources, used_gr2l=True),
         detail={
@@ -589,6 +621,8 @@ async def _t26_cross_roof(
             "window": f"{window[0]}..{window[1]}",
             "forcings": forcings,
             "forced_day": forced.isoformat(),
+            **({"albedo": overrides["albedo"]} if overrides else {}),
             "final_swc_pct": finals,
+            "wetter": max(finals, key=lambda roof: finals[roof]),
         },
     )

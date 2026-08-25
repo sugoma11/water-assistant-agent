@@ -272,10 +272,14 @@ class Template:
     balanced: bool = False
     """A bool template the §1.6 balance rule binds on — ~50/50 inside each split.
 
-    Eight of train's 25 (T04, T07, T09, T11, T12, T13, T16a, T25) and two more in
-    the holdout (T16b, T20), which is the count §1.7 states and the reason train's
-    ``m`` is an even 4. T26 is deliberately not one: only its first variant
-    answers a boolean, and its variant mix is stratified rather than sampled.
+    Eight of train's 25 (T04, T07, T09, T11, T12, T13, T16a, T25) and three more
+    in the holdout (T16b, T20, T26), which is the reason train's ``m`` is an even
+    4. **T26 joined the list at T114**, when its comparison variants stopped
+    answering a roof name and started answering over the ordered pair: every
+    variant answers a boolean now, so the rule §1.6 states for a bool template
+    covers it. Its quota is per template rather than per variant, which is the
+    cap the rule describes — the balance is over T26's eight instances, not
+    inside each of its three probes.
     """
 
     abstains: bool = False
@@ -809,6 +813,20 @@ def _sample_t21(
     }
 
 
+def _albedo(rng: Random, pools: Pools, *roofs: str) -> float:
+    """An albedo that is not the default of any roof it will be applied to.
+
+    A counterfactual equal to the baseline probes nothing: it scores a candidate
+    that never passed the argument full marks on the answer, which is the guard
+    the oracles raise on and the reason T22 refused every draw while the served
+    model ignored ``albedo`` (``findings.md``). The defaults are read off
+    ``ROOF_PRESETS`` per draw rather than assumed flat, and a comparison variant
+    passes both of its roofs because one overlay covers both runs.
+    """
+    defaults = {float(ROOF_PRESETS[roof]["albedo"]) for roof in roofs}
+    return _pick(rng, [value for value in pools.of(ALBEDOS) if value not in defaults])
+
+
 def _sample_t22(
     rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
 ) -> dict[str, Any]:
@@ -819,8 +837,7 @@ def _sample_t22(
     baseline scores a candidate that never passed the argument full marks.
     """
     roof = _roof(rng, "P2")
-    default = float(ROOF_PRESETS[roof]["albedo"])
-    return {"roof": roof, "a": _pick(rng, [a for a in pools.of(ALBEDOS) if a != default])}
+    return {"roof": roof, "a": _albedo(rng, pools, roof)}
 
 
 def _sample_t23(
@@ -861,12 +878,17 @@ def _sample_t26(
     }
     if fixed["variant"] == VARIANT_ALBEDO_AND_RAIN:
         roof = _roof(rng, "P2")
-        default = float(ROOF_PRESETS[roof]["albedo"])
         params["roof"] = roof
-        params["a"] = _pick(rng, [a for a in pools.of(ALBEDOS) if a != default])
+        params["a"] = _albedo(rng, pools, roof)
     else:
         pair = rng.sample(list(pool_members("P2")), 2)
         params["roof_a"], params["roof_b"] = pair
+        # (ii) composes the albedo override across the pair and (iii) composes
+        # only train-taught axes, which is the whole difference between them —
+        # and until T114 neither carried one, so they were three labels over two
+        # probes (`questions.md` §2 T26).
+        if fixed["variant"] == VARIANT_RAIN_CROSS_ROOF:
+            params["a"] = _albedo(rng, pools, *pair)
     return params
 
 
@@ -1168,15 +1190,14 @@ def _t24a_shape(params: Mapping[str, Any]) -> str:
 
 
 def _t26_shape(params: Mapping[str, Any]) -> str:
-    """T26's two shapes over three variants.
+    """T26's three shapes, one per variant.
 
-    (ii) and (iii) ask the same question — one comparison, one overlay — and
-    differ in which axes they compose, which is a property of the gold set rather
-    than of the wording (``questions.md`` §2 T26). One shape, so a paraphrase of
-    the comparison is a paraphrase of both.
+    The two comparison variants ask a differently-shaped question now that (ii)
+    carries the albedo override it is named for: (ii) states two overrides and
+    (iii) one, so a single sketch could not carry both. Until T114 they shared a
+    shape because they shared everything (``questions.md`` §2 T26).
     """
-    variant = str(params["variant"])
-    return "T26:albedo_and_rain" if variant == VARIANT_ALBEDO_AND_RAIN else "T26:cross_roof"
+    return f"T26:{params['variant']}"
 
 
 def _t27_shape(params: Mapping[str, Any]) -> str:
@@ -1634,13 +1655,18 @@ TEMPLATES: dict[str, Template] = {
         render=_render_by(
             _t26_shape,
             {
-                "T26:albedo_and_rain": (
+                f"T26:{VARIANT_ALBEDO_AND_RAIN}": (
                     "If albedo were {a} and {mm} mm fell on day {offset} of the next "
                     "{d} days, would the {roof} stay above the irrigation threshold?"
                 ),
-                "T26:cross_roof": (
+                f"T26:{VARIANT_RAIN_CROSS_ROOF}": (
+                    "If albedo were {a} and {mm} mm of rain fell on day {offset} of "
+                    "the next {d} days, would the {roof_a} end wetter than the "
+                    "{roof_b}?"
+                ),
+                f"T26:{VARIANT_TRAIN_TAUGHT}": (
                     "If {mm} mm of rain falls on day {offset} of the next {d} days, "
-                    "which of the {roof_a} and the {roof_b} ends wetter?"
+                    "does the {roof_a} end wetter than the {roof_b}?"
                 ),
             },
         ),
@@ -1648,17 +1674,15 @@ TEMPLATES: dict[str, Template] = {
         requires=_requires_t26,
         strata=_t26_strata,
         surface_shape=_t26_shape,
-        # (ii) and (iii) do not currently emit, and the cause is a disagreement
-        # between two frozen surfaces rather than anything this row can sample
-        # around. `_t26_cross_roof` answers **the winning roof's canonical name**
-        # — a deliberate choice, since a signed gap would need a convention about
-        # which way round it is written — and the case schema's `answer` admits a
-        # boolean, a number, an ISO-day string or null, so `"semi_intensive"`
-        # matches none of its four branches. The generator raises `Unemittable`
-        # rather than resampling: every draw of these two variants fails
-        # identically. Recorded in `findings.md` and handed to T114, which owns
-        # emission; the repair is a specification change in the schema or in the
-        # oracle, and both are frozen as of T107.
+        # **Every variant answers a boolean, which is why this is `balanced`.**
+        # The comparison variants answered the winning roof's canonical name until
+        # T114 — a fourth answer shape that neither `case.schema.json` nor the
+        # agent's own contract admits, so no draw of them could be emitted at all.
+        # They now answer over the pair in the order the question names it, and
+        # the pair order is drawn rather than sorted, so both classes are reachable
+        # by construction (`decisions.md § A comparison is answered as a boolean
+        # over an ordered pair`).
+        balanced=True,
     ),
     # --- H. Presentation ------------------------------------------------------
     "T24a": Template(

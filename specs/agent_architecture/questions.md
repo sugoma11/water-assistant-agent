@@ -578,20 +578,38 @@ by 6.29 pp at `d = 10` in October (`findings.md`). There is no safe `{d}` to wri
 probes each draw.
 
 **T26 — compositional**
-Q variants: (i) "If albedo were {a} **and** 30 mm fell tomorrow, would the {roof} roof stay above the
-irrigation threshold?" — adds `lookup_reference` to Traj and `irrigation_threshold` to Cards;
-(ii) override plus cross-roof comparison; (iii) a variant composing only train-taught axes
-(`forcings` plus cross-roof comparison, no `albedo`). roof ∈ P2.
-A: bool / numeric · Traj: union of the composed calls, argument-checked · Split: unseen
+Q variants, each composing a different set of axes: (i) "If albedo were {a} **and** {mm} mm fell on
+day {offset} of the next {d} days, would the {roof} roof stay above the irrigation threshold?" — adds
+`lookup_reference` to Traj and `irrigation_threshold` to Cards; (ii) the same two overrides carried
+**across a roof pair**: "…would the {roof_a} end wetter than the {roof_b}?"; (iii) the same
+comparison composing only train-taught axes — `forcings` plus the cross-roof comparison, **no**
+`albedo`. roof, roof_a, roof_b ∈ P2, the pair distinct and drawn in the order the question names it.
+A: bool on every variant (balanced) · Traj: union of the composed calls, argument-checked
+· Split: unseen
 Note: the compositional-generalization headline, with train-side parents T21, T06 and T09/T10.
-Variant (i) composes `albedo`, whose axis is itself holdout, so it is interpretable only where T22
-passes and is reported conditionally; variant (iii) keeps the headline off double transfer. **(i) was
-half inert while the service ignored `albedo`** — the rain moved its answer and the albedo could
-not — and is composing two live axes again since the 2026-08-24 fix: its window minimum moves 13.99 →
-16.38 %θ at albedo 0.6. It was never refused, because the case still probed composing a forcing with
-a card lookup, and the conditional-reporting rule above is what covers the gap either way. The
-comparison variants run both roofs over one window with one overlay, so the roof is the only thing
-that differs, and a tie is refused rather than broken.
+Variants (i) and (ii) compose `albedo`, whose axis is itself holdout, so they are interpretable only
+where T22 passes and are reported conditionally; variant (iii) keeps the headline off double
+transfer. **(i) was half inert while the service ignored `albedo`** — the rain moved its answer and
+the albedo could not — and is composing two live axes again since the 2026-08-24 fix: its window
+minimum moves 13.99 → 16.38 %θ at albedo 0.6. It was never refused, because the case still probed
+composing a forcing with a card lookup, and the conditional-reporting rule above is what covers the
+gap either way. The comparison variants run both roofs over one window with one overlay, so the roof
+is the only thing that differs, and a tie is refused rather than broken.
+**The comparison is answered as a boolean over the ordered pair, and it had to be** (T114). The
+earlier form answered *which* roof ends wetter, by canonical name — a fourth answer shape that
+neither `case.schema.json` nor the agent's own contract admits, both of which state bool, number,
+`YYYY-MM-DD` or null. So it was not merely unwritable to a case file: it was a shape the candidate
+was never told it could return, and **no draw of (ii) or (iii) could be emitted at all**. Widening
+the schema would not have been enough — the answer vocabulary lives in the root instruction, which is
+the search's own starting point, so the gold answer would have depended on candidate text
+(`decisions.md § A comparison is answered as a boolean over an ordered pair`). The comparison itself
+is unchanged, `detail` still records the winner, and every variant now answering a bool is what makes
+T26 a balanced template.
+**(ii) and (iii) were identical until the same repair.** The sampler gave the `albedo` override to
+(i) alone, so both comparison variants drew the same parameters, took the same code path and carried
+the same gold set — three labels over two probes, with (iii)'s stated purpose having nothing to
+contrast against. (ii) now carries the override it is named for, applied to both runs so the roof
+stays the only difference.
 
 ### H. Presentation intent
 

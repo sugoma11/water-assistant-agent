@@ -1088,23 +1088,44 @@ SURFACES: Mapping[str, Mapping[str, str]] = {
             "Bewässerungsschwelle?"
         ),
     },
-    "T26:cross_roof": {
+    "T26:rain_cross_roof": {
         "en_polite": (
-            "If {mm} mm of rain falls on day {offset} of the next {d} days, could you "
-            "tell me which of the {roof_a} and the {roof_b} ends up wetter?"
+            "If albedo were {a} and {mm} mm of rain fell on day {offset} of the next "
+            "{d} days, could you tell me whether the {roof_a} would end up wetter "
+            "than the {roof_b}?"
         ),
         "en_context": (
-            "Same rain on both: {mm} mm on day {offset} of the next {d} days. Which of "
-            "the {roof_a} and the {roof_b} ends up wetter?"
+            "Same two changes on both roofs: albedo {a}, and {mm} mm of rain on day "
+            "{offset} of the next {d} days. Does the {roof_a} end up wetter than the "
+            "{roof_b}?"
         ),
         "de_hoeflich": (
-            "Könnten Sie mir sagen, welches Dach am Ende feuchter ist — {roof_a_das} oder "
-            "{roof_b_das} —, wenn am Tag {offset} der nächsten {d} Tage {mm} mm Regen "
+            "Könnten Sie mir sagen, ob {roof_a_das} am Ende feuchter wäre als "
+            "{roof_b_das}, wenn die Albedo {a} wäre und am Tag {offset} der nächsten "
+            "{d} Tage {mm} mm Regen fielen?"
+        ),
+        "de_knapp": (
+            "Albedo {a}, {mm} mm an Tag {offset} von {d}: Endet {roof_a_das} feuchter "
+            "als {roof_b_das}?"
+        ),
+    },
+    "T26:train_taught": {
+        "en_polite": (
+            "If {mm} mm of rain falls on day {offset} of the next {d} days, could you "
+            "tell me whether the {roof_a} ends up wetter than the {roof_b}?"
+        ),
+        "en_context": (
+            "Same rain on both: {mm} mm on day {offset} of the next {d} days. Does the "
+            "{roof_a} end up wetter than the {roof_b}?"
+        ),
+        "de_hoeflich": (
+            "Könnten Sie mir sagen, ob {roof_a_das} am Ende feuchter ist als "
+            "{roof_b_das}, wenn am Tag {offset} der nächsten {d} Tage {mm} mm Regen "
             "fallen?"
         ),
         "de_knapp": (
-            "{mm} mm an Tag {offset} von {d}: Welches Dach endet feuchter, {roof_a_das} "
-            "oder {roof_b_das}?"
+            "{mm} mm an Tag {offset} von {d}: Endet {roof_a_das} feuchter als "
+            "{roof_b_das}?"
         ),
     },
     # --- H. Presentation --------------------------------------------------------
@@ -1319,7 +1340,7 @@ SURFACES: Mapping[str, Mapping[str, str]] = {
         "de_knapp": "{alias_Bare}, morgen {mm} mm: minimale Bodenfeuchte über {d} Tage?",
     },
 }
-"""Shape → register → sketch. 38 shapes, eight registers, 272 surfaces.
+"""Shape → register → sketch. 39 shapes, eight registers, 276 surfaces.
 
 A holdout shape carries the four test registers only; every other shape carries
 all eight. :func:`plan` never asks for a register the shape's splits do not

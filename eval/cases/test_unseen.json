@@ -1918,6 +1918,107 @@
   },
   {
     "inputs": {
+      "case_id": "T26-0002",
+      "template_id": "T26",
+      "language": "de",
+      "as_of": "2025-12-27T23:00:00+01:00",
+      "question": "Könnten Sie mir sagen, ob das unbewässerte Extensivdach am Ende feuchter wäre als das bewässerte Extensivdach, wenn die Albedo 0.05 wäre und am Tag 1 der nächsten 2 Tage 40 mm Regen fielen?",
+      "params": {
+        "variant": "rain_cross_roof",
+        "d": 2,
+        "mm": 40,
+        "offset": 1,
+        "roof_a": "non_irrigated_extensive",
+        "roof_b": "irrigated_extensive",
+        "a": 0.05
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "forcings.precip",
+          "op": "present"
+        },
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "albedo",
+          "op": "eq",
+          "value": 0.05
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T26-0003",
+      "template_id": "T26",
+      "language": "en",
+      "as_of": "2025-12-18T23:00:00+01:00",
+      "question": "Same rain on both: 20 mm on day 2 of the next 7 days. Does the non-irrigated extensive green roof end up wetter than the semi-intensive green roof?",
+      "params": {
+        "variant": "train_taught",
+        "d": 7,
+        "mm": 20,
+        "offset": 2,
+        "roof_a": "non_irrigated_extensive",
+        "roof_b": "semi_intensive"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "forcings.precip",
+          "op": "present"
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
       "case_id": "T26-0004",
       "template_id": "T26",
       "language": "de",
@@ -1971,23 +2072,178 @@
   },
   {
     "inputs": {
-      "case_id": "T26-0007",
+      "case_id": "T26-0005",
       "template_id": "T26",
       "language": "en",
-      "as_of": "2025-06-30T23:00:00+02:00",
-      "question": "Two changes at once: albedo 0.6, and 20 mm of rain on day 1 of the next 2 days. Would the semi-intensive green roof stay above the irrigation threshold?",
+      "as_of": "2025-06-03T23:00:00+02:00",
+      "question": "If albedo were 0.75 and 20 mm of rain fell on day 1 of the next 3 days, could you tell me whether the non-irrigated extensive green roof would end up wetter than the irrigated extensive green roof?",
       "params": {
-        "variant": "albedo_and_rain",
-        "d": 2,
+        "variant": "rain_cross_roof",
+        "d": 3,
         "mm": 20,
         "offset": 1,
-        "roof": "semi_intensive",
-        "a": 0.6
+        "roof_a": "non_irrigated_extensive",
+        "roof_b": "irrigated_extensive",
+        "a": 0.75
       }
     },
     "expectations": {
       "status": "answered",
       "answer": false,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "forcings.precip",
+          "op": "present"
+        },
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "albedo",
+          "op": "eq",
+          "value": 0.75
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T26-0006",
+      "template_id": "T26",
+      "language": "de",
+      "as_of": "2025-07-06T23:00:00+02:00",
+      "question": "Könnten Sie mir sagen, ob das Intensivdach am Ende feuchter ist als das bewässerte Extensivdach, wenn am Tag 2 der nächsten 3 Tage 40 mm Regen fallen?",
+      "params": {
+        "variant": "train_taught",
+        "d": 3,
+        "mm": 40,
+        "offset": 2,
+        "roof_a": "semi_intensive",
+        "roof_b": "irrigated_extensive"
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "forcings.precip",
+          "op": "present"
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T26-0007",
+      "template_id": "T26",
+      "language": "en",
+      "as_of": "2026-03-03T23:00:00+01:00",
+      "question": "Two changes at once: albedo 0.3, and 40 mm of rain on day 2 of the next 5 days. Would the irrigated extensive green roof stay above the irrigation threshold?",
+      "params": {
+        "variant": "albedo_and_rain",
+        "d": 5,
+        "mm": 40,
+        "offset": 2,
+        "roof": "irrigated_extensive",
+        "a": 0.3
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
+      "unit": null,
+      "tolerance": {
+        "kind": "exact"
+      },
+      "answer_metric": "scored",
+      "expected_tool_calls": [
+        {
+          "name": "predict_green_roof_water_balance_tool"
+        }
+      ],
+      "must_not_tools": [],
+      "gold_cards": [],
+      "argument_checks": [
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "forcings.precip",
+          "op": "present"
+        },
+        {
+          "tool": "predict_green_roof_water_balance_tool",
+          "path": "albedo",
+          "op": "eq",
+          "value": 0.3
+        }
+      ],
+      "pins": {
+        "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
+        "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
+        "weather_source": [
+          "archive"
+        ]
+      }
+    }
+  },
+  {
+    "inputs": {
+      "case_id": "T26-0008",
+      "template_id": "T26",
+      "language": "de",
+      "as_of": "2025-07-09T23:00:00+02:00",
+      "question": "Albedo 0.6, 50 mm an Tag 1 von 4: Endet das Intensivdach feuchter als das unbewässerte Extensivdach?",
+      "params": {
+        "variant": "rain_cross_roof",
+        "d": 4,
+        "mm": 50,
+        "offset": 1,
+        "roof_a": "semi_intensive",
+        "roof_b": "non_irrigated_extensive",
+        "a": 0.6
+      }
+    },
+    "expectations": {
+      "status": "answered",
+      "answer": true,
       "unit": null,
       "tolerance": {
         "kind": "exact"

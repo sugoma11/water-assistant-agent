@@ -2668,9 +2668,15 @@ def test_t26_compares_two_roofs_under_one_forcing(
 ):
     """Variants (ii) and (iii): one window, one overlay, and the roof is the difference.
 
-    Answered as the winning roof's canonical name rather than as a gap, because
-    the question names roofs and a signed difference would need a convention
-    about which way round it is written.
+    **Answered over the ordered pair rather than as the winning roof's name.** The
+    name is a fourth answer shape, which neither `case.schema.json` nor the
+    agent's own contract admits — so no draw of these two variants could be
+    emitted at all until T114. The comparison is unchanged and `detail` still
+    records which roof won; only the answer's spelling moved.
+
+    Asserted both ways round on the same draw, because a boolean over a pair is
+    only meaningful if the order is the question's: the same two roofs swapped
+    must flip it.
     """
     monkeypatch.setattr(gr2l_module, "run_gr2l", ForcingAwareGr2l(albedo_matters=False))
     column = ROOFS[IRRIGABLE].columns["swc"]
@@ -2684,20 +2690,77 @@ def test_t26_compares_two_roofs_under_one_forcing(
         weather=StubWeather(),
     )
 
+    def ask(first: str, second: str):
+        return asyncio.run(
+            t26_composed_override(
+                _inputs(
+                    "T26", variant="train_taught", roof_a=first, roof_b=second,
+                    mm=10.0, offset=1, d=3,
+                ),
+                ctx,
+            )
+        )
+
+    answer = ask(IRRIGABLE, MODELLABLE)
+    assert answer.answer is True
+    assert answer.detail["wetter"] == IRRIGABLE
+    assert answer.detail["final_swc_pct"][IRRIGABLE] > (
+        answer.detail["final_swc_pct"][MODELLABLE]
+    )
+
+    swapped = ask(MODELLABLE, IRRIGABLE)
+    assert swapped.answer is False
+    assert swapped.detail["wetter"] == IRRIGABLE
+
+
+def test_t26s_comparison_variant_carries_the_albedo_it_is_named_for(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """(ii) composes `albedo` across the pair; (iii) composes only train-taught axes.
+
+    The two were identical until T114 — the sampler gave the override to (i)
+    alone, so both comparison variants drew the same parameters and took the same
+    code path. The overlay applies to *both* runs, so what the answer compares is
+    still the roofs and nothing else.
+    """
+    stub = ForcingAwareGr2l(albedo_matters=True)
+    monkeypatch.setattr(gr2l_module, "run_gr2l", stub)
+    column = ROOFS[IRRIGABLE].columns["swc"]
+    other = ROOFS[MODELLABLE].columns["swc"]
+    ctx = _context(
+        db=_executor(
+            tmp_path / "t26albedo.duckdb",
+            f"CREATE TABLE swc (timestamp TIMESTAMP, {column} DOUBLE, {other} DOUBLE);"
+            f"INSERT INTO swc VALUES (TIMESTAMP '2026-04-19 12:00:00', 28.0, 12.0);",
+        ),
+        weather=StubWeather(),
+    )
+
     answer = asyncio.run(
         t26_composed_override(
             _inputs(
                 "T26", variant="rain_cross_roof", roof_a=IRRIGABLE, roof_b=MODELLABLE,
-                mm=10.0, offset=1, d=3,
+                a=0.6, mm=10.0, offset=1, d=3,
             ),
             ctx,
         )
     )
+    assert isinstance(answer.answer, bool)
+    assert answer.detail["albedo"] == 0.6
+    # One overlay, both runs: the albedo reached the model on each side.
+    assert [call["albedo"] for call in stub.calls] == [0.6, 0.6]
 
-    assert answer.answer == IRRIGABLE
-    assert answer.detail["final_swc_pct"][IRRIGABLE] > (
-        answer.detail["final_swc_pct"][MODELLABLE]
-    )
+    # And an albedo outside [0, 1] is refused rather than passed through.
+    with pytest.raises(OracleInputError, match="albedo must be between"):
+        asyncio.run(
+            t26_composed_override(
+                _inputs(
+                    "T26", variant="rain_cross_roof", roof_a=IRRIGABLE,
+                    roof_b=MODELLABLE, a=1.4, mm=10.0, offset=1, d=3,
+                ),
+                ctx,
+            )
+        )
 
 
 def test_t26_refuses_a_roof_compared_with_itself(

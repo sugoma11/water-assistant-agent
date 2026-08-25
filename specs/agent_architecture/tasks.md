@@ -3813,12 +3813,62 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   `uv run ruff check .` and `uv run pytest` clean — 1219 passed, 22 pre-existing
   findings, all in `notebooks/`, `src/experiments/` and `scripts/count_tokens.py`,
   none in the testbed.
-- [ ] T121 `predict_fn(inputs) -> dict`: build the `ScenarioContext` from
+- [x] T121 `predict_fn(inputs) -> dict`: build the `ScenarioContext` from
   `inputs["as_of"]`, read candidate text back through the registry, build the
   toolset and agent, and delegate the rollout to T100's `run_case`. Per record, no
   ambient state. Test: two records with different `as_of` evaluated concurrently
   *through `predict_fn`* under the real thread pool, each seeing its own bound.
   → T100, T120
+  Done in `harness/predict.py`. **It assembles arguments; it does not build the
+  agent**, and that is the whole of it: §6's sketch inlines
+  `build_root_agent(instruction=…, tools=build_toolset(ctx, docstrings=…))`,
+  which is the construction `run_case` already performs from `inputs` plus
+  `instruction` plus `docstrings`. So `predict_fn` reads the seven components,
+  pops `root_instruction`, and hands the remaining six — keyed by tool name, the
+  shape `docstrings=` takes — straight through. Repeating the construction would
+  have been the one way to make the search and the measurement run differ on the
+  path that has to be identical, and it would also have meant passing `tools=`,
+  which T030 refuses alongside `docstrings=`.
+  **`rollout_run_config()` therefore reaches the runner by delegation**, and the
+  test proves it rather than reading it: a script of `MAX_TOOL_STEPS + 4` calls
+  ends with `step_cap_exceeded` and `model.turn == 7`, so the run was bounded by
+  §2's cap and not by the script running dry — the script still has four turns
+  left, and ADK's own default would have allowed 500.
+  **The candidate is re-read on every record, deliberately.** The patch is
+  installed and reverted around each batch, so the same read returns different
+  text per iteration; caching it would run the whole search on whichever
+  candidate happened to be installed first and report it as several — a bug that
+  produces plausible numbers rather than an error. The *versions* resolve once,
+  in `make_predict_fn`, so an unpinned surface fails at wiring time instead of
+  inside a worker thread.
+  **`outputs` is JSON throughout, and `case_result` is its exact inverse.** MLflow
+  puts the dict into the per-iteration eval-results table through
+  `mlflow.log_table` and GEPA puts it in the reflective dataset the reflection
+  model reads, so a `CaseResult` object in there would have been unloggable and
+  illegible; every field of one is JSON-shaped, so the round trip is lossless and
+  T122's scorers get their `CaseResult` back whole. Asserted both ways, including
+  for a parse failure and an exclusion — the two outcomes a scorer must still be
+  able to tell apart afterwards.
+  **The exit criterion runs through MLflow's own machinery, not a stand-in.** The
+  test calls `_build_eval_fn(predict_fn, None)` — the private function
+  `optimize_prompts` builds its evaluation from — so the real
+  `ThreadPoolExecutor`, the real `PromptVersion.template` patch and the real
+  registry read are all in the path. Two records, `as_of` 2025-06-05 and
+  2025-06-15, both plotting `swc.soil_moisture` over 2025-06-01..10: the late one
+  comes back **480 points, `truncated: false`**, the early one **209 points,
+  `truncated: true`, last reading 2025-06-05**. Same window, same table, same
+  pinned file — different cuts, which a shared context could not produce.
+  **Concurrency is enforced, not hoped for.** Each record's model waits on a
+  shared `threading.Barrier(2)` before its first turn. Verified by running the
+  same test under `MLFLOW_GENAI_EVAL_MAX_WORKERS=1`: it fails with
+  `BrokenBarrierError` on the rollout, so the passing run really did have both
+  records inside `predict_fn` at once.
+  One more assertion earns its place: the candidate's text reaches **the system
+  instruction and all six tool declarations**, the sub-agent's outward
+  `description` among them — read off `request.config.tools`, which is what ADK
+  actually sent. That is §2's optimizable surface end to end, patch included.
+  `uv run ruff check .` and `uv run pytest` clean — 1225 passed, same 22
+  pre-existing findings, none in the testbed.
 - [ ] T122 Scorers as MLflow `Scorer`s wrapping T102's per-case functions, one per
   metric, each returning a `Feedback` whose **`rationale` is the reflection
   signal** — trajectory diff against gold, cards fetched versus cards wanted, SQL

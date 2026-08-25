@@ -239,6 +239,32 @@ prefix (`agent_tool_<name>`) rather than a path.
 *Verified:* registered against a local SQLite registry on mlflow 3.13.0.
 *Date:* 2026-08-25.
 
+**`predict_fn` raising is not an error the search reports; it becomes the
+record's `outputs`.** `_run_single` wraps the call in
+`except Exception as e: program_outputs = f"Failed to invoke the predict_fn
+with {inputs}: {e}"` (`optimize/optimize.py:299-303`), so a rollout that threw
+is handed to the scorers as a *string* where they expect a mapping, and the
+iteration continues. Two consequences for this repo: a scorer must be able to
+survive a non-mapping `outputs`, and a harness defect inside `predict_fn` is
+invisible unless something else counts it — which is what T123's declared
+residuals are for.
+*Verified:* read from installed mlflow 3.13.0 source, and observed as a
+`rollout` exclusion carrying `BrokenBarrierError` when
+`tests/harness/test_predict.py` was run under
+`MLFLOW_GENAI_EVAL_MAX_WORKERS=1`. *Date:* 2026-08-25.
+
+**Two records really are evaluated in parallel, and a per-record context is
+what keeps them apart.** Two records differing only in `as_of` (2025-06-05 and
+2025-06-15), evaluated through `predict_fn` by MLflow's own
+`_build_eval_fn` and plotting the same `swc.soil_moisture` window
+(2025-06-01..10) off the same pinned database, come back with **480 points and
+`truncated: false`** against **209 points, `truncated: true` and a last reading
+of 2025-06-05**. Enforced concurrency: each record's model waits on a shared
+`threading.Barrier(2)`, which breaks under
+`MLFLOW_GENAI_EVAL_MAX_WORKERS=1` and passes at the default 10.
+*Verified:* `tests/harness/test_predict.py::
+test_two_records_with_different_as_of_run_concurrently`. *Date:* 2026-08-25.
+
 ## Weather source measurements
 
 **Station vs ERA5 (Open-Meteo Archive) biases.** Against ERA5 (Open-Meteo's

@@ -811,6 +811,26 @@ routine consequence of re-pinning — would move the reference arm and the searc
 seed under a measurement already in flight, silently and in the direction
 nobody chose. An unpinned slot is therefore an error rather than a fallback.
 
+**`predict_fn` assembles a rollout's arguments; it does not build one.** §6's
+sketch inlines the context, the toolset and the agent, which is the construction
+`run_case` already performs from the same three arguments. The prediction
+function therefore reads the candidate, splits the instruction off the tool
+docstrings, and delegates. Repeating the construction was rejected: it is the
+one way for the search and the measurement run to differ on the path that has
+to be identical — the run config's step cap above all, since a search that
+bounded a looping candidate differently would disagree with the measurement run
+about whether that candidate finishes at all — and it would mean handing over a
+pre-built toolset, which the constructor refuses alongside docstrings precisely
+so that a silently truncated candidate cannot happen.
+
+**Candidate text is re-read per record and never cached.** The patch carrying it
+is installed and reverted around each batch, so the identical read returns
+different text on different iterations. A cached read would run every iteration
+of the search on whichever candidate was installed first and report the results
+under the others' names — a failure with no exception and entirely plausible
+numbers. Only the *versions* are resolved once, at wiring time, because they say
+which prompts are being optimized and cannot change within a run.
+
 ---
 
 ## Candidate selection and the scorers' aggregation

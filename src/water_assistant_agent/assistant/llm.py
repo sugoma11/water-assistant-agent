@@ -96,6 +96,26 @@ def sql_fixer_model_pin(settings: AssistantSettings | None = None) -> dict[str, 
     return _model_pin(settings.sql_fixer_model, settings)
 
 
+def reflection_model_pin(settings: AssistantSettings | None = None) -> dict[str, Any]:
+    """The optimizer's reflection model — the **second** model a search depends on.
+
+    Same shape and the same claim: a live dependency under an undated alias,
+    identified by its served id, its endpoint and its decoding parameters. What
+    makes it worth a pin of its own is that it never appears in a rollout at
+    all — it writes the candidates the rollouts are *scored on*, so a swap under
+    it changes which prompts the search proposes while leaving every measured
+    surface of the agent untouched. A run recording only the task model is
+    unrepeatable for that reason (``decisions.md`` § Model pinning).
+
+    The binding that makes these numbers true of the request actually sent is
+    ``harness/reflection.py``: GEPA builds its reflection call as a bare
+    ``litellm.completion(model=…, messages=…)`` and would otherwise carry none
+    of them.
+    """
+    settings = settings or get_settings()
+    return _model_pin(settings.reflection_model, settings)
+
+
 def configure_llm_cache(
     enabled: bool | None = None,
     settings: AssistantSettings | None = None,

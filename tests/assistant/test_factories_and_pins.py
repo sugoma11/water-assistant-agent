@@ -404,12 +404,19 @@ PINNED_MODEL_SETTINGS = {
     "text_to_sql_agent_model": "sub_agent_model",
     "sql_builder_model": "sql_builder_model",
     "sql_fixer_model": "sql_fixer_model",
+    "reflection_model": "reflection_model",
 }
 """Every model setting, and the pin that watches it.
 
-Spelled out rather than derived, because two of the four keys do not match their
+Spelled out rather than derived, because two of the five keys do not match their
 setting's name: the root agent is pinned as ``task_model`` and the sub-agent's
 model as ``sub_agent_model``, which is what the architecture §5 calls them.
+
+``reflection_model`` is the odd one in a different way: the package declares it
+and never builds it. It is the optimizer's, not an agent's, and it is here
+because the sweep is over what a *result* depends on — a swap under the model
+that writes the candidates moves a search as surely as one under the model that
+answers the cases, and more quietly, since no rollout ever calls it.
 """
 
 

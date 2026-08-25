@@ -25,12 +25,13 @@ canary is committed.
 
 Usage::
 
-    just pins           # verify (exit 1 on a moved pin)
-    just pins-write     # re-pin deliberately, then review the diff
-    just pins-canary    # capture the GR2L canary live and pin its response hash
+    just pins             # verify (exit 1 on a moved pin)
+    just pins-write       # re-pin deliberately, then review the diff
+    just pins-canary      # capture the GR2L canary live and pin its response hash
+    just pins-reflection  # capture the reflection model's canary reply and pin it
     uv run python scripts/check_pins.py --capture-gr2l-canary --accept-moved
-                        # ... and accept a canary that has moved, for a service
-                        #     that was changed deliberately
+                          # ... and accept a canary that has moved, for a service
+                          #     that was changed deliberately
 """
 
 from __future__ import annotations
@@ -194,6 +195,7 @@ def compute_pins() -> dict[str, Any]:
     """
     from harness.candidates import candidate_prompts_pin
     from water_assistant_agent.assistant.llm import (
+        reflection_model_pin,
         sql_builder_model_pin,
         sql_fixer_model_pin,
         sub_agent_model_pin,
@@ -227,7 +229,11 @@ def compute_pins() -> dict[str, Any]:
         "sub_agent_model": sub_agent_model_pin(settings),
         "sql_builder_model": sql_builder_model_pin(settings),
         "sql_fixer_model": sql_fixer_model_pin(settings),
-        "reflection_model": None,
+        # The second model a search depends on and the only one that never
+        # appears in a rollout: it writes the candidates the rollouts are scored
+        # on, so a swap under it changes what was proposed while leaving every
+        # measured surface of the agent untouched (T124).
+        "reflection_model": reflection_model_pin(settings),
         "reflection_model_canary_sha256": None,
         # The candidate surface, in two halves. `candidate_prompts` is the
         # registered name and the seed text's hash per optimizable component —
@@ -373,6 +379,59 @@ def capture_gr2l_canary(*, accept_moved: bool = False) -> int:
     return 0
 
 
+def capture_reflection_canary(*, accept_moved: bool = False) -> int:
+    """Probe the live reflection model and pin the hash of its canary reply.
+
+    The optimizer's second model, and the one no rollout ever calls: it writes
+    the candidates rather than answering the cases, so nothing else in this
+    repository would notice it being swapped. The probe goes out through
+    ``harness/reflection.py``'s bound seam — the same endpoint, key and decoding
+    parameters a search's reflection call carries — so what is pinned is a fact
+    about the request the search issues.
+
+    What is hashed is the assistant message's **content** together with the
+    probe, never the response envelope: the envelope's id, timestamp and token
+    counts move on every call, and this model's reasoning trace moves with them
+    (``findings.md``).
+
+    *accept_moved* is the deliberate way past a moved canary, on
+    :func:`capture_gr2l_canary`'s reasoning: a service changed on purpose is
+    the one case the refusal cannot tell from a silent swap, and re-pinning
+    invalidates every search run made against the old value.
+    """
+    from harness.reflection import CANARY_PROMPT, probe_canary
+    from water_assistant_agent.assistant.settings import get_settings
+
+    settings = get_settings()
+    print(f"Probing the reflection model {settings.reflection_model} at "
+          f"{settings.llm_api_base or 'the provider default'}")
+    print(f"  prompt: {CANARY_PROMPT!r}")
+    try:
+        content, digest = probe_canary(settings)
+    except Exception as exc:  # noqa: BLE001 - the message is the whole output
+        print(f"FAILED to reach the reflection model: {type(exc).__name__}: {exc}")
+        print("A search cannot propose anything without it; fix that and re-run.")
+        return 1
+
+    print(f"  reply:  {content.strip()!r}")
+    committed = _load_committed()
+    previous = committed.get("reflection_model_canary_sha256")
+    if previous is not None and previous != digest:
+        print(f"MOVED    reflection_model_canary_sha256\n           committed {previous}")
+        print(f"           served    {digest}")
+        if not accept_moved:
+            print("\nThe reflection model has moved under the pin. Candidates proposed")
+            print("before and after are not comparable; resolve that before re-pinning.")
+            print("If the move was deliberate, re-run with --accept-moved.")
+            return 1
+        print("\n--accept-moved: re-pinning to the served build.")
+
+    committed["reflection_model_canary_sha256"] = digest
+    _write(committed, committed)
+    print(f"Pinned   reflection_model_canary_sha256: {digest}")
+    return 0
+
+
 def _report_stale_gr2l_artifacts(previous: str) -> None:
     """Name what the old canary still stands behind, without touching any of it.
 
@@ -417,18 +476,25 @@ def main() -> int:
         help="probe the live GR2L service and pin its canary response hash",
     )
     parser.add_argument(
+        "--capture-reflection-canary",
+        action="store_true",
+        help="probe the live reflection model and pin its canary reply hash",
+    )
+    parser.add_argument(
         "--accept-moved",
         action="store_true",
         help=(
-            "with --capture-gr2l-canary: re-pin even though the canary moved, for a "
-            "service that was changed on purpose. Invalidates everything captured "
-            "against the old hash; the run prints what."
+            "with either --capture-*-canary: re-pin even though the canary moved, "
+            "for a service that was changed on purpose. Invalidates everything "
+            "captured against the old hash; the run prints what."
         ),
     )
     args = parser.parse_args()
 
     if args.capture_gr2l_canary:
         return capture_gr2l_canary(accept_moved=args.accept_moved)
+    if args.capture_reflection_canary:
+        return capture_reflection_canary(accept_moved=args.accept_moved)
 
     computed = compute_pins()
     if args.write:

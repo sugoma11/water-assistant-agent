@@ -53,8 +53,15 @@
     "gr2l_canary_request_sha256": "c24f571f416086968ed9a8ac4d1f30e7b10564756ea427d8f36f99faa94c0906",
     "gr2l_canary_response_sha256": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
     "gr2l_roof_presets_sha256": "77e80a238b4bed2a26baaa8ea033cdda483bf4ba5c0cfb350e35e667d548775b",
-    "reflection_model": null,
-    "reflection_model_canary_sha256": null,
+    "reflection_model": {
+      "decoding": {
+        "seed": 42,
+        "temperature": 0.0
+      },
+      "endpoint": "https://saia.gwdg.de/v1",
+      "model_id": "openai/qwen3.5-397b-a17b"
+    },
+    "reflection_model_canary_sha256": "335fb27d41c9ba573d7af52d762e8ccb867f02c24a313c7f753b8338ac29d103",
     "roofs_version": "1.0",
     "rules_constants_version": "1.0",
     "sql_builder_model": {

@@ -276,6 +276,37 @@ task model's canary still open.
 *Verified:* `just candidates` followed by `just candidates-check` (7 matched, 0
 drifted) and `just pins`. *Date:* 2026-08-25.
 
+**GEPA's reflection call carries nothing but the model and the messages, and a
+callable cannot be substituted.** `GepaPromptOptimizer` takes
+`reflection_model` as a string, and GEPA's string path builds
+`litellm.completion(model=reflection_lm_name, messages=…)` with no `api_base`,
+`api_key`, `temperature` or `seed` (`gepa/api.py:256-270`). Against an endpoint
+that is not the provider default that request does not arrive at all. The
+obvious escape — passing a pre-configured callable as
+`gepa_kwargs={"reflection_lm": …}` — does not work either: the optimizer builds
+`self.gepa_kwargs | {…, "reflection_lm": f"{provider}/{model}", …}`
+(`gepa_optimizer.py:349-359`) and the right-hand literal *does* carry that key,
+so a caller's value is silently overridden. The same merge that lets
+`frontier_type` through (§ Candidate selection) closes on this one. Hence
+`harness/reflection.py` binds the pin at `litellm.completion` instead, narrowed
+to the pinned model id.
+*Verified:* read from installed gepa 0.1.1 / mlflow 3.13.0 source, and by
+`tests/harness/test_reflection.py`. *Date:* 2026-08-25.
+
+**The reflection model's reply is stable; its response envelope is not.** Four
+probes of `openai/qwen3.5-397b-a17b` at `temperature=0, seed=42` with the prompt
+`Reply with exactly the three words: green roof canary` returned
+`content == "\n\ngreen roof canary"` **byte-identical every time**, while
+`completion_tokens` moved between 235 and 236 — it is a thinking model and the
+reasoning trace behind `reasoning_content` is not stable. So the canary hashes
+the assistant message's content (together with the probe), and hashing the
+response object would have failed on every run. Pinned:
+`reflection_model_canary_sha256 = 335fb27d41c9ba573d7af52d762e8ccb867f02c24a313
+c7f753b8338ac29d103`. The endpoint serves 16 models; the task model
+`qwen3.6-35b-a3b` and this one are the two the testbed names.
+*Verified:* four live probes through `harness/reflection.py`'s bound seam,
+then `just pins-reflection` twice with the same result. *Date:* 2026-08-25.
+
 **All 100 train cases are fully captured, re-checked where the search reads
 them.** Replaying every committed `train.json` record through its own oracle
 against `eval/cache/`, with `httpx.AsyncClient.send` replaced for the duration,

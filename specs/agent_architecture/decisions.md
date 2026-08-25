@@ -972,6 +972,22 @@ honoured**, since these endpoints serve open-weight models under no documented
 seed contract. Residual nondeterminism is therefore measured rather than
 controlled, on §7's statistical terms (see **Replication and the LLM cache**).
 
+**And the reflection model's pin is bound to its call, not merely recorded
+beside it.** GEPA reaches the reflection model through a bare
+`litellm.completion(model=…, messages=…)` carrying none of the four fields the
+pin names, and MLflow's optimizer overrides any `reflection_lm` a caller
+supplies through `gepa_kwargs` (`findings.md`), so a pin written from the
+settings would have described a request nobody sent — and against this endpoint,
+one that would not have arrived at all. `harness/reflection.py` fills the four
+in at `litellm.completion` for the duration of a search, matched on the pinned
+model id alone and only where the caller left the parameter out, and reverts in
+a `finally`. What is rejected is the alternative that looks tidier: setting
+`litellm.api_base` and `litellm.api_key` as module globals covers two of the
+four and quietly redirects every *other* model in the process that left its
+endpoint unset. And the canary hashes the assistant message's **content**, not
+the response envelope, because this is a thinking model whose token counts and
+reasoning trace move on every call while its answer does not (`findings.md`).
+
 ---
 
 ## A pinned service moved after the freeze

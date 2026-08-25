@@ -20,6 +20,12 @@ pins-write:
 pins-canary:
     uv run python scripts/check_pins.py --capture-gr2l-canary
 
+# Probe the live reflection model and pin its canary reply hash (needs the endpoint)
+# The optimizer's second model: it writes the candidates rather than answering the
+# cases, so nothing else here would notice it being swapped.
+pins-reflection:
+    uv run python scripts/check_pins.py --capture-reflection-canary
+
 # The candidate surface is seven registered prompts — the root instruction, the five
 # tool docstrings and the sub-agent's outward description — and the handwritten
 # baseline is registered once as their seed. It is simultaneously the reference arm

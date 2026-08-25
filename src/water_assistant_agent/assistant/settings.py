@@ -13,6 +13,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DEFAULT_MODEL = "openai/qwen3.6-35b-a3b"
 
+_DEFAULT_REFLECTION_MODEL = "openai/qwen3.5-397b-a17b"
+"""The optimizer's reflection model — a **second, distinct** model (§5).
+
+Distinct from :data:`_DEFAULT_MODEL` by design and not by accident: the model
+proposing candidate text is not the model under test, and a run whose reflection
+model is unrecorded is unrepeatable even with the task model fixed
+(``decisions.md`` § Model pinning). It is the largest the endpoint serves,
+because GEPA's proposal step is the one place in the loop where reasoning
+quality turns directly into candidate quality.
+"""
+
 
 class AssistantSettings(BaseSettings):
     """Runtime settings for the conversational assistant service."""
@@ -31,6 +42,10 @@ class AssistantSettings(BaseSettings):
     text_to_sql_agent_model: str = _DEFAULT_MODEL
     sql_builder_model: str = _DEFAULT_MODEL
     sql_fixer_model: str = _DEFAULT_MODEL
+    # The optimizer's reflection model. Not an agent model — nothing in the
+    # deployed assistant builds it — but a pinned dependency of every search
+    # result all the same (harness/reflection.py).
+    reflection_model: str = _DEFAULT_REFLECTION_MODEL
 
     # Optional OpenAI-compatible endpoint (e.g. KISSKI / Blablador) passthrough.
     llm_api_base: str | None = None

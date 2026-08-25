@@ -3967,9 +3967,58 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   Verified by 14 tests in `tests/harness/test_train_data.py`.
   `uv run ruff check .` and `uv run pytest` clean — 1254 passed, same 22
   pre-existing findings, none in the testbed.
-- [ ] T124 Configure the reflection model as a **second, distinct** model, and pin
+- [x] T124 Configure the reflection model as a **second, distinct** model, and pin
   its served id, endpoint, decoding parameters and canary — without which a run is
   unrepeatable even with the task model fixed. → T034
+  Done: `reflection_model` in the settings, `reflection_model_pin()` in
+  `assistant/llm.py`, the binding and the canary in `harness/reflection.py`, and
+  `just pins-reflection`. The model is **`openai/qwen3.5-397b-a17b`** against the
+  same endpoint — an order of magnitude larger than the task model's
+  `openai/qwen3.6-35b-a3b` and the largest the endpoint serves, because the
+  proposal step is the one place in the loop where reasoning quality turns
+  directly into candidate quality. `just pins` now reports **18 pinned, 1
+  unpinned, 0 moved**; the single open slot is `task_model_canary_sha256`, P8c's.
+  **Pinning it and configuring it are two different things, and the gap between
+  them is the whole task.** `GepaPromptOptimizer` takes the reflection model as a
+  *string*; GEPA's string path then builds
+  `litellm.completion(model=reflection_lm_name, messages=…)` and **nothing else**
+  — no endpoint, no key, no temperature, no seed. Against `saia.gwdg.de` that
+  call does not merely decode differently, it does not arrive. And a configured
+  callable cannot be supplied instead: `GepaPromptOptimizer` builds its arguments
+  as `self.gepa_kwargs | {…, "reflection_lm": …}` and the literal on the right of
+  that union wins, so a caller's `reflection_lm` is dropped without a word. Both
+  facts are in `findings.md`.
+  **So the pin is bound at the one seam they leave.** `pinned_reflection_lm` is a
+  context manager over `litellm.completion` that fills the four pinned fields
+  **only** for the pinned model id and **only** where the caller supplied none,
+  and reverts in a `finally` — the same shape as MLflow's own candidate patch.
+  The task model is untouched: it carries its own parameters explicitly through
+  ADK's `LiteLlm` wrapper, and the test asserts a call naming it comes out with
+  none of the four added.
+  **The uri round trip is the join, and it is asserted.** `reflection_model_uri`
+  emits `openai:/qwen3.5-397b-a17b`; MLflow's `_parse_model_uri` turns it back
+  into `openai/qwen3.5-397b-a17b`, which is the settings value the binding
+  matches on. If it were not the identity the patch would silently never fire and
+  the pin would be decoration.
+  **The canary hashes the message content, never the response envelope**, and the
+  measurement is why: across four probes at temperature 0 the assistant `content`
+  was byte-identical while `completion_tokens` moved 235/236 — this is a thinking
+  model and its reasoning trace is not stable. An envelope hash would have failed
+  on every run. Pinned: `335fb27d…`, over the canonical JSON of the probe **and**
+  the reply together, because the reflection canary has one slot in §5's list and
+  a response-only hash would let an edited probe redefine it in place.
+  **A reply with no assistant content is refused at capture time.** GEPA reads
+  `choices[0].message.content` and would propose `None`; saying so while probing
+  is cheaper than discovering it mid-search.
+  **The existing pin sweep caught the new setting, which is what it is for.**
+  `test_every_model_the_package_builds_is_pinned` failed the moment
+  `reflection_model` was declared and passed once it was pinned. It is the odd
+  entry there — the package declares it and never builds it — and it belongs
+  anyway, because the sweep is over what a *result* depends on.
+  Verified by 12 tests in `tests/harness/test_reflection.py`, the binding ones on
+  a bare `litellm.completion` call of exactly the shape GEPA makes.
+  `uv run ruff check .` and `uv run pytest` clean — 1266 passed, same 22
+  pre-existing findings, none in the testbed.
 - [x] T125 Register the handwritten baseline candidate (instruction plus
   docstrings) as prompt versions: it is simultaneously the reference arm and the
   search's seed candidate, so the two cannot drift apart. → T120

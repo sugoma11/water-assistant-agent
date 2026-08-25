@@ -276,6 +276,60 @@ task model's canary still open.
 *Verified:* `just candidates` followed by `just candidates-check` (7 matched, 0
 drifted) and `just pins`. *Date:* 2026-08-25.
 
+**`optimize_prompts` splats the record's `inputs` into keyword arguments, and
+`_build_eval_fn` does not.** `convert_predict_fn` validates a `predict_fn`'s
+signature against the `inputs` keys — `**kwargs` satisfies it for any envelope,
+one positional mapping does not — and returns
+`lambda request: predict_fn(**request)` (`genai/utils/trace_utils.py:576-581`,
+`genai/utils/data_validation.py:27,136-149`). The inner `_build_eval_fn` then
+calls *that* with the mapping positionally, so both shapes are real and they are
+two layers of one call. A `predict_fn(inputs)` therefore passes every test
+written against `_build_eval_fn` and fails at `optimize_prompts` with
+`MlflowException: The 'inputs' column must be a dictionary with the parameter
+names of the 'predict_fn' as keys` — a message about the dataset, for a fault in
+the function. Two further consequences: with a non-empty `sample_input` the
+validation runs **one real rollout** before the search starts, outside the
+budget; and it decides whether `predict_fn` gets wrapped in `mlflow.trace`.
+*Verified:* read from installed mlflow 3.13.0 source after `just search-smoke`
+failed on it. *Date:* 2026-08-25.
+
+**The LLM cache has two halves and either alone is a cache that does nothing.**
+`configure_llm_cache` installs `litellm.cache`; `AssistantSettings.litellm_extra`
+sends `caching` on every request. litellm consults the installed cache only when
+`caching` is unset or `True` (`caching/caching_handler.py:156-161`), and this
+repo always sends it — so installing the cache while `llm_cache_enabled` is
+`False` produces one that is configured, logged and bypassed on every call.
+`harness/optimize.py`'s `search_llm_cache` flips both and restores both.
+Measured: `just search-smoke` re-run on the warm cache finished in **14 s**
+against minutes cold, adding **no** entries to `.cache/llm`.
+*Verified:* read from installed litellm 1.84.0 source, and by the repeat run.
+*Date:* 2026-08-25.
+
+**A short search closes the whole loop.** `just search-smoke` — 3 train records,
+`max_metric_calls=8`, against the dev-stack registry at `http://localhost:5000`,
+the live task and reflection models and the live GR2L — completes with
+**selection score 1.0 → 1.0, 0/3 residual cases, 0 newly recorded cache
+entries**, and registers seven prompts at v2. Per-scorer:
+`{answer: 1.0, trajectory: 1.0, abstention: 1.0}` — `card_recall` is **absent**,
+having skipped on all three records (T01 wants no card), which is §7's skip
+running through this repo's `aggregate_scores` inside a real search. All three
+cases answered correctly, so GEPA logged `Iteration 2: All subsample scores
+perfect. Skipping.` and proposed no candidate; the search is degenerate and the
+loop is complete. Afterwards `just candidates-check` still reports 7 matched, 0
+drifted at v1, and `just pins` 18 pinned, 1 unpinned, 0 moved.
+*Verified:* `just search-smoke` twice. *Date:* 2026-08-25.
+
+**A search leaves the registry one version ahead, and `just candidates` would
+re-pin onto it.** `optimize_prompts` registers `best_candidate` unconditionally,
+so a search that proposed nothing still mints v2 holding the seed text.
+`register_candidates` compares against `@latest`, so a `just candidates` run
+after a search re-pins the seed to a *new* version — with the same handwritten
+bytes, so `just candidates-check` passes and the reference arm does not drift,
+but the pinned version number moves. It is therefore not run between the arms of
+one measurement.
+*Verified:* observed after `just search-smoke`; the seven prompts went to v2 with
+byte counts identical to the seed's. *Date:* 2026-08-25.
+
 **GEPA's reflection call carries nothing but the model and the messages, and a
 callable cannot be substituted.** `GepaPromptOptimizer` takes
 `reflection_model` as a string, and GEPA's string path builds

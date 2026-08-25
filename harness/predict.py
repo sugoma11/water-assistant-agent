@@ -140,6 +140,29 @@ def predict_fn(inputs: Mapping[str, Any]) -> dict[str, Any]:
     return make_predict_fn()(inputs)
 
 
+def as_keyword_fn(fn: PredictFn) -> Callable[..., dict[str, Any]]:
+    """*fn* in the shape ``optimize_prompts`` actually calls it in.
+
+    **The entry point splats the record.** ``convert_predict_fn`` returns
+    ``lambda request: predict_fn(**request)`` and validates the signature against
+    the ``inputs`` keys before it does, so a callable taking one mapping is
+    rejected outright — with a message about the *dataset's* shape, which is the
+    one thing that is right (``findings.md`` § Optimizer internals). The inner
+    ``_build_eval_fn`` then passes the mapping positionally, so both shapes are
+    real and they are two different layers of the same call.
+
+    ``**inputs`` rather than the six named keys of §6.1: the envelope is the
+    dataset's to define and MLflow accepts a ``VAR_KEYWORD`` signature as
+    matching any of them, so a key added to a case cannot leave this adapter
+    behind.
+    """
+
+    def rollout(**inputs: Any) -> dict[str, Any]:
+        return fn(inputs)
+
+    return rollout
+
+
 def outputs(result: CaseResult) -> dict[str, Any]:
     """One rollout's :class:`~harness.run_case.CaseResult` as MLflow's ``outputs``.
 

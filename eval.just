@@ -68,6 +68,20 @@ cases-check:
 capture:
     uv run python scripts/capture_cache.py
 
+# The search reads `train.json` pre-filtered to cases that replay, runs in RECORD mode
+# (a miss on a window the candidate chose is recorded, not excluded) and turns the LLM
+# response cache ON — the one place it is on, since the measurement run's three repeats
+# per condition are the replication. Needs the registry (`just dev-up`), the model
+# endpoint and the GR2L service.
+
+# Run one GEPA search over the whole train split at the default budget
+search:
+    uv run python scripts/run_search.py
+
+# A short search — 3 records, 8 rollouts. Does the whole loop close?
+search-smoke:
+    uv run python scripts/run_search.py --limit 3 --max-metric-calls 8
+
 # Replay the same cases with the network blocked; fails on any miss or any live call
 capture-verify:
     uv run python scripts/capture_cache.py --verify

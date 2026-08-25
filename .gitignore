@@ -230,3 +230,7 @@ data/timeseries
 # commits: a generation run fetches for every draw it rejected as well, and
 # committing those would be responses no case will ever ask for.
 .generation-cache/
+
+# MLflow's default local store, written whenever MLFLOW_TRACKING_URI is unset —
+# which is what the test suite runs under. A real run points at the dev stack.
+mlruns/

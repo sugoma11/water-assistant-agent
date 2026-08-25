@@ -3979,8 +3979,8 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   directly into candidate quality. `just pins` now reports **18 pinned, 1
   unpinned, 0 moved**; the single open slot is `task_model_canary_sha256`, P8c's.
   **Pinning it and configuring it are two different things, and the gap between
-  them is the whole task.** `GepaPromptOptimizer` takes the reflection model as a
-  *string*; GEPA's string path then builds
+  them is the whole task.** `GepaPromptOptimizer` takes the reflection model as
+  a *string*; GEPA's string path then builds
   `litellm.completion(model=reflection_lm_name, messages=…)` and **nothing else**
   — no endpoint, no key, no temperature, no seed. Against `saia.gwdg.de` that
   call does not merely decode differently, it does not arrive. And a configured
@@ -3988,8 +3988,8 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   as `self.gepa_kwargs | {…, "reflection_lm": …}` and the literal on the right of
   that union wins, so a caller's `reflection_lm` is dropped without a word. Both
   facts are in `findings.md`.
-  **So the pin is bound at the one seam they leave.** `pinned_reflection_lm` is a
-  context manager over `litellm.completion` that fills the four pinned fields
+  **So the pin is bound at the one seam they leave.** `pinned_reflection_lm` is
+  a context manager over `litellm.completion` that fills the four pinned fields
   **only** for the pinned model id and **only** where the caller supplied none,
   and reverts in a `finally` — the same shape as MLflow's own candidate patch.
   The task model is untouched: it carries its own parameters explicitly through
@@ -4061,11 +4061,74 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   **prefix**, not an equality. What the seed owns is everything before that block.
   `uv run ruff check .` and `uv run pytest` clean — 1230 passed, same 22
   pre-existing findings, none in the testbed.
-- [ ] T126 `harness/optimize.py` wiring `mlflow.genai.optimize_prompts` with
+- [x] T126 `harness/optimize.py` wiring `mlflow.genai.optimize_prompts` with
   `GepaPromptOptimizer`. **No adapter is written.** Selection runs on the
   aggregated scalar per plan §2.2; the mlflow and gepa versions join the pins,
   since candidate injection rests on an internal patch whose failure is quiet.
   → T121, T122, T123, T124, T125
+  Done in `harness/optimize.py`, driven by `scripts/run_search.py` behind
+  `just search` and `just search-smoke`. No adapter: MLflow's own
+  `MlflowGEPAAdapter` implements both required methods, so this module is where
+  T121's `predict_fn`, T122's scorers, T123's pre-filtered records and T124's
+  reflection model meet the entry point.
+  **The exit criterion ran.** `just search-smoke` — 3 train records, 8 rollout
+  budget — completes end to end against the dev-stack registry, the live task
+  model, the live reflection model and GR2L: **selection score 1.0 → 1.0, 0/3
+  residual cases, 0 new cache entries**, and seven prompts registered at v2. All
+  three cases are T01 and all three were answered correctly, so GEPA reported
+  "All subsample scores perfect. Skipping" and proposed nothing — a degenerate
+  search, and still the whole loop: pre-filter, patch, rollout, scorers,
+  aggregation, selection, registration.
+  **The skip ran in a real search, not only in a test.** The per-scorer numbers
+  came back `{answer: 1.0, trajectory: 1.0, abstention: 1.0}` — `card_recall` is
+  absent because T01 wants no card and skipped on every record. That is §7's skip
+  passing through this repo's `aggregate_scores` with MLflow's own machinery on
+  both sides of it.
+  **`preflight` asserts the aggregation is wired rather than trusting it**, in two
+  halves. Identity: the object passed is `aggregate_scores` itself, so the
+  weights are the pre-registered ones and not some caller's. Behaviour: the
+  *installed* mlflow, given these scorers and that callable, turns a two-skip
+  record into a number over `{trajectory, abstention}` alone — the half no
+  identity check can make, and the one that would catch a version bump changing
+  how a non-numeric scorer value is treated. A test then reads `aggregation` back
+  off the arguments the entry point actually received, because "we pass it" is
+  the claim and a dropped argument leaves the source looking right.
+  **`optimize_prompts` splats the record into keyword arguments, and a smoke run
+  is what found it.** `convert_predict_fn` validates a `predict_fn`'s signature
+  against the `inputs` keys and returns `lambda request: predict_fn(**request)`,
+  so T121's one-mapping callable is refused outright — with a message about the
+  *dataset's* shape. T121's test could not have caught it: it calls
+  `_build_eval_fn` directly, which is the inner layer and passes the mapping
+  positionally. `as_keyword_fn` adapts, with `**inputs` rather than §6.1's six
+  named keys so a key added to a case cannot leave it behind, and the test stub
+  now goes through `convert_predict_fn` so the shape stays covered.
+  **The LLM cache is on for the search and nowhere else.** `search_llm_cache`
+  turns it on in `harness/optimize.py` and back off on the way out — including
+  when the search raises, since off is the measurement path's setting.
+  **Both halves have to agree**: `configure_llm_cache` installs `litellm.cache`,
+  while `litellm_extra()` sends `caching` on every request and litellm consults
+  the installed cache only when that is unset or `True`. Installing the cache
+  without flipping the setting gives one that is configured, logged and bypassed.
+  Demonstrated rather than asserted: the same smoke search re-run finished in
+  **14 s** against minutes cold, with **no new cache entries** — every rollout
+  served from `.cache/llm`.
+  **The mlflow and gepa versions were already pinned** in `dependency_versions`
+  (3.13.0 and 0.1.1), which is what T126's row asks for; candidate injection rests
+  on a process-global patch of `PromptVersion.template` whose only failure signal
+  is a log warning, so a version bump that moved it would produce a search that
+  optimized nothing and said so nowhere.
+  **One operational consequence for P8c, recorded rather than repaired.** A search
+  registers its best candidate, so the registry ends at v2 even when nothing was
+  proposed. `just candidates` compares against `@latest`, so running it after a
+  search re-pins the seed to a fresh version — holding the same handwritten text,
+  so `just candidates-check` still passes and the reference arm does not drift,
+  but the version number moves. Do not run it between the arms of one
+  measurement. Verified after the smoke run: `just candidates-check` still
+  reports **7 matched, 0 drifted at v1** and `just pins` **18 pinned, 1 unpinned,
+  0 moved**.
+  Verified by 14 tests in `tests/harness/test_optimize.py`.
+  `uv run ruff check .` and `uv run pytest` clean — 1280 passed, same 22
+  pre-existing findings, none in the testbed.
 - [ ] T127 Run ledger into MLflow: candidate id, case id, served model id, every
   pin, trajectory and cost per rollout, on top of what `optimize_prompts` already
   logs. → T034

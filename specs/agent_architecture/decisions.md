@@ -1742,3 +1742,74 @@ a pin that moved underneath the suite and only the text tells the two apart. And
 the count compared between arms is **cases**, not failure events: one rollout
 can report two exclusions, and a candidate that fumbled twice on one case has
 not compromised two of them.
+
+---
+
+## The aggregation is checked before a search, not assumed by it
+
+`harness/optimize.py` refuses to start unless the objective is
+`aggregate_scores` **and** the installed mlflow, given this repo's scorers and
+that callable, turns a record where two metrics skip into a number.
+
+**Because the failure this guards against is not an exception.** Omitting
+`aggregation=` builds a metric perfectly happily; the objective silently becomes
+the unweighted mean of the numeric scorer values, and the run proceeds on a
+weighting nobody chose until it meets a case where a metric skips — which is an
+hour into a search, on a suite where most templates want no card. An identity
+check catches the omission; only running the library's own
+`create_metric_from_scorers` catches a library that changed its mind about
+non-numeric values under a version bump.
+
+**Rejected:**
+
+- *Trusting the call site.* "We pass it" is exactly the claim, and an argument
+  dropped in a refactor leaves the source reading correctly. The wiring is
+  therefore asserted twice — once at runtime before the budget is spent, and
+  once in a test that reads the argument back off what the entry point received.
+- *Checking only that the objective raises without the callable.* That is a
+  claim about today's mlflow, and if a future version shipped a default it would
+  start passing while saying nothing about whether **our** weights are in force.
+
+**Validity condition:** the weights inside `aggregate_scores` are pre-registered
+with the budget (**Splits, sizing and the holdout**), so the identity check is a
+check about the *method* and not merely about a symbol.
+
+---
+
+## The search records where the measurement run replays
+
+A search runs `predict_fn` with `allow_live=True` and the LLM response cache
+**on**. The measurement run does the opposite on both.
+
+**Two switches, two different reasons, and they point opposite ways.** The
+response cache under `eval/cache/` is on record for the search because a miss on
+a window the *candidate* chose is a discovery rather than an exclusion (§7) —
+there is no exclusion channel inside `optimize_prompts` to use instead. The
+*LLM* response cache is on for the search because the same candidate is
+re-evaluated across iterations and the key covers the tool declarations, so two
+candidates differing only in a docstring cannot share an entry; it is off on the
+measurement path because the three repeats per condition are the replication and
+a cache would collapse them into one sample and two copies of it (**Replication
+and the LLM cache**).
+
+**The LLM cache is two settings, not one.** `configure_llm_cache` installs
+`litellm.cache`; `litellm_extra()` sends `caching` on every request, and litellm
+consults the installed cache only when that is unset or true (`findings.md`).
+Turning on the first alone gives a cache that is configured, logged and bypassed
+— a no-op that reports itself as working. Both are flipped together and both are
+restored together, including when the search raises.
+
+**Rejected:**
+
+- *Leaving the LLM cache off inside the search too,* for symmetry with the
+  measurement run. It buys nothing: the search's repeats are not replication,
+  they are the optimizer re-scoring a candidate it has already scored.
+- *Leaving the response cache on replay inside the search,* so the two paths
+  match. Then every window the candidate chose and the oracle did not is an
+  `upstream` error and a declared residual, and the residual count starts
+  tracking candidate consistency rather than harness health — which is exactly
+  what the per-arm comparison is supposed to detect.
+
+**Validity condition:** the search's record mode grows `eval/cache/`, so the
+count of newly recorded entries is published per arm. Diverging counts mean the
+arms explored different argument space; that is reported and not repaired.

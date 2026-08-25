@@ -3869,12 +3869,60 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   actually sent. That is §2's optimizable surface end to end, patch included.
   `uv run ruff check .` and `uv run pytest` clean — 1225 passed, same 22
   pre-existing findings, none in the testbed.
-- [ ] T122 Scorers as MLflow `Scorer`s wrapping T102's per-case functions, one per
+- [x] T122 Scorers as MLflow `Scorer`s wrapping T102's per-case functions, one per
   metric, each returning a `Feedback` whose **`rationale` is the reflection
   signal** — trajectory diff against gold, cards fetched versus cards wanted, SQL
   errors, abstention outcome. An explicit `aggregation` callable is **mandatory**
   and implements "skipped, not 0" for the answer metric on null answers and for
   card recall on empty `gold_cards` — one mechanism, two users. → T102, T010
+  Done in `harness/scorers.py`: four `@scorer`-decorated callables over
+  `case_result(outputs)` and the case's `expectations`, each returning
+  `Feedback(value=…, rationale=…)`. **The module decides nothing.** It adapts one
+  shape to another — MLflow's `(inputs, outputs, expectations)` to T102's
+  `(CaseResult, expectations)` — and the testbed stays frozen: every number comes
+  back from `score_answer`, `score_trajectory`, `score_card_recall` and
+  `score_abstention` unchanged. `aggregate_scores` was already T102's, so no
+  aggregation logic was written here either; what T122 adds is the wiring and the
+  proof that the wiring is load-bearing.
+  **The scorer names are the weight keys, and that is a join rather than a
+  convention.** `create_metric_from_scorers` builds `{scorer.name: value}` and
+  hands *that dict* to the aggregation callable, which raises on a name it has no
+  registered weight for. So the four names are `METRICS` and a renamed scorer
+  fails loudly instead of being silently dropped from the objective.
+  **The exit criterion is the same record scored twice, through MLflow's own
+  metric.** A plot deliverable carries both of §7's skips at once — null oracle
+  answer, empty `gold_cards` — and
+  `test_a_skip_is_a_skip_only_through_this_repos_aggregation_callable` runs it
+  through `create_metric_from_scorers(SCORERS, aggregate_scores)` and then through
+  `create_metric_from_scorers(SCORERS, None)`. With this repo's callable the
+  record scores **1.0**, the two defined metrics renormalized; with the library
+  default the identical record raises `MlflowException: … return non-numerical
+  values`. That failure is the assertion: omitting the argument does not merely
+  reweight the objective here, it stops the search — so the aggregation is
+  checkable rather than assumed.
+  **The two skips never reach the per-scorer numbers, which is what makes them
+  skips twice over.** `_convert_to_numeric` drops a non-numeric value from
+  `individual_scores`, so a skipped metric is absent from what MLflow logs and
+  from what GEPA averages per scorer — the same coverage semantics `aggregate`
+  reports on the measurement path, arriving here for free rather than by a second
+  implementation. All four *rationales* still reach the reflective dataset.
+  **§7's "SQL errors" ride on the answer metric, once.** The four rationales share
+  one record in the reflective dataset, so a run's failure evidence — the frozen
+  sub-agent's `{"status": "error", …}`, an `upstream` tool failure, an exhausted
+  step cap — is appended to the rationale it explains rather than repeated four
+  times. It is appended to the **skip** as well, because the plotting family's
+  answer always skips and would otherwise be the one family silent about every
+  upstream failure it hits.
+  **A rollout that never completed scores 0 on all four and never skips.**
+  `_run_single` catches a `predict_fn` exception and hands the scorers a *string*
+  where they expect a mapping (`findings.md`), so surviving that shape is a
+  requirement rather than defensive coding. It is §7's declared residual: 0 with
+  the reason in every rationale. Not a skip — a record on which every metric
+  skipped has nothing to select on, and `aggregate_scores` refuses it.
+  Verified by 10 tests in `tests/harness/test_scorers.py`, every one of them
+  through `create_metric_from_scorers` or `Scorer.run` rather than around them.
+  `uv run ruff check .` and `uv run pytest` clean — 1240 passed, same 22
+  pre-existing findings, none in the testbed.
 - [ ] T123 `harness_error` at search time: pre-filter `train_data` to fully
   captured cases; a residual failure scores 0 as a **declared** residual with the
   per-arm count published beside newly recorded cache entries. Diverging failure

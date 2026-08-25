@@ -276,6 +276,25 @@ task model's canary still open.
 *Verified:* `just candidates` followed by `just candidates-check` (7 matched, 0
 drifted) and `just pins`. *Date:* 2026-08-25.
 
+**The aggregation callable is load-bearing, measured on one record rather than
+read.** The same plot-deliverable record — null oracle answer, empty
+`gold_cards`, so both of §7's skips at once — through
+`create_metric_from_scorers(SCORERS, aggregate_scores)` returns **1.0** with
+`individual_scores` holding only `trajectory` and `abstention`; through
+`create_metric_from_scorers(SCORERS, None)` the identical record raises
+`MlflowException: Scorers [answer (type: Feedback), card_recall (type:
+Feedback)] return non-numerical values that cannot be automatically
+aggregated.` So omitting the argument does not reweight the objective quietly
+on this suite — it stops the run at the first skipping case. A second
+consequence, useful rather than accidental: `_convert_to_numeric` drops a
+non-numeric value, so a skipped metric is absent from `individual_scores` and
+therefore from the per-scorer averages GEPA logs, which is §7's coverage
+semantics arriving without a second implementation. All four `rationales` still
+reach the reflective dataset.
+*Verified:* `tests/harness/test_scorers.py::
+test_a_skip_is_a_skip_only_through_this_repos_aggregation_callable` on mlflow
+3.13.0. *Date:* 2026-08-25.
+
 **Two records really are evaluated in parallel, and a per-record context is
 what keeps them apart.** Two records differing only in `as_of` (2025-06-05 and
 2025-06-15), evaluated through `predict_fn` by MLflow's own

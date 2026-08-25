@@ -1623,3 +1623,67 @@ rewrite every case file with no change to a single value.
 **Validity condition:** the order is stable across runs and across refactors of
 the generator. Adding a field to the schema is a two-line change here, and
 forgetting it is a loud failure rather than an unstable file.
+
+---
+
+## One rationale carries the run's failures, and it is the answer's
+
+A rollout's failure evidence — the frozen sub-agent's `{"status": "error", …}`
+payload, an `upstream` tool error, an exhausted step cap — is appended to the
+**answer** metric's rationale and to no other, including where that metric
+skips.
+
+**Because the four rationales share one record.** MLflow's adapter puts
+`trajectory.rationales` — the whole dict, all four — into every component's
+reflective dataset entry, so a fact stated in each of them is a fact the
+reflection model reads four times out of one budget. The answer metric is the
+score the evidence explains: a SQL error is why the number is wrong, and §7
+lists "SQL errors" among the four rationale contents precisely there.
+
+**Rejected:**
+
+- *Repeating it on all four.* Four copies of one sentence per record, spent on
+  the model whose context is the scarce resource in the loop.
+- *Putting it on trajectory instead,* on the ground that trajectory never skips
+  and so never loses it. It reads as a routing failure when it is an execution
+  failure — a candidate that routed correctly and hit a broken service would be
+  told its trajectory was the problem.
+- *Dropping it from the skip.* The plotting family's answer skips on every case
+  by construction, so this is the one family that would be silent about every
+  upstream failure it ever hit — and its argument checks are its entire scored
+  surface, so the silence would land exactly where the diagnosis is hardest.
+
+**Validity condition:** the evidence is text beside a number and never a number.
+Every score is decided by T102's frozen functions before any of it is assembled,
+so a change to what the evidence says cannot move a result.
+
+---
+
+## A rollout that produced no outputs scores 0, and never skips
+
+`optimize_prompts` catches a `predict_fn` exception and replaces the record's
+outputs with its own failure *string* (`findings.md`), so the scorers must
+survive a shape no rollout produces. They score it 0 on all four metrics with
+the reason in each rationale — §7's declared residual on the search path.
+
+**Not a skip, and the distinction is not stylistic.** A skip says "this metric
+does not apply to this case". A rollout that did not complete is a case on which
+every metric applies and none could be measured, and calling it a skip would
+drop the record from the objective instead of scoring it — which is the
+`aggregate_scores` failure mode: every metric skipping leaves nothing to select
+on, and it raises rather than inventing a value.
+
+**Rejected:**
+
+- *Letting the scorers raise on a non-mapping outputs.* The exception is caught
+  and turned into a string precisely so the iteration continues; a scorer that
+  raised would convert one harness defect into a dead search.
+- *Excluding the record instead.* There is no exclusion channel inside
+  `optimize_prompts` — the optimizer consumes one float per record — which is
+  the whole reason **Tool errors and harness exclusion** makes the search path
+  structural rather than selective.
+
+**Validity condition:** the residual is *counted*, not merely scored. A 0 that
+nobody counted is indistinguishable from a candidate that answered badly, and
+the per-arm count published beside the results is what makes the search numbers
+interpretable at all.

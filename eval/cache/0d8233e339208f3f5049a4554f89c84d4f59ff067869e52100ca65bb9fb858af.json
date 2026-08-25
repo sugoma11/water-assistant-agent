@@ -1,0 +1,96 @@
+{
+  "request": {
+    "params": {
+      "daily": "temperature_2m_mean,temperature_2m_max,temperature_2m_min,relative_humidity_2m_mean,precipitation_sum,wind_speed_10m_mean,shortwave_radiation_sum",
+      "end_date": "2025-07-25",
+      "latitude": 51.353484,
+      "longitude": 12.432152,
+      "start_date": "2025-07-19",
+      "timezone": "auto",
+      "wind_speed_unit": "kmh"
+    },
+    "url": "https://archive-api.open-meteo.com/v1/archive"
+  },
+  "response": {
+    "data": [
+      {
+        "Date": "2025-07-19",
+        "gs": 2471.0,
+        "precip": 0.3,
+        "rf": 72.0,
+        "tm": 21.2,
+        "tn": 15.8,
+        "tx": 26.8,
+        "w": 3.7
+      },
+      {
+        "Date": "2025-07-20",
+        "gs": 2519.0,
+        "precip": 0.0,
+        "rf": 65.0,
+        "tm": 23.3,
+        "tn": 16.8,
+        "tx": 29.1,
+        "w": 6.7
+      },
+      {
+        "Date": "2025-07-21",
+        "gs": 432.0,
+        "precip": 13.0,
+        "rf": 89.0,
+        "tm": 19.1,
+        "tn": 16.8,
+        "tx": 22.2,
+        "w": 6.4
+      },
+      {
+        "Date": "2025-07-22",
+        "gs": 1903.0,
+        "precip": 1.2,
+        "rf": 75.0,
+        "tm": 18.3,
+        "tn": 15.0,
+        "tx": 21.5,
+        "w": 15.8
+      },
+      {
+        "Date": "2025-07-23",
+        "gs": 2269.0,
+        "precip": 0.6,
+        "rf": 70.0,
+        "tm": 19.8,
+        "tn": 16.6,
+        "tx": 23.6,
+        "w": 16.9
+      },
+      {
+        "Date": "2025-07-24",
+        "gs": 2023.9999999999998,
+        "precip": 0.9,
+        "rf": 75.0,
+        "tm": 19.5,
+        "tn": 15.6,
+        "tx": 23.7,
+        "w": 6.2
+      },
+      {
+        "Date": "2025-07-25",
+        "gs": 2362.0,
+        "precip": 0.5,
+        "rf": 77.0,
+        "tm": 20.6,
+        "tn": 16.6,
+        "tx": 24.4,
+        "w": 7.5
+      }
+    ],
+    "latitude": 51.35325,
+    "longitude": 12.509026,
+    "source": "archive",
+    "status": "success",
+    "summary": null,
+    "timezone": "Europe/Berlin",
+    "truncated": false,
+    "weekly": null
+  }
+}

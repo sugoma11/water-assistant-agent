@@ -38,3 +38,16 @@ cases:
 # Byte stability as an exit code: regenerate, diff against what is committed, write nothing
 cases-check:
     uv run python scripts/generate_cases.py --check
+
+# The capture pass fills `eval/cache/` by answering every committed case through its
+# own oracle live, which is the set of requests the gold answers depend on — a rollout
+# would fetch whatever windows the model happened to pick. Needs the GR2L service up,
+# and records only against a canary it has just verified.
+
+# Record eval/cache/ over train, test_seen and test_unseen (review the diff, then commit)
+capture:
+    uv run python scripts/capture_cache.py
+
+# Replay the same cases with the network blocked; fails on any miss or any live call
+capture-verify:
+    uv run python scripts/capture_cache.py --verify

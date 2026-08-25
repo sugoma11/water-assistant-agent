@@ -3623,9 +3623,115 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   treatment. Not fixed here: no row in P2b's list covers it.
   `uv run ruff check .` and `uv run pytest` clean — 254 passed, same 15
   pre-existing findings.
-- [ ] T116 Capture pass in record mode over every case, then commit `eval/cache/`;
-  re-run in replay and assert zero live calls. Family H is part of the capture
-  surface wherever a plot fetches weather or GR2L itself. → T114, T115
+- [x] T116 Capture pass in record mode over every case, then commit
+  `eval/cache/`; re-run in replay and assert zero live calls. Family H is part
+  of the capture surface wherever a plot fetches weather or GR2L itself. → T114,
+  T115
+  Done. `eval/cache/` holds **481 entries — 208 GR2L and 273 Open-Meteo
+  Archive** — and all 281 cases of `train`/`test_seen`/`test_unseen` replay from
+  them without opening a socket. `scripts/capture_cache.py` is the driver, in
+  both directions: it records, and `--verify` replays.
+  **The re-pin this packet called for had already landed, and the canary has not
+  moved since.** The committed `gr2l_canary_response_sha256` was
+  `0c39f945a3f94073847202804d7e21e686dd8651b5ae81cb44bf4d04fbf20faa` only until
+  2026-08-24 17:45, when `60871d4` re-pinned it to
+  `c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7` through
+  exactly the `--capture-gr2l-canary --accept-moved` path this packet describes.
+  Re-probed live at the head of this task: the service serves `c8f51c82…`,
+  byte-identical to what is committed, so the capture ran against a verified pin
+  and `--accept-moved` was neither needed nor used. Both hashes are in
+  `findings.md`; the move itself is now recorded in `decisions.md`.
+  **The pin is a real model run, re-checked here rather than inherited.** `Ssub
+  = 8.0` is exactly the `theta_01` the probe sends, so the seed day seeded the
+  store; `Qdown`/`Qup`/`OUT` are null, the documented seed-day behaviour; and
+  `ET = 1.144` is `ET_PM · kg · Ssub/Ssubmax` = `2.2879 × 1 × 8.0/16.0` to the
+  digit. An error body that returned 200 would satisfy none of the three.
+  **11 GR2L entries discarded, 18 Archive entries kept, and the staleness was
+  demonstrated rather than assumed.** Two committed GR2L requests were re-issued
+  live: **every day of both differs**. Over the 28-day February run the
+  substrate store diverges from 0 on day 1 to 1.1 mm by day 28 (`Ssub` 9.024 →
+  7.9268), so the gap compounds and is not a constant anything could be
+  corrected by. Day 1's `Ssub` matches in both because it is the seed, and only
+  `ET` moves there — which is T115's conclusion that the ET routine moved and
+  the bookkeeping did not, confirmed on real windows instead of on the canary
+  alone. The Archive entries are untouched: ERA5 reanalysis has not moved, and
+  their requests carry a URL and query parameters rather than `data[]`, so the
+  two populations separate on request shape with nothing ambiguous between them.
+  **The old canary entry was among the 11, and leaving it would have stopped the
+  pass at the first miss.** `eval/cache/c24f571f…json` held the old build's
+  response (`ET = 1.045`, `ET_PM = 2.0901`), so `ResponseCache._verify_canary`
+  would have compared a live `1.144` against a committed `1.045` and raised
+  `CanaryMismatchError` before recording anything. The canary gate did its job
+  in the one direction that is easy to overlook: it guards the *cache's* copy,
+  not just the pin file's.
+  **Nothing was re-materialized, because nothing had moved.** `just cases-check`
+  was run against a **deleted** `.generation-cache`, so every GR2L response in
+  it came live from the current build — and the committed files came back
+  byte-identical (281 cases, 0 shortfalls, 0 parameter overlaps). Families D, E,
+  G and H's model series were already correct: T111–T114 generated them after
+  the re-pin, so their answers were never the old build's. Families A, B, C and
+  F and the measured half of H do not reach GR2L at all and were not re-emitted
+  — **the suite was not rewritten and `eval/cases/` is unchanged by this task.**
+  The capture pass then confirmed it a second and independent way: **all 281
+  cases recomputed to the answer already committed**, live, one by one.
+  **A capture pass captures an oracle, not a rollout.** The cache must hold the
+  requests the *gold answer* depends on, and the oracle is the only thing that
+  can say what those are (`decisions.md` § The response cache: capture runs over
+  the oracle's window). Driving agent rollouts would have recorded whichever
+  windows the model picked that afternoon — a different set, and not a
+  reproducible one. Re-running an oracle is a re-run of frozen code, not a
+  rewrite of one.
+  **Family H needed the one thing an oracle cannot give.** `t24a_plot_request`
+  resolves a vocabulary and a roof and **fetches nothing** — every argument
+  fault and the one scope limit are settled before the first query — so on the
+  oracle side it is a zero-entry case, exactly as T18a is. The three
+  `model_overlay` instances are not: a rollout drawing one runs GR2L over the
+  whole month, and its weather with it. The driver reaches that through the
+  oracle's own `_series_for` and the tool's own `prepare_series`, then into
+  `run_roof_model` with the arguments `plot.py`'s `_PlotSources.model` passes,
+  so nothing about which series a variant denotes or how a roof spelling
+  resolves is stated a second time. Those are the 31-day runs in the cache. The
+  `measured_pair` (4) reads DuckDB only and the `non_modellable_overlay` (2) is
+  declined before it fetches. **Replay exercises the same extra call**, or the
+  one entry no oracle covers would have been the one entry never verified.
+  **T115's event-loop hazard, fixed in the driver and not in the frozen
+  client.** The whole pass is one `asyncio.run`; contexts are built per distinct
+  `as_of` and reused, and the module-level `httpx.AsyncClient` is closed once at
+  the end. **208 distinct live GR2L calls went out on that single loop with no
+  `Event loop is closed`** — the failure a driver calling `asyncio.run` per case
+  hits on case two. `gr2l_client.py` was not touched.
+  **220 neighbouring horizons offered, 214 warmed.** The cache is keyed on the
+  request, so a candidate reading "the next *d* days" one day differently from
+  the oracle misses, and a miss in replay *excludes* the rollout — which would
+  make the exclusion rate track candidate consistency rather than harness health
+  (`prewarm_pilot_cache.py`, the pilot-sized version of this pass). Each
+  day-count case is therefore also answered at *d* ± 1, **through the oracle
+  itself**, so the warmed window is whatever that family's own horizon rule
+  produces rather than one this script computed. The 6 that did not warm are
+  horizons the record cannot serve, which is the answer a candidate asking for
+  them would get anyway.
+  **"Zero live calls" is asserted as a fact about sockets, not as a property of
+  a flag.** `--verify` binds every context to a `ReplayCache`
+  (`assert_no_live_call` checks it, and a miss is a hard failure) **and**
+  replaces `httpx.AsyncClient.send` for the duration of the pass, so a fetch
+  that found some other way out would raise rather than quietly succeed. Result:
+  **281 answered, 0 unfillable, 0 live calls attempted, 0 entries recorded
+  during replay.** The last count is the independent check — a replay that had
+  called out would have written a file.
+  `just pins`: **14 pinned, 4 unpinned, 0 moved**, with `c8f51c82…` as the GR2L
+  canary. The 4 open slots are the candidate prompts, the reflection model and
+  its canary, and the task model's canary — P8's to fill.
+  **One exposure, left as yours to decide.** `eval/cases/pilot.json` is T107's
+  record and is **not** part of this capture. Its three T09 cases are
+  model-bearing and stamp `gr2l_canary: 0c39f945…`, so their committed answer
+  numbers predate the fix; capturing fresh responses behind them would pair a
+  current cache with a stale answer, which is worse than leaving them
+  uncaptured. Discarding the 11 stale entries also removed the pilot's prewarm,
+  so **pilot.json can no longer replay at all** until it is re-run. Re-running
+  it would move T107's recorded numbers for every model-bearing template, which
+  is a measurement decision rather than a cleanup, so nothing here touched it.
+  `uv run ruff check .` and `uv run pytest` clean — 1208 passed, 22 pre-existing
+  findings, all in `notebooks/` and `src/experiments/` and none in the testbed.
 
 ---
 

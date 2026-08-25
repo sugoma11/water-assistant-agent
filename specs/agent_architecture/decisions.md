@@ -922,6 +922,62 @@ controlled, on §7's statistical terms (see **Replication and the LLM cache**).
 
 ---
 
+## A pinned service moved after the freeze
+
+The GR2L deployment was changed on **2026-08-24**, five hours after T107 froze
+the testbed that same day. The change was deliberate and was a repair — the
+service had been accepting `albedo` and discarding it — but it moved the model's
+ET routine as well, so the canary moved with it:
+`0c39f945a3f94073847202804d7e21e686dd8651b5ae81cb44bf4d04fbf20faa` →
+`c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7`. It was
+re-pinned through `check_pins.py --capture-gr2l-canary --accept-moved`, which is
+a separate flag rather than a prompt precisely so that a change of this kind
+appears in a shell history and a commit message. This section is what §5 owes a
+reader who later finds two different numbers for the same roof and the same
+week.
+
+**What moved.** Served `ET_PM` rose by a constant 0.4489 mm/day across the whole
+albedo range, where before the repair it matched our port of `GR2L_function.R`
+to 4e-5 at the default 0.2. `ET` follows `ET_PM` through
+`ET_PM · kg · Ssub/Ssubmax`, and `Ssub` follows it through the store's own
+bookkeeping. On the canary's single seed day that is `ET` 1.045 → 1.144 with
+`Ssub` unchanged at the 8.0 mm the probe seeds; over a 28-day run it is a
+divergence that starts at 0 and reaches 1.1 mm (`findings.md`). The endpoint
+therefore no longer reproduces the R checkout, and the pin is what says so.
+
+**Why the two sides are not comparable.** Every modelled answer — families D and
+G entirely, family E's calculator chain where it reads a modelled state, family
+H's model overlay — is a function of that series. A soil-moisture minimum, a
+threshold crossing, a deviation from the sensor record: each is read off days
+the repair moved, and **none of them moved by a constant**, because the
+divergence compounds through the store. So a result measured before 2026-08-24
+and one measured after are measurements of two different models, and averaging
+or comparing them would report neither. This is the failure mode §5's pin list
+exists for, and it is why a service with no version string to pin is pinned by a
+request/response hash instead: the deployment published nothing that would have
+revealed the change, and the canary was the only thing in the repository that
+was ever going to notice.
+
+**What it invalidated, and what it did not.** The eleven GR2L entries in
+`eval/cache/` were the old build's and were discarded rather than merged (T116),
+with the eighteen Open-Meteo Archive entries beside them kept — ERA5 reanalysis
+did not move, and the cache serves two services whose requests separate on
+shape. The evaluation suite was generated *after* the re-pin and reproduces byte
+for byte against the current build, so none of the three split files under
+`eval/cases/` needed re-materializing and none of them was rewritten.
+`eval/cases/pilot.json` is the exception and is left standing: its three T09
+cases were answered against the old build and carry the old canary in their
+pins, which is exactly the mismatch `expectations.pins` exists to make visible.
+Re-running them is a measurement decision rather than a cleanup, so it is stated
+here and not performed.
+
+**Validity condition:** a moved canary is a hard failure, and re-pinning one is
+an act with a date attached rather than a maintenance step. Any result quoted in
+the thesis names which side of 2026-08-24 it was measured on, and no comparison
+spans the two.
+
+---
+
 ## Replication and the LLM cache
 
 Three rollouts per condition on the measurement path, at one pinned decoding

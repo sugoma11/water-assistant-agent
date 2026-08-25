@@ -817,6 +817,64 @@ repository's, which is precisely the mismatch `expectations.pins` exists to make
 visible. `check_pins.py --accept-moved` prints this list every time it re-pins.
 *Verified:* the re-pin run's own output. *Date:* 2026-08-24.
 
+**The list was acted on at capture, and the staleness was measured rather than
+inferred.** T116 re-probed the service first: it still serves
+`c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7`,
+byte-identical to the pin, so the build has not moved a second time and
+`--accept-moved` was neither needed nor used. The eleven entries were then
+**discarded rather than merged**, and what justifies discarding them is a direct
+comparison: two of the committed GR2L requests were re-issued verbatim against
+the current service and **every day of both responses differs**. On the 28-day
+February window the substrate store diverges from 0 mm on day 1 to 1.1 mm by day
+28 (`Ssub` 9.024 → 7.9268), so the error compounds through the store and is not
+a constant offset a reader could correct for. Day 1's `Ssub` is identical in
+both, because it is the seed the request states, and only its `ET` moves — which
+is the ET-routine diagnosis above, confirmed on real windows rather than on the
+single-day canary. The eighteen Open-Meteo Archive entries were kept: ERA5
+reanalysis has not moved, and the two populations separate cleanly on request
+shape (`data[]` plus the roof parameters against a URL plus a query mapping),
+with nothing ambiguous between them.
+*Verified:* `fetch_canary()` against the pinned base URL; the requests of
+`b6af72e3…` (3 days) and `dfff2a5a…` (28 days) re-issued through `_post_gr2l`
+and compared row by row. *Date:* 2026-08-25.
+
+**The stale canary lived in the cache as well as in the pin file, and that copy
+is the one that bites.** `eval/cache/c24f571f…json` held the old build's canary
+response (`ET = 1.045`), so `ResponseCache._verify_canary` would have compared a
+live `1.144` against it and raised `CanaryMismatchError` at the first miss —
+stopping the capture pass before it recorded anything. The gate is worth
+understanding in both directions: `just pins` compares the *pin file*, and the
+response cache compares its *own committed entry*, and only the second one runs
+during a capture.
+*Verified:* the removed `c24f571f…` entry's own bytes, against the live canary
+response. *Date:* 2026-08-25.
+
+**The suite's answers were never the old build's, and this was checked rather
+than argued.** `expectations.pins.gr2l_canary` is read out of `eval/pins.json`
+at generation time, so the stamp records which build the generator *believed* it
+was using — it is not evidence about the response that was actually served, and
+a generation run replaying a stale local cache would stamp the new hash over old
+numbers. So `just cases-check` was run with `.generation-cache` **deleted**,
+forcing every model answer to come live from the current build: the committed
+`train`/`test_seen`/`test_unseen` files came back byte-identical. T116's capture
+pass then re-answered all 281 cases one by one and found the committed answer
+every time. Two independent confirmations, neither of which relies on the stamp.
+*Verified:* `fetch_canary()`; two committed requests re-issued through
+`_post_gr2l`; `scripts/generate_cases.py --check` from a cold cache;
+`scripts/capture_cache.py`. *Date:* 2026-08-25.
+
+**Discarding the eleven took the pilot's replay surface with it.** They were the
+prewarm `scripts/prewarm_pilot_cache.py` recorded for `eval/cases/pilot.json`,
+so the internal consistency noted above — "a replay of those three is still
+internally consistent" — no longer holds: the entries that made it so are gone,
+and the three T09 pilot cases now miss rather than replay. This is a statement
+of where things stand and not a repair. Re-running the pilot would move T107's
+recorded numbers for every model-bearing template, which is a measurement
+decision; leaving it is a suite that cannot replay three of its fourteen pilot
+cases. Neither was chosen here.
+*Verified:* the eleven entries' request shapes against the prewarm script's
+windows. *Date:* 2026-08-25.
+
 **T22 materializes against the fixed build, and the override is monotone.** On
 the non-irrigated extensive roof at `as_of` 2026-04-20, tomorrow's predicted soil
 moisture is 15.46 / 17.39 / 18.44 %θ at albedo 0.05 / 0.6 / 0.9 against a default

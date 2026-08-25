@@ -865,14 +865,15 @@ every time. Two independent confirmations, neither of which relies on the stamp.
 
 **Discarding the eleven took part of the pilot's replay surface with it, and the
 part is smaller than it first looks.** They were the prewarm
-`scripts/prewarm_pilot_cache.py` recorded for `eval/cases/pilot.json`, so the
-internal consistency noted above — "a replay of those three is still internally
-consistent" — no longer holds. Measured rather than assumed: **11 of the 14
-pilot cases still replay, and 4 miss** — `T09-0001`…`0003`, whose windows were
-among the eleven, and `T24a-0002`, the model overlay needing the 28-day February
-2026 run. The three `T07` cases replay, which is independent confirmation that
-the irrigation chain never reaches GR2L; `T01`, `T06`, `T17a`, `T18a` and
-`T24a-0001` never touched the cache at all.
+`scripts/prewarm_pilot_cache.py` recorded for `eval/cases/pilot.json` — the
+script T116 has since retired — so the internal consistency noted above — "a
+replay of those three is still internally consistent" — no longer holds.
+Measured rather than assumed: **11 of the 14 pilot cases still replay, and 4
+miss** — `T09-0001`…`0003`, whose windows were among the eleven, and
+`T24a-0002`, the model overlay needing the 28-day February 2026 run. The three
+`T07` cases replay, which is independent confirmation that the irrigation chain
+never reaches GR2L; `T01`, `T06`, `T17a`, `T18a` and `T24a-0001` never touched
+the cache at all.
 
 **The pilot's gold answers did not move, which is a narrower exposure than a
 stale pin suggests.** All three T09 answers were recomputed against the current
@@ -888,8 +889,18 @@ margin reason, but that is an inference and only a re-run would settle it —
 which is why it is stated rather than claimed. T107's headline results do not
 depend on GR2L in any case: T17a's 3/3 failure is a contract-encoding fault in
 the root instruction, and the coverage and recall ratios are structural.
-Re-running the pilot is therefore a measurement decision and not a cleanup, and
-nothing here made it.
+
+**The pilot is left as it stands, and this is the decision rather than a
+deferral.** Nothing downstream reads the file: P8's search and measurement load
+`train.json` as `train_data` and report on the two test splits, no P8 row
+mentions the pilot, and the one test that reads it needs no cache because T24a's
+oracle resolves scope without fetching. The pilot was P6's freeze gate, it
+passed that gate, and the four defects it caught are fixed in frozen code. So
+re-running it would re-measure a gate rather than measure anything, and
+capturing its 4 missing entries without re-running would pair a current cache
+with an old-canary stamp. Both were declined. What a later reader should take
+from this row is that the 4 misses and the stale stamp are known and priced, not
+an oversight to repair.
 *Verified:* the eleven entries' request shapes against the prewarm script's
 windows; all 14 pilot cases replayed against the committed cache with
 `httpx.AsyncClient.send` blocked; the three T09 oracles re-answered live into a

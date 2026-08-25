@@ -969,9 +969,11 @@ for byte against the current build, so none of the three split files under
 cases were answered against the old build and carry the old canary in their
 pins, which is exactly the mismatch `expectations.pins` exists to make visible.
 Their answers happen not to have moved — they are booleans, and no minimum sits
-near its threshold — which is worth knowing and is not a reason to leave the
-stamp wrong. Re-running them is a measurement decision rather than a cleanup, so
-it is stated here and not performed.
+near its threshold. The file is left as it is, deliberately: it was P6's freeze
+gate rather than a dataset, that gate has been passed, and nothing downstream
+reads it — the search and the measurement run take `train.json` and the two test
+splits. Re-running it would re-measure a gate rather than measure anything, so
+the stale stamp stands as a record of when the pilot was taken.
 
 **Validity condition:** a moved canary is a hard failure, and re-pinning one is
 an act with a date attached rather than a maintenance step. Any result quoted in

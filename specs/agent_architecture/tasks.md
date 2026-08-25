@@ -2985,9 +2985,10 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   hours" as three days and the candidate as four; the catalog now asks in days
   (T09's entry, `eval/oracles/model_chain.py`). (ii) Replay was deterministic
   only because capture happened to record the windows replay asked for, so
-  `scripts/prewarm_pilot_cache.py` records the neighbours — a miss under replay
-  excludes the rollout, and that bias drops a candidate's messiest runs and lifts
-  its mean. (iii) `series.*.roof` did not exist, so §2 H's "roofs as a set match"
+  `scripts/prewarm_pilot_cache.py` records the neighbours (retired by T116,
+  which warms them over the whole suite instead) — a miss under replay excludes
+  the rollout, and that bias drops a candidate's messiest runs and lifts its
+  mean. (iii) `series.*.roof` did not exist, so §2 H's "roofs as a set match"
   was unsayable. (iv) Each argument check hunted the trajectory for its own
   satisfying call, which let a pass be assembled from fragments — the hole that
   would have passed T26(i)'s compositional holdout on `albedo` in one call and
@@ -3360,9 +3361,9 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   return, and both are frozen as of T107** — handed to T114, which owns emission.
   **`scripts/make_pilot_cases.py` is retired**, per this row's own text — one
   instantiation path, not two. `eval/cases/pilot.json` stays as the pilot's
-  committed record and `prewarm_pilot_cache.py` still reads it; the T24a
-  reproduction test in `tests/eval/test_oracles.py` reads the committed file and
-  is unaffected.
+  committed record and `prewarm_pilot_cache.py` still reads it (that script is
+  itself retired by T116); the T24a reproduction test in
+  `tests/eval/test_oracles.py` reads the committed file and is unaffected.
   `uv run ruff check .` and `uv run pytest` clean — 1137 passed, same 15
   pre-existing findings in `experiments/`. `just pins`: 14 pinned, 4 unpinned,
   0 moved.
@@ -3721,22 +3722,36 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   `just pins`: **14 pinned, 4 unpinned, 0 moved**, with `c8f51c82…` as the GR2L
   canary. The 4 open slots are the candidate prompts, the reflection model and
   its canary, and the task model's canary — P8's to fill.
-  **One exposure, left as yours to decide, and measured so the decision is an
-  informed one.** `eval/cases/pilot.json` is T107's record and is **not** part
-  of this capture. **11 of its 14 cases still replay; 4 miss** — `T09-0001`…
-  `0003`, whose GR2L windows were among the 11 discarded, and `T24a-0002`, the
-  model overlay needing the 28-day February 2026 run. The three `T07` cases
-  replay, confirming the irrigation chain never reaches GR2L. **No gold answer
-  moved:** all three T09 answers were recomputed against the current build and
-  are unchanged (`True` at min 12.25 %θ against 20, `False` at 13.38 against 10,
-  `False` at 8.95 against 5) — the series moved, but no minimum sits near its
-  threshold, so the booleans survive. What is stale is the provenance: those
-  three stamp `gr2l_canary: 0c39f945…` against the repository's `c8f51c82…`,
-  and T107's 48 rollouts had the *agent* on the old build. Re-running the pilot
-  would re-measure T107's baseline, which is a measurement decision rather than
-  a cleanup, so nothing here touched it; capturing the 4 missing entries without
-  re-running would leave a current cache behind an old-canary stamp, which is
-  the pairing this task avoided everywhere else.
+  **The pilot is not captured, and the decision not to is closed rather than
+  open.** `eval/cases/pilot.json` is T107's record. **11 of its 14 cases still
+  replay; 4 miss** — `T09-0001`…`0003`, whose GR2L windows were among the 11
+  discarded, and `T24a-0002`, the model overlay needing the 28-day February 2026
+  run. The three `T07` cases replay, confirming the irrigation chain never
+  reaches GR2L. **No gold answer moved:** all three T09 answers were recomputed
+  against the current build and are unchanged (`True` at min 12.25 %θ against
+  20, `False` at 13.38 against 10, `False` at 8.95 against 5) — the series
+  moved, but no minimum sits near its threshold, so the booleans survive. What
+  is stale is the provenance: those three stamp `gr2l_canary: 0c39f945…` against
+  the repository's `c8f51c82…`, and T107's 48 rollouts had the *agent* on the
+  old build.
+  **Nothing downstream reads the file, which is what settles it.** P8's search
+  and measurement load `train.json` as MLflow `train_data` (T114) and report on
+  the two test splits; no P8 row mentions the pilot. The one test that reads it,
+  `test_t24a_reproduces_the_committed_pilot_cases`, needs no cache — T24a's
+  oracle resolves scope without fetching — and passed in this task's run with
+  the 4 misses already present. The pilot was P6's freeze gate and that gate has
+  been passed: it found four defects while they were cheap, all four are fixed
+  in frozen code, and the one result it still carries forward — T17a's 3/3
+  baseline failure — is a contract-encoding fault in the root instruction that
+  no GR2L change can touch. So it stays as it is: re-running would re-measure a
+  gate rather than measure anything, and capturing the 4 missing entries without
+  re-running would leave a current cache behind an old-canary stamp, the pairing
+  this task avoided everywhere else.
+  **`scripts/prewarm_pilot_cache.py` is retired**, on T111's precedent with
+  `make_pilot_cases.py` — one capture path, not two. It existed to warm the
+  pilot's neighbours, `capture_cache.py` does that job over the whole suite, and
+  with the pilot closed it has nothing left to warm. Its reasoning survives in
+  `capture_cache.py`'s `NEIGHBOURHOOD`.
   `uv run ruff check .` and `uv run pytest` clean — 1208 passed, 22 pre-existing
   findings, all in `notebooks/` and `src/experiments/` and none in the testbed.
 

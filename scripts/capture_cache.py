@@ -34,8 +34,10 @@ itself.
 *The neighbourhood.* The cache is keyed on the request, so a candidate that reads
 "the next d days" one day differently from the oracle misses, and a miss in
 replay excludes the rollout — biasing the exclusion rate towards candidate
-consistency rather than harness health (``scripts/prewarm_pilot_cache.py``, the
-pilot-sized version of this pass). So each day-count case is also answered at
+consistency rather than harness health. T107's pilot found this, and
+``scripts/prewarm_pilot_cache.py`` was the pilot-sized answer to it — retired
+here, because this pass does the same job over the whole suite. So each
+day-count case is also answered at
 d ± 1. The neighbours are warmed **through the oracle itself**, by moving the
 parameter and letting the oracle resolve the window, rather than by restating
 each family's horizon rule in a second place where it could come to mean
@@ -78,12 +80,14 @@ CASES_DIR = REPO_ROOT / "eval" / "cases"
 SPLITS: tuple[str, ...] = ("train", "test_seen", "test_unseen")
 """The suite this pass captures.
 
-``pilot.json`` is deliberately absent. Its model-bearing cases were answered
-against the GR2L build that was replaced on 2026-08-24, so their committed
-numbers predate the fix; capturing fresh responses behind them would pair a
-current cache with a stale answer, which is worse than leaving them uncaptured.
-Whether the pilot is re-run is not this pass's call — the exposure is stated in
-T116's notes instead.
+``pilot.json`` is deliberately absent, and stays absent. It was P6's freeze
+gate — 14 hand-instantiated cases run to prove the harness end to end — and that
+gate has been passed; nothing downstream reads it. P8's search and measurement
+load ``train.json`` as MLflow ``train_data`` and report on the two test splits,
+and the one test that reads the pilot file needs no cache at all, because T24a's
+oracle resolves scope without fetching. Capturing for it would pair a current
+cache with answers computed against the pre-2026-08-24 GR2L build, and re-running
+it would re-measure a gate rather than measure anything. See T116's notes.
 """
 
 DAY_COUNT_PARAMS: tuple[str, ...] = ("d", "ahead_days")

@@ -276,6 +276,21 @@ task model's canary still open.
 *Verified:* `just candidates` followed by `just candidates-check` (7 matched, 0
 drifted) and `just pins`. *Date:* 2026-08-25.
 
+**All 100 train cases are fully captured, re-checked where the search reads
+them.** Replaying every committed `train.json` record through its own oracle
+against `eval/cache/`, with `httpx.AsyncClient.send` replaced for the duration,
+drops **none**: 100 of 100 kept, in ~2 s over one event loop with one
+`ScenarioContext` per distinct `as_of`. The same pass drops a case whose window
+was never recorded — a T09 record moved from `d = 6` to `d = 30`, far outside
+the ±1 neighbourhood T116 warmed — with `CacheMissError` naming the Archive
+request and the nearest captured one. So the search's `train_data` is the whole
+split today, and a capture gap opened later shows up as a shrinking split rather
+than as residual failures nobody can attribute.
+*Verified:* `tests/harness/test_train_data.py::
+test_the_committed_train_split_is_fully_captured` and
+`::test_a_case_whose_window_was_never_captured_is_dropped_by_name`.
+*Date:* 2026-08-25.
+
 **The aggregation callable is load-bearing, measured on one record rather than
 read.** The same plot-deliverable record — null oracle answer, empty
 `gold_cards`, so both of §7's skips at once — through

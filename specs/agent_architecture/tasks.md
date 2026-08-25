@@ -3923,11 +3923,50 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
   through `create_metric_from_scorers` or `Scorer.run` rather than around them.
   `uv run ruff check .` and `uv run pytest` clean — 1240 passed, same 22
   pre-existing findings, none in the testbed.
-- [ ] T123 `harness_error` at search time: pre-filter `train_data` to fully
+- [x] T123 `harness_error` at search time: pre-filter `train_data` to fully
   captured cases; a residual failure scores 0 as a **declared** residual with the
   per-arm count published beside newly recorded cache entries. Diverging failure
   counts between arms mean the run is repeated; diverging record counts are
   reported, not repaired. → T122, T116
+  Done in `harness/train_data.py`. §7 gives the search three protections in place
+  of the exclusion channel it cannot have; this module owns the first and the
+  third, and the second is one argument elsewhere.
+  **The pre-filter replays each case's oracle with the network blocked.**
+  `fully_captured` binds a `ReplayCache` *and* replaces `httpx.AsyncClient.send`
+  for the duration, on `capture_cache.py --verify`'s reasoning: "captured" has to
+  be a fact about the committed cache rather than about a live call that happened
+  to succeed. **All 100 train cases pass**, in 2 s over one event loop with one
+  context per distinct `as_of`. A case that stops replaying is dropped **by
+  name** with the exception text kept — asserted on a T09 case moved to `d = 30`,
+  far outside the ±1 neighbourhood T116 warmed, which comes back as a
+  `CacheMissError` naming the Archive window.
+  **An oracle that refuses counts as captured.** T17a and T18a fetch nothing and
+  their gold status *is* the refusal, so reading `OracleInputError` as a failure
+  would drop from the search exactly the cases that probe abstention.
+  **The pre-filter asks the oracle's question and not the rollout's**, and that
+  is a decision rather than an omission — recorded in `decisions.md`. What a
+  *candidate* will reach for is unknowable before the search, which is why §7's
+  second protection exists: the search runs `allow_live=True`, so a miss on a
+  window the candidate chose **records** instead of failing.
+  **The residual counted is the record the scorers scored.** `guarded` wraps
+  `predict_fn`: an exclusion a completed rollout reported is read off its own
+  outputs, and a `predict_fn` that *raised* is declared under its own source and
+  then **re-raised**, so MLflow's own handling still turns it into the string the
+  scorers score 0 (`findings.md`). Verified end to end through `_build_eval_fn`
+  plus this repo's scorers: one record, `ledger.by_source == {"predict_fn": 1}`
+  and `result.score == 0.0`. Without the re-raise the ledger and the results
+  would be two accounts of one run.
+  **The count is cases, not failures.** One rollout can report two exclusions,
+  and a candidate that fumbled twice on one case has not compromised two of them
+  — comparing failure *events* between arms would make a noisier arm look like a
+  compromised one. Sources are still broken out beside the count.
+  **`compare_arms` names the two divergences and resolves neither.** Diverging
+  residual counts print `REPEAT THE RUN`; diverging record counts print
+  `REPORTED, NOT REPAIRED`. Fewer than two arms return nothing, because one arm
+  has nothing to diverge from.
+  Verified by 14 tests in `tests/harness/test_train_data.py`.
+  `uv run ruff check .` and `uv run pytest` clean — 1254 passed, same 22
+  pre-existing findings, none in the testbed.
 - [ ] T124 Configure the reflection model as a **second, distinct** model, and pin
   its served id, endpoint, decoding parameters and canary — without which a run is
   unrepeatable even with the task model fixed. → T034

@@ -1687,3 +1687,42 @@ on, and it raises rather than inventing a value.
 nobody counted is indistinguishable from a candidate that answered badly, and
 the per-arm count published beside the results is what makes the search numbers
 interpretable at all.
+
+---
+
+## The search's pre-filter asks the oracle's question, not the rollout's
+
+A training record is kept when the requests its **committed answer** was
+computed from replay from `eval/cache/` with the network blocked. What windows
+the *candidate* will reach for is not part of the test.
+
+**Because the second question has no answer before the search runs.** A capture
+pass records over the oracle's window (**The response cache**) precisely because
+that is the only surface knowable in advance; a rollout fetches whatever the
+model picked that afternoon. So the pre-filter removes what the suite already
+knew was missing, and §7's *second* protection — the search runs in record mode,
+so a miss on a candidate-chosen window records rather than fails — covers what
+it cannot. Asking one mechanism to do both work would mean either dropping
+cases for a miss that will never happen or claiming a guarantee that cannot be
+given.
+
+**Rejected:**
+
+- *Driving a rollout per case to decide the filter.* It costs a full model pass
+  before the search starts, it is non-deterministic, and it answers about one
+  candidate — the one that happened to run — while the search evaluates many.
+- *Replaying the rollout extras the capture pass warms* (family H's model
+  overlay). It is one train case, it is exactly the candidate-chosen category
+  record mode exists for, and reaching for the capture script's own helper from
+  the harness would invert the dependency between a library and its driver.
+- *Skipping the filter and letting record mode absorb everything.* Then a case
+  the suite never captured is indistinguishable from a candidate that went
+  somewhere new, and the per-arm counts stop meaning what §7 says they mean.
+
+**Validity conditions:** the filter is verified with sockets blocked, or
+"captured" degrades into "reachable today". Its drops are named rather than
+counted, because a case that stops replaying is either a capture gap to fill or
+a pin that moved underneath the suite and only the text tells the two apart. And
+the count compared between arms is **cases**, not failure events: one rollout
+can report two exclusions, and a candidate that fumbled twice on one case has
+not compromised two of them.

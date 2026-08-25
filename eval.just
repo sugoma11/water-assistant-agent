@@ -20,6 +20,20 @@ pins-write:
 pins-canary:
     uv run python scripts/check_pins.py --capture-gr2l-canary
 
+# The candidate surface is seven registered prompts — the root instruction, the five
+# tool docstrings and the sub-agent's outward description — and the handwritten
+# baseline is registered once as their seed. It is simultaneously the reference arm
+# and the search's starting point, so a second copy of that text is what these two
+# recipes exist to prevent. Both need a reachable MLflow registry (`just dev-up`).
+
+# Register the handwritten baseline as the seed candidate and pin its versions
+candidates:
+    uv run python scripts/register_candidates.py
+
+# Verify the pinned versions still hold the handwritten text, byte for byte
+candidates-check:
+    uv run python scripts/register_candidates.py --check
+
 # Check every `provenance: rendered` card against the constants; prints the correct
 # block on drift, so the fix is a paste rather than a transcription. The static cards
 # are pinned elsewhere and are not checked here — `just pins` carries them.

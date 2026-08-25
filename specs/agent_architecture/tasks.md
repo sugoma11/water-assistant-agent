@@ -3883,9 +3883,48 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
 - [ ] T124 Configure the reflection model as a **second, distinct** model, and pin
   its served id, endpoint, decoding parameters and canary — without which a run is
   unrepeatable even with the task model fixed. → T034
-- [ ] T125 Register the handwritten baseline candidate (instruction plus
+- [x] T125 Register the handwritten baseline candidate (instruction plus
   docstrings) as prompt versions: it is simultaneously the reference arm and the
   search's seed candidate, so the two cannot drift apart. → T120
+  Done: `scripts/register_candidates.py`, `just candidates` and
+  `just candidates-check`. Registered against the dev-stack registry at
+  `http://localhost:5000` — **all seven at version 1**, and
+  `candidate_prompt_versions` is pinned. `just pins` now reports **16 pinned, 3
+  unpinned, 0 moved**; both candidate slots are closed and the three open ones are
+  the reflection model, its canary and the task model's canary — T124's and P8c's.
+  **The two uses are one read, and that is what the test asserts.** The search
+  reads these prompts with a candidate patched over them; the reference arm reads
+  the *same* prompts with nothing patched. So
+  `test_the_reference_arm_runs_on_the_registered_seed` runs `predict_fn` with no
+  patch installed and checks that the system instruction is
+  `EVALUATION_ROOT_INSTRUCTION` and every one of the six declarations is the
+  production text — not a second copy that happens to agree today.
+  **Registering is idempotent.** Byte-identical text is not re-registered, so
+  re-running `just candidates` after a re-pin leaves the seed where it is; minting
+  a version for unchanged text would move the reference arm under whatever was
+  being measured.
+  **`--check` is the half `just pins` cannot do.** `just pins` hashes the text
+  this repo *would* register; `just candidates-check` reads back what actually is
+  registered under the pinned versions and compares. A pin naming the wrong
+  version passes the first and fails the second, which is the test: register the
+  seed, register an edited root instruction as v2, pin v2, and the check reports
+  `DRIFTED` and exits 1.
+  **One measurement changed a decision: the docstrings are registered stripped.**
+  ADK strips a docstring on its way into the function declaration — verified by
+  comparing `request.config.tools[…].description` against `__doc__` for all six,
+  where `== raw` is false and `== raw.strip()` is true — so a docstring's
+  surrounding whitespace is a byte no model can observe. Registering it would pin
+  something that cannot move a result and would leave the seed differing from the
+  declaration it *is*. The root instruction is **not** stripped: it is sent
+  verbatim as `static_instruction` and its bytes are the frozen text's. The six
+  tool prompts lost one trailing byte each; the prompts were deleted and
+  re-registered so the pinned seed is version 1 across the board rather than a
+  1-and-2 mixture recording a whitespace fix.
+  ADK also appends its own identity block ("You are an agent. Your internal name
+  is …") after the static instruction, so the assertion on the instruction is a
+  **prefix**, not an equality. What the seed owns is everything before that block.
+  `uv run ruff check .` and `uv run pytest` clean — 1230 passed, same 22
+  pre-existing findings, none in the testbed.
 - [ ] T126 `harness/optimize.py` wiring `mlflow.genai.optimize_prompts` with
   `GepaPromptOptimizer`. **No adapter is written.** Selection runs on the
   aggregated scalar per plan §2.2; the mlflow and gepa versions join the pins,

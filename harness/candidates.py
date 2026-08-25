@@ -396,11 +396,19 @@ def _declared_text(name: str, tool: Any) -> str:
     callable's docstring; and the bare callables, whose text is their own. Read
     from the object rather than from the module constant so that what is
     registered is what ADK would declare.
+
+    **Stripped**, and that is the point of reading it here rather than off
+    ``__doc__`` directly: ADK strips a docstring on its way into the function
+    declaration, so a docstring's surrounding whitespace is a byte no model can
+    observe. Registering it would pin something that cannot move a result and
+    would leave the seed differing from the declaration it *is*. The root
+    instruction is not stripped anywhere in this module, because that one is sent
+    verbatim as ``static_instruction`` and its bytes are the frozen text's.
     """
     agent = getattr(tool, "agent", None)
     if agent is not None:
-        return str(agent.description)
+        return str(agent.description).strip()
     text = getattr(tool, "func", tool).__doc__
-    if not text:
+    if not text or not text.strip():
         raise ValueError(f"The tool {name!r} has no text to register as a candidate.")
-    return text
+    return text.strip()

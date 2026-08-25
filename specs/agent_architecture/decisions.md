@@ -823,6 +823,22 @@ about whether that candidate finishes at all — and it would mean handing over 
 pre-built toolset, which the constructor refuses alongside docstrings precisely
 so that a silently truncated candidate cannot happen.
 
+**The baseline is registered once and read twice, never copied.** It is the
+reference arm §7 measures against *and* the seed the search starts from. A
+second copy — a constant for the arm beside a registration for the seed — would
+drift the first time either was touched, and the drift would surface as a search
+improving on something nobody measured. So the arm is a rollout with **no
+candidate patched**, reading the same pinned versions the search reads with one
+patched over them.
+
+**And the tool text is registered stripped while the instruction is registered
+verbatim.** The asymmetry follows the observability: ADK strips a docstring into
+the function declaration (`findings.md`), so a docstring's surrounding
+whitespace is a byte no model can read, and registering it would pin something
+that cannot move a result while leaving the seed differing from the declaration
+it *is*. The instruction is sent verbatim as `static_instruction`, so its bytes
+are the frozen text's and stay that way.
+
 **Candidate text is re-read per record and never cached.** The patch carrying it
 is installed and reverted around each batch, so the identical read returns
 different text on different iterations. A cached read would run every iteration

@@ -253,6 +253,29 @@ residuals are for.
 `tests/harness/test_predict.py` was run under
 `MLFLOW_GENAI_EVAL_MAX_WORKERS=1`. *Date:* 2026-08-25.
 
+**ADK strips a docstring into the function declaration, and appends its own
+identity block after the static instruction.** For all six tools, the
+declaration's `description` in `request.config.tools` equals `__doc__.strip()`
+and not `__doc__` — so a docstring's surrounding whitespace is a byte no model
+observes, which is why the candidate surface registers the tool text stripped
+and the root instruction verbatim. The instruction is *not* stripped or altered:
+it arrives as the system instruction's prefix, followed by two newlines and
+`You are an agent. Your internal name is "root_agent". The description about you
+is "Water-Management Data Analyst.".`
+*Verified:* compared against a real `LlmRequest` captured from a scripted
+rollout (`tests/harness/test_baseline_registration.py`). *Date:* 2026-08-25.
+
+**The seven seed prompts are registered at version 1.** Against the dev-stack
+registry (`http://localhost:5000`, Postgres-backed): `agent_root_instruction`
+5484 chars, `agent_tool_text_to_sql_agent` 120, `agent_tool_predict_green_roof_
+water_balance_tool` 6804, `agent_tool_get_weather_forecast_tool` 3092,
+`agent_tool_calc_irrigation` 4061, `agent_tool_lookup_reference` 4475,
+`agent_tool_plot_timeseries` 5655. `just pins`: **16 pinned, 3 unpinned, 0
+moved** — both candidate slots closed, the reflection model, its canary and the
+task model's canary still open.
+*Verified:* `just candidates` followed by `just candidates-check` (7 matched, 0
+drifted) and `just pins`. *Date:* 2026-08-25.
+
 **Two records really are evaluated in parallel, and a per-record context is
 what keeps them apart.** Two records differing only in `as_of` (2025-06-05 and
 2025-06-15), evaluated through `predict_fn` by MLflow's own

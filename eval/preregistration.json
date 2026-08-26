@@ -326,6 +326,54 @@
         "the capture neighbourhood, the budget LIMIT, and the whole protocol section.",
         "The served model id is unchanged: this names which server answers for it."
       ]
+    },
+    {
+      "id": 2,
+      "on": "2026-08-26",
+      "before_any_test_rollout": true,
+      "what": [
+        "llm_num_retries: 5 → 15.",
+        "The registered search was STOPPED at 92 of ~567 rollouts and restarted from",
+        "scratch under the new retry budget. It had selected nothing and written no",
+        "optimized candidate; the run that defines the optimized arm is the restarted",
+        "one, and 'runs: 1' is unchanged."
+      ],
+      "why": [
+        "Amendment 1's hard provider pin turns a shared-pool 429 into a failed rollout",
+        "rather than a reroute, which is the trade it named — and deepinfra's pool",
+        "answers `engine_overloaded` in bursts. The stopped search took 2 raised",
+        "RateLimitErrors and 1 declared residual in 92 rollouts, the retry budget",
+        "absorbing the rest. That rate is survivable for a search and is not obviously",
+        "survivable for a measurement three times longer, where a residual is an",
+        "EXCLUSION rather than a declared zero — and where a per-arm exclusion count is",
+        "the very quantity §7's repeat condition reads.",
+        "A retry count is a litellm-side transport parameter: it never reaches the",
+        "provider, changes no request and no result, and is deliberately unpinned for",
+        "that reason (harness/reflection.py). What it changes is whether a burst of",
+        "provider-side overload ends a run that was otherwise fine, which is the same",
+        "argument the count already existed for.",
+        "The restart is infrastructural and is recorded because 'runs: 1' would",
+        "otherwise be ambiguous. It is NOT a best-of: the stopped search produced no",
+        "selection, no candidate and no score that anything was compared against, and",
+        "nothing about its partial results informed the decision to stop it — the",
+        "trigger was the endpoint's error class, visible in the log before any score",
+        "existed. No test rollout has run under either."
+      ],
+      "cost": [
+        "About ten minutes of wall clock and roughly $0.13 of the stopped search's",
+        "rollouts, most of which the LLM response cache returns to the restarted run",
+        "unchanged: same model, same provider, same request key.",
+        "A larger retry budget hides provider instability from the run rather than",
+        "measuring it, so this run reports less about deepinfra's reliability than the",
+        "stopped one would have. Diagnostics are unaffected — latency still counts the",
+        "retries — and the exclusion counts §7 reads become counts of what the",
+        "candidate did rather than of what the pool was doing."
+      ],
+      "not_amended": [
+        "Everything else, including the provider pin, the model, the budget limit, the",
+        "repeats, and the fact that one search's own selection defines the optimized",
+        "arm."
+      ]
     }
   ]
 }

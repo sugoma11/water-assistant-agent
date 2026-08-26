@@ -94,7 +94,14 @@ class AssistantSettings(BaseSettings):
     # `MAX_LLM_CALLS` turns — so at a per-call failure rate of p, an unretried
     # rollout completes with probability (1-p)^7, and the exclusions that produces
     # are a fact about the endpoint rather than about the candidate.
-    llm_num_retries: int = 5
+    # Raised from 5 to 15 by T134. A hard provider pin turns a shared-pool 429
+    # into a failure rather than a reroute, and deepinfra's pool answers
+    # `engine_overloaded` in bursts: the registered search took 2 raised
+    # RateLimitErrors and 1 declared residual in its first 92 rollouts, with the
+    # retries absorbing the rest. 15 rides those bursts out over a run three
+    # times longer than P8c's. `experiments.text2sql` reached the same
+    # conclusion first and sits at 25 attempts with a 300 s wait cap.
+    llm_num_retries: int = 15
 
     # Seconds litellm waits for a response before raising, so that
     # `llm_num_retries` has something to fire on. Same litellm-side category as

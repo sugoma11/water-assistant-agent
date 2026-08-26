@@ -533,9 +533,12 @@ told apart at the one place it matters.
 rendered prompt, and it is the *registered* name — `agent_tool_…`, T120's
 namespacing against the shared text-to-SQL registry — which is where the
 optimized docstring got the tool name `agent_tool_predict_green_roof_water_
-balance_tool`, a string no toolset resolves. And `"trace"` does not appear in the
-rendered `<side_info>` at all, which is the trace finding below arriving from the
-proposer's side.
+balance_tool`, a string no toolset resolves. And the rendered `<side_info>`
+carries the reflective dataset's `trace` key as a `## trace` heading with
+**nothing under it**, which is the trace finding below arriving from the
+proposer's side. The JSON spelling `"trace"` appears nowhere because the dataset
+is rendered as markdown rather than serialized — what is missing is the spans,
+not the key, and T131 below measures the rendering field by field.
 *Verified:* `gepa_kwargs={"reflection_prompt_template": {...}}` through
 `optimize_prompts` with `litellm.completion` intercepted, on gepa 0.1.1 /
 mlflow 3.13.0. *Date:* 2026-08-26.
@@ -574,6 +577,101 @@ reflects on, and the P8c search has already run.
 *Verified:* span counts from `NoOpTracerPatcher` for both function shapes, and
 `mlflow.get_trace` returning `None` versus a trace across three scripted probes.
 *Date:* 2026-08-26.
+
+**What the search actually optimizes on, captured field by field rather than
+read.** `run_search` over 4 committed train records against a throwaway SQLite
+registry, with three seams and no edit to `harness/`: `harness.predict.run_case`
+stubbed, so no endpoint is called and no rollout is paid for;
+`litellm.completion` intercepted, so the reflection request is recorded and a
+canned proposal returned; and GEPA's own callbacks attached through
+`gepa_kwargs={"callbacks": […]}`, which survives MLflow's merge for the same
+reason `frontier_type` would. Three proposals, three intercepted requests,
+nothing spent. The sizes below are from the run in the P8c trace shape — no
+trace reaches the adapter — and they are per component and per record: a larger
+split changes which three records the prompt is built from, not how many.
+
+**Nine keys per record, and the dicts are rendered as markdown rather than
+serialized.** `make_reflective_dataset` returns one row per minibatch record —
+`component_name`, `current_text`, `trace`, `score`, `inputs`, `outputs`,
+`expectations`, `rationales`, `index` (`gepa_optimizer.py:329-338`) — and GEPA's
+`format_samples` turns each row into `# Example N` with `## <key>` per field,
+nesting a dict as deeper headings (`## inputs` → `### params` → `#### roof`) and
+a list as `### Item 1`. A scalar is `str(value).strip()`. Heading depth caps at
+six (`min(level + 1, 6)`), so anything nested deeper renders flattened — out of
+reach here until `trace` is populated, which is T132's.
+
+**The prompt is mostly the candidate, copied four times.** `current_text`
+repeats the whole component text once per record, beside `<curr_param>`'s own
+copy. Measured: the root instruction (5484 chars registered) produces a
+**27183-char** reflection prompt, **81 %** of it four copies of that
+instruction; the GR2L docstring (6804) produces 32732, 83 %; the sub-agent
+description (120) produces 5948, 8 %. The per-record *evidence* — score, inputs,
+outputs, expectations, rationales — is ~1.3–1.4 kB whichever component is being
+rewritten.
+
+**All four rationales arrive, whole, including the skip's.** ~400 characters per
+record and ~1.2 kB per prompt: **4.3 %** of the root instruction's prompt and
+20 % of the sub-agent description's. Verbatim apart from `.strip()` — nothing
+between `Feedback.rationale` and the rendered prompt truncates, a 7 kB rationale
+renders whole, and a `None` rationale renders as the literal `None`. The only
+limiter is this repo's own `_DETAIL_LIMIT = 300` inside `harness/scorers.py`. So
+§7's design holds: the channel it built the search's signal on is intact and
+uncut. What does **not** arrive is the four numbers: `individual_scores` reaches
+GEPA as `objective_scores` and reaches the logs, but the reflective row carries
+only the blended `## score`, so the per-metric signal is present as the scorers'
+prose and absent as arithmetic.
+
+**The proposer is shown the oracle.** `## expectations` renders the record's
+whole expectation block: gold answer and unit, tolerance, `answer_metric`,
+`expected_tool_calls`, `must_not_tools`, `gold_cards`, `argument_checks` and the
+`duckdb_sha256` pin. The reflection model therefore reads the answers to the
+three cases it is proposing from, and nothing stops a candidate carrying them
+into the text it writes. This is a train-side channel and not a leak into the
+measured numbers — the search never touches either test split (§7) — but it is
+the reason an optimized instruction naming a specific value should be read as
+memorization until checked against the case it came from.
+
+**Three of a hundred, and the same three decide acceptance.** The reflective
+dataset is exactly the minibatch — 3 rows against a trainset of 4 here, 3 of 100
+in the registered search, GEPA's default `reflection_minibatch_size`
+(`api.py:328`). The acceptance gate is strict improvement on those same 3
+(`engine.py:539-541`); only after passing it does the candidate get a full
+evaluation, and that one runs over the whole trainset, MLflow passing no
+`valset`. Observed end to end: minibatch `[2, 1, 0]` summing 0.667, the proposal
+summing 2.0, accepted, then `valset_evaluated` over 4 / 4. So a proposal is
+formed on 3 % of the population, accepted on that same 3 %, and reported on
+100 % — and the three records it was formed on are never the population the
+score came from.
+**The three need not be three cases.** The epoch-shuffled sampler pads each
+epoch to a multiple of the minibatch size by repeating its least frequent ids
+(`batch_sampler.py:50-56`); the next minibatch came back `[3, 3, 0]` and the
+rendered prompt carried the same case twice, as `# Example 1` and `# Example 2`
+differing only in `index`. The padding is deterministic, not a coincidence of a
+four-record split: the ids appended are the last and the second-to-last of the
+epoch's shuffled order, so **the final minibatch of every epoch is `[last, last,
+second-to-last]`**. At 100 records that is one minibatch in 34, built on two
+cases while presenting three.
+
+**The trace half, measured both ways.** With the wrap skipped — the state the
+P8c search ran in — `## trace` renders with nothing under it, one character.
+With `predict_fn` wrapped, each record carries one span (`rollout`) holding its
+inputs and outputs — 620 to 690 chars per record across the three captures — and
+the record's inputs and outputs then appear **twice** in the prompt. That is a floor and not an estimate of what
+T132 buys: the rollout is stubbed here, so the span tree is the root alone,
+while a real traced run would carry ADK's tool spans beneath it — the half the
+reflection model has never seen.
+
+**The request itself is one user message.** The intercepted
+`litellm.completion` carries `model`, `api_base`, `api_key`, `temperature=0`,
+`seed=42` and `num_retries=5` — T124's pin, observed at the wire rather than at
+the seam that binds it — and a single `role: user` message holding the whole
+rendered prompt. No system message, no tools, no response format.
+*Verified:* `run_search` over 4 committed train records with the rollout
+stubbed, `litellm.completion` intercepted and GEPA's callbacks attached, in both
+trace
+shapes on mlflow 3.13.0 / gepa 0.1.1; plus a direct
+`InstructionProposalSignature.prompt_renderer` probe for the truncation and
+`None` cases. *Date:* 2026-08-26.
 
 ## The measurement run (P8c)
 

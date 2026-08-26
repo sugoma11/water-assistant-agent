@@ -4325,7 +4325,7 @@ three of them decide whether a *second* run means more than the first.
 measures what the search actually optimizes on, and T132–T134 are all guesses
 without it. T135 is the only one that can proceed in parallel.
 
-- [ ] T131 **Spike — capture what actually reaches GEPA, and change nothing.**
+- [x] T131 **Spike — capture what actually reaches GEPA, and change nothing.**
   Intercept `MlflowGEPAAdapter.make_reflective_dataset`'s return value and the
   reflection model's literal `litellm.completion` request during a short search,
   write both to `findings.md`. **Three of the original questions are already
@@ -4345,6 +4345,41 @@ without it. T135 is the only one that can proceed in parallel.
   accepted on a full evaluation of a hundred.
   Runnable against the scripted model with `litellm.completion` intercepted;
   costs nothing and needs no budget decision. → T126, T128
+  **Answered by running the real `run_search` and recording it**, over 4
+  committed train records against a throwaway registry, with the rollout
+  stubbed, `litellm.completion` intercepted and GEPA's callbacks attached
+  through `gepa_kwargs` — three proposals, three captured requests, nothing
+  spent and no file in `harness/` touched. Written up in
+  `findings.md § Optimizer internals`.
+  **(i) `<side_info>` is markdown, not JSON**, and it is mostly the candidate:
+  nine keys per record rendered as `## <key>` headings, with `current_text`
+  repeating the whole component text once per record beside `<curr_param>`'s
+  copy — **81 %** of the root instruction's 27183-char prompt is four copies of
+  that instruction. The per-record evidence is ~1.3–1.4 kB whatever is being
+  rewritten.
+  **(ii) All four rationales arrive whole**, the skip's included, verbatim apart
+  from `.strip()` and truncated nowhere between `Feedback.rationale` and the
+  prompt — ~400 chars per record, 4.3 % of the root instruction's prompt. So the
+  signal §7 designed was intact, and the search was informed rather than
+  guessing. The four *numbers* are not there: the row carries only the blended
+  `## score`, so the per-metric outcome survives as the scorers' prose alone.
+  **(iii) The minibatch is not the population, and it is the gate.** The
+  reflective dataset is exactly the minibatch — 3 of 100 in the registered
+  search — and acceptance is strict improvement on those same 3; the full
+  evaluation over all 100 happens only afterwards and decides what is reported,
+  not what is kept. The sampler also pads an epoch by repeating ids, and a
+  minibatch of `[3, 3, 0]` rendered the same case as two examples differing only
+  in `index`.
+  **Two things nobody asked for.** The proposer is shown the **oracle** —
+  `## expectations` renders the gold answer, the tolerance, the gold tools and
+  the db pin — so an optimized text naming a specific value should be read as
+  memorization until checked; it is a train-side channel, since the search never
+  touches a test split. And the earlier note that `"trace"` never appears is
+  corrected in place: the `## trace` heading is always rendered, empty in P8c's
+  shape and ~650 chars per record with a wrapped `predict_fn` — a floor for
+  T132, whose real gain is the ADK tool spans a stubbed rollout cannot show.
+  No code changed, so `uv run ruff check .` and `uv run pytest` are the previous
+  commit's — re-run anyway: clean, 1339 passed, same 22 pre-existing findings.
 - [ ] T132 **Tracing: give the reflective dataset its span half back.** Decorate
   this repo's `predict_fn` with `@mlflow.trace` and assert a trace exists per
   rollout. Not `autolog`: `mlflow.litellm.autolog()` does not produce the trace

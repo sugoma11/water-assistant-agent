@@ -70,6 +70,15 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 BASELINE_ARM = "baseline"
 OPTIMIZED_ARM = "optimized"
+REPAIRED_ARM = "repaired"
+"""The selected candidate with its one broken tool description repaired (T136).
+
+A **third** arm and never a substitute for the optimized one: §7's registration
+defines that arm as whatever candidate the one registered search selects, and a
+hand-repaired candidate reported in its place would be the "best of" the
+registration forbids. It is measured under its own registered section
+(:data:`~harness.preregistration.REPAIR_MEASUREMENT`) or not at all.
+"""
 
 SPLITS: tuple[str, ...] = ("train", "test_seen", "test_unseen")
 """The three committed splits. Which ones a run measures, and in what order, is
@@ -86,18 +95,24 @@ nothing recording what the design asked for.
 """
 
 
-def registered_protocol() -> tuple[list[str], int]:
-    """The splits and repeat count this run is registered to measure.
+def registered_protocol(section: str = MEASUREMENT) -> tuple[list[str], int]:
+    """The splits and repeat count *section* is registered to measure.
 
     Read from ``eval/preregistration.json`` rather than defaulted from the
     constants above, because the registered protocol is what a measurement run
     *is*: a default that disagreed with the registration would make the honest
     invocation the one that gets refused, and the refusal is supposed to mean
     something.
-    """
-    from harness.preregistration import MEASUREMENT, load
 
-    registered = load()[MEASUREMENT]
+    Args:
+        section: ``measurement`` for the registered two-arm comparison, or
+            ``repair_measurement`` for T136's third arm, which is registered
+            separately because it is a different question with a different
+            protocol.
+    """
+    from harness.preregistration import load
+
+    registered = load()[section]
     return list(registered["splits"]), int(registered["repeats"])
 
 OPTIMIZED_ARM_FILE = REPO_ROOT / "eval" / "optimized_candidate.json"
@@ -108,6 +123,15 @@ the pre-registration names it by definition rather than by version (T129). This
 file is what turns that definition into something a measurement can read, and it
 is written by the search rather than typed by hand — a transcribed version number
 is the one way the arm being measured could stop being the arm that was selected.
+"""
+
+REPAIRED_ARM_FILE = REPO_ROOT / "eval" / "repaired_candidate.json"
+"""Where the repair registration records the versions it registered (T136).
+
+The same shape and the same reason as :data:`OPTIMIZED_ARM_FILE`, written by
+``just repair-register`` rather than by hand. Its absence is not an error at the
+top of a measurement run: a run measuring the two registered arms is the
+registered protocol, and the repaired arm is only read when a caller asks for it.
 """
 
 
@@ -264,16 +288,28 @@ def outcomes_from(path: Path) -> tuple[CaseOutcome, ...]:
 
 
 def arm_versions(
-    *, optimized_path: Path = OPTIMIZED_ARM_FILE
+    *,
+    optimized_path: Path = OPTIMIZED_ARM_FILE,
+    repaired_path: Path = REPAIRED_ARM_FILE,
+    repaired: bool = False,
 ) -> dict[str, dict[str, int]]:
     """The registered prompt versions each arm reads, which is the whole of their difference.
 
     The baseline is the pinned seed; the optimized arm is whatever the one
     registered search selected, read from the file that search wrote.
 
+    Args:
+        optimized_path: Where the search recorded its selection.
+        repaired_path: Where the repair registration recorded its versions.
+        repaired: Add T136's third arm. Off by default and named rather than
+            implied by the file existing, because the registered comparison is the
+            two arms §7 registered — a third that appeared as soon as a file did
+            would make the registered protocol depend on what is lying around.
+
     Raises:
-        FileNotFoundError: no search has recorded an optimized candidate. There is
-            no default to fall back on — reading ``@latest`` would silently measure
+        FileNotFoundError: no search has recorded an optimized candidate, or
+            *repaired* was asked for with no repair registered. There is no
+            default to fall back on — reading ``@latest`` would silently measure
             whatever was registered most recently, which after a search is a
             candidate nobody selected.
     """
@@ -284,10 +320,23 @@ def arm_versions(
             "search selects, and there is nothing else it could be."
         )
     optimized = json.loads(optimized_path.read_text(encoding="utf-8"))["versions"]
-    return {
+    arms = {
         BASELINE_ARM: seed_versions(),
         OPTIMIZED_ARM: {name: int(version) for name, version in optimized.items()},
     }
+    if repaired:
+        if not repaired_path.exists():
+            raise FileNotFoundError(
+                f"No repaired candidate recorded at {repaired_path}. Register the "
+                "repair with `just repair-register` first; the repaired arm is the "
+                "committed repair as the registry assigned it, never a hand-typed "
+                "version."
+            )
+        recorded = json.loads(repaired_path.read_text(encoding="utf-8"))["versions"]
+        arms[REPAIRED_ARM] = {
+            name: int(version) for name, version in recorded.items()
+        }
+    return arms
 
 
 def write_optimized_arm(
@@ -300,6 +349,10 @@ def write_optimized_arm(
     was selected. The prompt *names* are mapped back to component keys here,
     because that is the direction :func:`~harness.candidates.read_candidates`
     reads them in.
+
+    Used for the repaired arm too, against :data:`REPAIRED_ARM_FILE`: the file
+    shape is the same because what it records is the same thing — which
+    registered versions an arm reads.
     """
     from harness.candidates import PROMPT_NAMES
 
@@ -315,7 +368,7 @@ def write_optimized_arm(
         + "\n",
         encoding="utf-8",
     )
-    logger.info("Optimized arm recorded", path=str(path), versions=versions)
+    logger.info("Arm recorded", path=str(path), versions=versions)
     return versions
 
 
@@ -445,6 +498,7 @@ def measure(
     workers: int = 1,
     exploratory: bool = False,
     run_name: str = "measurement",
+    section: str = MEASUREMENT,
 ) -> Measurement:
     """Every condition of one measurement run, under one parent MLflow run.
 
@@ -454,6 +508,13 @@ def measure(
     between a run that is noisier than it should be and a run whose comparison is
     not interpretable at all.
 
+    Args:
+        section: Which registered section this run is being held to —
+            ``measurement`` for §7's two-arm comparison, ``repair_measurement``
+            for T136's third arm. It selects both the defaults and what the
+            refusal below compares against, so a repaired-arm run cannot pass by
+            being checked against a registration that never mentioned it.
+
     Raises:
         PreregistrationViolation: the run's parameters are not the registered
             ones and it did not declare itself exploratory (T129). A test number
@@ -462,11 +523,11 @@ def measure(
     """
     settings = settings or get_settings()
     arms = arms or arm_versions()
-    registered_splits, registered_repeats = registered_protocol()
+    registered_splits, registered_repeats = registered_protocol(section)
     splits = registered_splits if splits is None else splits
     repeats = registered_repeats if repeats is None else repeats
     enforce_prereg(
-        MEASUREMENT,
+        section,
         {
             "arms": list(arms),
             "splits": list(splits),
@@ -486,7 +547,7 @@ def measure(
     with experiment_run(run_name):
         mlflow.log_params(
             prereg_params(
-                MEASUREMENT,
+                section,
                 {
                     "arms": list(arms),
                     "splits": list(splits),
@@ -593,6 +654,8 @@ __all__ = [
     "BASELINE_ARM",
     "OPTIMIZED_ARM",
     "OPTIMIZED_ARM_FILE",
+    "REPAIRED_ARM",
+    "REPAIRED_ARM_FILE",
     "REPEATS",
     "SPLITS",
     "CaseOutcome",

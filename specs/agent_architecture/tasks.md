@@ -4437,7 +4437,7 @@ one preventable.
   and logged; the P8c run survived only because the budget lasted to the last
   condition. Write incrementally, or write per condition. Independent of the
   other four. → T128
-- [ ] T136 **Repair the selected candidate's tool text surgically, and register
+- [x] T136 **Repair the selected candidate's tool text surgically, and register
   it as the different candidate it is.** The registered search's winner
   (candidate 4 of run `0fea85d0`, valset 0.82) is candidate 1 plus **one**
   rewritten tool description: GR2L's, 6804 → 5597 chars, turned into a
@@ -4461,6 +4461,41 @@ one preventable.
   not a hand-picked one, so a repaired candidate is a **third arm** with its own
   registration line and its own measured numbers, or it is nothing at all. It
   needs T134's budget decision for the same reason. → T131, T134
+  **Repaired 5597 → 3767 chars and registered at GR2L v6**, with the other six
+  components left at the optimized arm's own v5 — so the repaired arm differs
+  from the arm it repairs in exactly one string, and the registry proves it:
+  registering the six byte-identical texts minted no version.
+  **All three defects gone, each checked without a model.** The callable is
+  named correctly and `agent_tool_predict_green_roof_water_balance_tool` appears
+  nowhere; the routing table is recast from *which tool to pick* into *when this
+  tool applies*; `## Response Format` is deleted, and it was not merely
+  redundant — its copy of the contract added a `final_text` key and an
+  `"error"` status the root instruction does not have.
+  **The gain is not discarded.** All four routing discriminations survive
+  verbatim and both sibling tools are still named, since that rewrite is the
+  whole difference between candidate 1 and the winner and carries the
+  trajectory move 0.76 → 0.87. What was deleted is the role framing, the
+  contract restatement and the three worked examples about other tools.
+  **Three committed files, and the diff is generated rather than typed.**
+  `eval/repair/gr2l_selected.md` is the winner's text byte for byte as
+  registered, `gr2l_repaired.md` is the repair, `gr2l.diff` is the unified diff
+  between them; `harness/repair.py`'s `verify` holds all three to each other and
+  to the registry, and `just repair-check` passes against the live one.
+  **Registered as a third arm and never as the optimized one.** Its own
+  `repair_measurement` section, its own `eval/repaired_candidate.json`, and
+  `arm_versions(repaired=True)` opt-in by name rather than implied by the file
+  existing. The registration entry is filed under a new **`additions`** list
+  rather than under `amendments`: every amendment is made before any test
+  rollout, and this section could not be — filing it as one would have
+  mislabelled it or given up that rule for all three entries above it.
+  **It has no numbers, by design.** Three arms over three splits is 281 more
+  rollouts against \$0.037 left, so measuring it is T134's budget decision; the
+  arm was defined and registered before it, which is the point.
+  Written up in `findings.md § The selected candidate's tool text, and the third
+  arm (T136)`. Verified by 13 tests in `tests/harness/test_repair.py`, plus one
+  in `test_preregistration.py` holding an addition to the weaker claim it can
+  make. `uv run ruff check .` and `uv run pytest` clean — 1353 passed, same 22
+  pre-existing findings, none in the testbed.
 - [ ] T137 **Make the proposer revise the text rather than replace it, and catch
   it when it does not.** T133 tells the proposer *what kind* of component it is
   rewriting; this is the other half — *how much* of it to change, and what

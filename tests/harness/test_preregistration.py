@@ -122,6 +122,27 @@ def test_an_amendment_is_appended_with_its_reason_and_its_cost() -> None:
         assert amendment["not_amended"]
 
 
+def test_an_addition_registers_a_new_section_and_is_never_an_amendment() -> None:
+    """The post-rollout entry is kept apart, because it cannot make the claim above.
+
+    A section registered after a search has run — T136's repaired arm, which
+    could not exist before the search selected the candidate it repairs — is a
+    legitimate registration and an illegitimate *amendment*: filing it as one
+    would either mislabel it or give up the before-any-test-rollout rule for
+    every entry. So it is filed apart, it names the section it added, and it
+    carries the weaker claim it can actually make.
+    """
+    registered = load()
+
+    for addition in registered.get("additions", []):
+        assert addition["section"] in registered
+        assert addition["what"] and addition["why"] and addition["cost"]
+        assert addition["not_changed"]
+        # The weaker guarantee, stated rather than blurred into the stronger one.
+        assert addition["before_any_rollout_of_its_own_arm"] is True
+        assert "before_any_test_rollout" not in addition
+
+
 def test_a_run_of_one_repeat_measures_no_noise_floor_and_the_registration_says_so() -> None:
     """The cost of amendment 1, written where a reader of the numbers will meet it.
 

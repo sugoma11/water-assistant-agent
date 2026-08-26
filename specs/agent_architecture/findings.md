@@ -501,6 +501,41 @@ call.
 *Verified:* the killed search's log, its socket table and CPU while stalled.
 *Date:* 2026-08-25.
 
+**The search logged no traces at all, because MLflow decided `predict_fn` was
+already traced.** `convert_predict_fn` probes the function once under a patched
+`NoOpTracer`, and wraps it in `mlflow.trace` **only if it saw no spans**
+(`trace_utils.py:568-580`). Measured on this repo's own `predict_fn`: the probe
+sees **4 spans** — ADK emits them through MLflow's tracer provider, and MLflow's
+ADK translation is live enough to log `Skipping missing token usage metadata for
+agent root_agent` — so `counter.count == 4`, the wrap is skipped, and nothing
+then exports those spans as a trace bound to the eval request id.
+`_run_single` calls `mlflow.get_trace(eval_request_id, silent=True)`
+(`optimize.py:309`), gets `None`, and `make_reflective_dataset` writes
+`spans = []` (`gepa_optimizer.py:317-325`). A plain stub `predict_fn` in the same
+harness sees 0 spans, *is* wrapped, and traces normally — so the failure is
+caused by having instrumentation, not by lacking it.
+
+**What it cost, and what it did not.** GEPA still reflected on `current_text`,
+`inputs`, `outputs`, `expectations`, `score` and — crucially — `rationales`,
+which is the channel §7 designed as the search signal and which
+`harness/scorers.py` fills. What it lost is the span half of the reflective
+dataset: the reflection model never saw the tool-call structure of a rollout, only
+the scorers' prose about it. **The measurement path is entirely unaffected** —
+`harness/stats.py` reads `CaseOutcome` rows and never touches a trace, so no
+number in the P8c report depends on this.
+
+**The remedy is one decorator, and it is not `autolog`.** `mlflow.litellm.autolog()`
+does not help (the root agent's own turns are not litellm-visible as the trace
+root), and setting `MLFLOW_GENAI_EVAL_SKIP_TRACE_VALIDATION` makes it *worse* —
+that flag skips the wrap as well as the probe. Decorating this repo's
+`predict_fn` with `@mlflow.trace` restores a logged trace
+(`tr-…`, span `predict_fn`) because MLflow then has a span of its own to export.
+Left for T130 rather than applied now: turning it on changes what a search
+reflects on, and the P8c search has already run.
+*Verified:* span counts from `NoOpTracerPatcher` for both function shapes, and
+`mlflow.get_trace` returning `None` versus a trace across three scripted probes.
+*Date:* 2026-08-26.
+
 ## The measurement run (P8c)
 
 Two arms, three splits, **one repeat** (pre-registration amendment 1), on

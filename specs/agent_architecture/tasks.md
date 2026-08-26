@@ -4397,7 +4397,7 @@ rather than replace and catches it when it does not.
   **This changes what a search reflects on**, so searches before and after it are
   not comparable and the change belongs to a new registration rather than an
   amendment. → T131
-- [ ] T133 **Tell the proposer which kind of component it is rewriting.** Six of
+- [x] T133 **Tell the proposer which kind of component it is rewriting.** Six of
   the seven optimizable components are tool *descriptions*; GEPA's default
   metaprompt calls all of them "instructions for an assistant", and the P8c
   search duly rewrote the GR2L docstring into a system prompt with a Role section
@@ -4424,6 +4424,64 @@ rather than replace and catches it when it does not.
   it protects is that no `frontier_type` is smuggled in, since selection runs on
   the aggregated scalar. The templates are search hyperparameters and are
   pre-registered with the rest. → T131
+  **Two templates in `harness/metaprompt.py`, keyed by the name GEPA dispatches
+  on.** The key is the *registered* prompt name, because the candidate GEPA
+  holds is MLflow's `target_prompts` — so the dict is `agent_root_instruction`
+  plus the six `agent_tool_*`, and `run_search` passes it as the one and only
+  entry of `gepa_kwargs`. A missing key would not fail: GEPA logs a line and
+  falls back to the default metaprompt, which is the framing being replaced, so
+  the coverage is asserted rather than left to the log.
+  **The tool template says what the text is and then disowns the name.** It is
+  the `description` field of a function declaration, read by the assistant's
+  model beside its five siblings; the parameters are fixed by the signature and
+  out of reach from here; the answer format belongs to the system instruction,
+  and a copy written here is a second copy free to disagree with the first —
+  which is the other half of what the P8c winner did. Then the naming trap, in
+  the template's own words: the callable is `predict_green_roof_water_balance_
+  tool`, the `agent_tool_`-prefixed string the examples label the component with
+  is the registry's name for the text, and an assistant told to call it would be
+  calling a tool that does not exist. Every name is read from `TOOL_NAMES` — the
+  same source T136's sentence inside each tool text reads, so the template and
+  the text it is editing say the same thing about that text — and the counts
+  ("six tools", "five other tool descriptions") are read off it too, so a
+  seventh tool cannot leave the metaprompt asserting there are six.
+  **Checked at wiring time against the installed gepa.** `<curr_param>` and
+  `<side_info>` are the only substitutions and GEPA validates for them itself —
+  inside the proposer, which is after the seed candidate's full evaluation has
+  been paid for. `reflection_prompt_templates()` runs GEPA's own
+  `validate_prompt_template` over every entry first and raises
+  `MetapromptError`, for the same reason `preflight` re-checks the aggregation
+  against the installed library rather than trusting the call site.
+  **T126's assertion narrowed to what it was protecting**: the keys are exactly
+  `{"reflection_prompt_template"}` and `frontier_type` is not among them.
+  **Not pre-registered, and that is the finding.** The registration in
+  `eval/preregistration.json` is P8c's and is spent: registering a
+  hyperparameter into it would be the first amendment made *after* a test
+  rollout, which is the one thing every existing entry evidences it is not. The
+  templates change what every proposal is asked for, so they belong to the fresh
+  registration T134 writes — as `templates_digest()`, currently
+  `667be72b24c0df3e9afaad0fb6a43a85a9327e37800737eb60513827b27e7212`, under
+  `search.gepa_kwargs`, since the dict itself is 13 kB and a registered value
+  has to be comparable. Until then every search reports one deviation line
+  naming that digest, which is §6's asymmetry working rather than failing, and
+  `test_the_metaprompts_are_not_in_this_registration_and_a_search_says_so` fails
+  the moment they are registered so the fix cannot be forgotten.
+  **It costs nothing per rollout.** 1339 chars for the root template and ~2.0 kB
+  per tool against GEPA's 942-char default, on a reflection prompt already 27–33
+  kB of which 81 % is four copies of the candidate (T131) — and reflection-side
+  only, so unlike T136's sentence it never reaches the task model or any arm's
+  numbers.
+  **What T137 still owns**, since one of its two constraints is already here in
+  kind: the tool template says a declaration is not a system prompt and not the
+  place the answer contract lives, but nothing yet asks for the *smallest*
+  change that addresses the feedback, and nothing yet checks a candidate against
+  `TOOL_NAMES` afterwards.
+  *Verified:* 10 new tests in `tests/harness/test_metaprompt.py`, one in
+  `test_optimize.py` and one in `test_preregistration.py` — including every
+  template rendered through GEPA's own `prompt_renderer`, so what is asserted is
+  the prompt the reflection model would receive. `uv run ruff check .` clean on
+  the touched packages (same 22 pre-existing findings, none in the testbed),
+  1351 passed.
 - [ ] T134 **The repeat §7 asks for.** Exclusions diverged between arms on
   test_seen (14/125 baseline, 25/125 optimized), which is the architecture's own
   stated condition for repeating a run — so the P8c comparison is recorded and

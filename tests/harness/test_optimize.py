@@ -252,9 +252,42 @@ def test_the_optimizer_is_gepa_with_the_budget_it_was_given(
     optimizer = entry_point.kwargs["optimizer"]
     assert isinstance(optimizer, GepaPromptOptimizer)
     assert optimizer.max_metric_calls == 7
-    # No `frontier_type` smuggled in: selection runs on the aggregated scalar,
-    # which is what makes the aggregation callable load-bearing at all.
-    assert optimizer.gepa_kwargs == {}
+    # One key, and the narrowness is the assertion: `gepa_kwargs` is how the
+    # per-component metaprompts reach the proposer (T133) and equally how a
+    # `frontier_type` would reach the candidate selector — and selection runs on
+    # the aggregated scalar, which is what makes the aggregation callable
+    # load-bearing at all.
+    assert set(optimizer.gepa_kwargs) == {"reflection_prompt_template"}
+    assert "frontier_type" not in optimizer.gepa_kwargs
+
+
+def test_the_proposer_is_told_which_kind_of_component_it_is_rewriting(
+    registry: str,
+    entry_point: Recorded,
+    scripted_rollouts: list[dict[str, Any]],
+    cases_dir: Path,
+) -> None:
+    """The templates reach GEPA keyed by the names it dispatches on (T133).
+
+    Read off the optimizer the entry point received, because the failure this
+    guards against is silent at every layer: MLflow's merge would drop the key
+    without a word if it set one of its own, and GEPA falls back to its default
+    metaprompt — "instructions for an assistant", for a function declaration —
+    with a single log line for a component it finds no template for.
+    """
+    from harness.metaprompt import reflection_prompt_templates
+
+    register_candidates(baseline_texts())
+
+    run_search(limit=1, max_metric_calls=4, cases_dir=cases_dir)
+
+    templates = entry_point.kwargs["optimizer"].gepa_kwargs[
+        "reflection_prompt_template"
+    ]
+    assert templates == reflection_prompt_templates()
+    assert set(templates) == {
+        PROMPT_NAMES[component] for component in CANDIDATE_COMPONENTS
+    }
 
 
 # ── What the search reports beside its score ─────────────────────────────────

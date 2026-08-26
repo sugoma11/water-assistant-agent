@@ -19,6 +19,14 @@ the four metrics reach reflection unblended and selection blended
 the objective the unweighted mean of the numeric values and then raises on the
 first skipping case, which is a failure a search would hit an hour in.
 
+**The proposer is told which kind of component it is rewriting.** Six of the
+seven are tool descriptions and GEPA's default metaprompt calls all seven
+"instructions for an assistant", so the two templates of :mod:`harness.metaprompt`
+are passed through ``gepa_kwargs`` as a per-component dict (T133). That is the
+*only* thing ``gepa_kwargs`` carries, and the narrowness is load-bearing: a
+``frontier_type`` smuggled in the same way would move selection off the
+aggregated scalar, which is what makes the aggregation callable matter at all.
+
 **The search path is not the measurement path, in exactly three places.**
 
 * ``allow_live=True``. A cache miss on a window the *candidate* chose **records**
@@ -75,6 +83,7 @@ from mlflow.genai.optimize.types import PromptOptimizationResult
 
 from harness.candidates import candidate_uris, evaluation_pass, seed_versions
 from harness.ledger import RunLedger, experiment_run, ledgered
+from harness.metaprompt import reflection_prompt_templates, templates_digest
 from harness.predict import as_keyword_fn
 from harness.preregistration import SEARCH
 from harness.preregistration import run_params as prereg_params
@@ -230,6 +239,39 @@ def search_llm_cache(settings: AssistantSettings | None = None) -> Iterator[bool
         configure_llm_cache(previous, settings)
 
 
+def search_gepa_kwargs() -> dict[str, Any]:
+    """What GEPA is handed past MLflow's own arguments, and the whole of it.
+
+    One key. ``GepaPromptOptimizer`` builds its call as
+    ``self.gepa_kwargs | {…}``, so anything MLflow sets itself is overridden here
+    and anything it does not is passed straight through — which is how the
+    per-component metaprompts reach the proposer (T133) and equally how a
+    ``frontier_type`` would reach the candidate selector. The dict is built in
+    one place so that what a search adds is one readable list rather than a
+    literal at the call site.
+    """
+    return {"reflection_prompt_template": reflection_prompt_templates()}
+
+
+def gepa_kwargs_summary(gepa_kwargs: Mapping[str, Any]) -> dict[str, str]:
+    """*gepa_kwargs* in the form a registration can carry: the templates by digest.
+
+    The templates are tens of kilobytes and a registered hyperparameter has to be
+    readable, comparable and short enough to log as a run parameter — so what is
+    registered and reported is :func:`~harness.metaprompt.templates_digest`,
+    which moves when any template or any dispatch key moves. Every other key is
+    summarised as itself: an argument nobody registered is exactly what the
+    deviation list exists to name.
+    """
+    summary: dict[str, str] = {}
+    for key, value in gepa_kwargs.items():
+        if key == "reflection_prompt_template":
+            summary[key] = f"sha256:{templates_digest(value)}"
+        else:
+            summary[key] = repr(value)
+    return summary
+
+
 def run_search(
     *,
     split: str = "train",
@@ -271,6 +313,7 @@ def run_search(
 
     Raises:
         AggregationNotWiredError: the objective is not this repo's callable.
+        MetapromptError: a per-component metaprompt is one gepa would refuse.
         MissingCandidatePinError: the seed versions are not pinned.
         UnreadCandidateError: the pass ended with a candidate component unread —
             a component nobody read is frozen while still appearing optimizable.
@@ -285,6 +328,10 @@ def run_search(
             f"No fully captured records in {split!r}; there is nothing to search over."
         )
     preflight(AGGREGATION)
+    # Built here rather than at the call site so the templates are validated
+    # against the installed gepa before the seed candidate's evaluation is paid
+    # for, and so the run's registered summary is taken from the same object.
+    gepa_kwargs = search_gepa_kwargs()
 
     ledger = ResidualLedger()
     run_ledger = RunLedger(arm=arm, split=split, settings=settings)
@@ -331,7 +378,7 @@ def run_search(
                     "limit": limit,
                     "max_metric_calls": max_metric_calls,
                     "reflection_model": settings.reflection_model,
-                    "gepa_kwargs": {},
+                    "gepa_kwargs": gepa_kwargs_summary(gepa_kwargs),
                     "llm_cache": "on",
                     "response_cache_mode": "record",
                     "selection_weights": dict(SELECTION_WEIGHTS),
@@ -344,6 +391,7 @@ def run_search(
             records=len(records),
             max_metric_calls=max_metric_calls,
             reflection_model=reflection_uri,
+            **gepa_kwargs_summary(gepa_kwargs),
         )
         result = mlflow.genai.optimize_prompts(
             predict_fn=predict_fn,
@@ -353,6 +401,7 @@ def run_search(
                 reflection_model=reflection_uri,
                 max_metric_calls=max_metric_calls,
                 display_progress_bar=display_progress_bar,
+                gepa_kwargs=gepa_kwargs,
             ),
             scorers=list(SCORERS),
             # Mandatory, and checked by preflight() rather than assumed (§6).

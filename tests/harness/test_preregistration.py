@@ -89,6 +89,35 @@ def test_the_registered_reflection_model_is_the_configured_one() -> None:
     assert load()[SEARCH]["reflection_model"] == get_settings().reflection_model
 
 
+def test_the_metaprompts_are_not_in_this_registration_and_a_search_says_so() -> None:
+    """The two templates are search hyperparameters, and this registration is spent.
+
+    T133's per-component metaprompts change what every proposal is asked for, so
+    a search before them and one after are not comparable — which makes them a
+    *new* registration's business rather than an amendment to the one the P8c run
+    was measured under. Amending it would also be an amendment made after a test
+    rollout, which is the one thing every entry in ``amendments`` evidences it is
+    not.
+
+    Until the rerun's registration (T134) records
+    :func:`~harness.metaprompt.templates_digest` under ``search.gepa_kwargs``, a
+    search reports the difference in its own record — the asymmetry §6 already
+    runs on: reported for a search, refused for a measurement. So this test fails
+    the moment they are registered, and the fix then is to assert the registered
+    digest rather than its absence.
+    """
+    from harness.metaprompt import templates_digest
+    from harness.optimize import gepa_kwargs_summary, search_gepa_kwargs
+
+    assert load()[SEARCH]["gepa_kwargs"] == {}
+
+    (line,) = deviations(
+        SEARCH, {"gepa_kwargs": gepa_kwargs_summary(search_gepa_kwargs())}
+    )
+    assert "search.gepa_kwargs" in line
+    assert templates_digest() in line
+
+
 def test_the_registration_covers_every_reporting_rule_of_section_7() -> None:
     """Each rule is a registered key, so none can be quietly dropped at write-up.
 

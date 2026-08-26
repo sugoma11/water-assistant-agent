@@ -67,7 +67,7 @@ Three rules make a packet fit:
 | **P8a** candidate surface, `predict_fn` | T120, T121, T125 | arch §6, §2's optimizable-text bullet; `decisions.md § The optimizer entry point and the candidate surface`; `findings.md § Optimizer internals` | two records with different `as_of` evaluated concurrently *through* `predict_fn`; the unread-prompt assertion fires when a component is unread |
 | **P8b** scorers, search wiring | T122–T124, T126 | arch §7; `decisions.md § Candidate selection and the scorers' aggregation` | a short search over a handful of train cases completes; the skip semantics run through this repo's own aggregation callable, asserted to be passed — omitting it silently makes the objective the mean of the numeric scorer values |
 | **P8c** measurement run, statistics | T127–T129 | arch §7's reporting rules; `decisions.md § Replication and the LLM cache`; `specs/prompt-tuning-stats/plan.md` §5–§7 | three repeats × two arms; the bootstrap resamples `template_id`; both gaps separate; test_unseen as a win/loss table |
-| **P9** what the first run exposed | T131–T135 | `findings.md § The measurement run (P8c)` and the two entries above it | the spike says what reaches the reflection model, measured rather than read; the repeat settles whether the arms were comparable |
+| **P9** what the first run exposed | T131–T137 | `findings.md § The measurement run (P8c)` and the three entries above it | the spike says what reaches the reflection model, measured rather than read; the repeat settles whether the arms were comparable; the tool text the search wrote names a tool that exists |
 
 **Sequencing that the table does not show.**
 
@@ -4325,6 +4325,14 @@ three of them decide whether a *second* run means more than the first.
 measures what the search actually optimizes on, and T132–T134 are all guesses
 without it. T135 is the only one that can proceed in parallel.
 
+**Two more came out of running it.** T131's capture and the registered search's
+own artifacts turned T133's example into a mechanism: the proposer is shown
+rollout-level evidence whatever component it is editing, so it writes agent-level
+fixes into a tool's declaration, and the winning candidate carries one. T136
+repairs that text and T137 constrains the proposer that wrote it — the shipped
+candidate and the next search being two different problems, and only the second
+one preventable.
+
 - [x] T131 **Spike — capture what actually reaches GEPA, and change nothing.**
   Intercept `MlflowGEPAAdapter.make_reflective_dataset`'s return value and the
   reflection model's literal `litellm.completion` request during a short search,
@@ -4429,6 +4437,55 @@ without it. T135 is the only one that can proceed in parallel.
   and logged; the P8c run survived only because the budget lasted to the last
   condition. Write incrementally, or write per condition. Independent of the
   other four. → T128
+- [ ] T136 **Repair the selected candidate's tool text surgically, and register
+  it as the different candidate it is.** The registered search's winner
+  (candidate 4 of run `0fea85d0`, valset 0.82) is candidate 1 plus **one**
+  rewritten tool description: GR2L's, 6804 → 5597 chars, turned into a
+  root-agent system prompt with a `## Role` section, a three-tool routing table
+  and a `## Response Format` restating the answer contract. Three defects, each
+  a byte-level fix. It names `agent_tool_predict_green_roof_water_balance_tool`
+  **five times and the real callable never**, so its routing table points at a
+  tool no toolset resolves — while the two other tools it names are named
+  correctly, having come from the cases' `expected_tool_calls` rather than from
+  `component_name`. It legislates for *other* tools inside one tool's
+  declaration. And it restates the root instruction's contract, where a
+  disagreement between the two copies would be invisible.
+  **Surgical means measured, not tidied.** That rewrite is the whole difference
+  between candidate 1 and the winner, and it moved trajectory 0.76 → 0.87, so
+  the routing content may be what is doing the work and a repair that deletes it
+  discards the gain. Fix the name, scope the text to the tool it declares, drop
+  what the root instruction already says — and commit the diff, byte for byte,
+  beside the candidate.
+  **It cannot be reported as the optimized arm.** §7's registration defines
+  that arm as *whatever candidate the one registered search selects*, explicitly
+  not a hand-picked one, so a repaired candidate is a **third arm** with its own
+  registration line and its own measured numbers, or it is nothing at all. It
+  needs T134's budget decision for the same reason. → T131, T134
+- [ ] T137 **Make the proposer revise the text rather than replace it, and catch
+  it when it does not.** T133 tells the proposer *what kind* of component it is
+  rewriting; this is the other half — *how much* of it to change, and what
+  happens when the answer is "all of it".
+  **The metaprompt asks for a revision.** Both templates keep `<curr_param>` and
+  `<side_info>`, which `validate_prompt_template` enforces, and add the
+  constraint the default has none of: return the current text with the smallest
+  change that addresses the feedback, keep its form, and do not reframe a
+  function declaration as a system prompt or restate the root instruction's
+  contract. These are the same two templates T133 writes and the same
+  pre-registered hyperparameters, so this lands *with* that registration rather
+  than amending it afterwards.
+  **And the constraint is checked, because a metaprompt is a request.** The
+  reflection model is under no obligation to honour it, and the P8c winner is
+  what non-compliance looks like. One part of it is decidable without a model:
+  a tool text naming a callable outside
+  `water_assistant_agent.assistant.toolset.TOOL_NAMES` — the registered
+  `agent_tool_` prefix being exactly what the search kept writing — is wrong on
+  its face. So check every candidate a search logs and **report** it, the same
+  asymmetry §6 already runs on the pre-registration, since refusing there would
+  discard a search that has been paid for; then **refuse** it in the measurement
+  driver unless the run declares itself exploratory, because that is where a
+  candidate naming a tool that does not exist becomes a number in the thesis.
+  Report the growth ratio beside it — 38× on the sub-agent description in
+  candidate 2 — as a signal and never as a threshold. → T133
 
 ---
 
@@ -4442,7 +4499,7 @@ without it. T135 is the only one that can proceed in parallel.
 
 ## Summary
 
-**106 tasks** across ten phases, 16 of them parallelizable, executed as **24
+**108 tasks** across ten phases, 17 of them parallelizable, executed as **24
 packets** — one session each, mapped above.
 
 | Phase | Tasks | Parallelizable | Packets | Gates |
@@ -4456,7 +4513,7 @@ packets** — one session each, mapped above.
 | P6 harness and pilot | 8 | — | 4 | **T107 freezes the testbed** |
 | P7 oracles and generation | 7 | — | 5 | T115, pulled forward to P2b, gates capture |
 | P8 optimizer | 10 | — | 3 | — |
-| P9 what the first run exposed | 5 | 1 | 1 | T131 blocks T132–T134 |
+| P9 what the first run exposed | 7 | 2 | 1 | T131 blocks T132–T134; T133 blocks T137 |
 | final | 1 | — | — | — |
 
 **Parallel opportunities.** P0's documentation edits (T001–T005, T008) touch six

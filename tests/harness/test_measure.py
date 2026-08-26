@@ -291,6 +291,76 @@ def test_the_outcomes_round_trip_through_the_written_file(tmp_path: Path) -> Non
     assert outcomes_from(path) == (outcome,)
 
 
+def test_a_run_killed_part_way_leaves_the_conditions_that_finished(
+    registry: str, cases: Path, rollouts: list[dict[str, Any]], tmp_path: Path
+) -> None:
+    """Written per condition, so the third one dying does not cost the first two (T135).
+
+    Every completed condition has already been scored and logged; a single write
+    at the end is the one step that can throw all of it away, and the P8c run
+    survived only because its budget lasted to the last condition. The kill is
+    injected into ``measure_condition`` rather than simulated afterwards, because
+    what is under test is that the file on disk is loadable at the moment the run
+    stops — not that a ``Measurement`` object can be written twice.
+    """
+    import harness.measure as measure_module
+
+    register_candidates(baseline_texts())
+    out = tmp_path / "partial.json"
+    real = measure_module.measure_condition
+    seen: list[str] = []
+
+    def die_on_the_third(**kwargs: Any) -> Any:
+        seen.append(kwargs["arm"])
+        if len(seen) == 3:
+            raise KeyboardInterrupt("budget exhausted")
+        return real(**kwargs)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(measure_module, "measure_condition", die_on_the_third)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            measure(
+                arms={BASELINE_ARM: _versions(), OPTIMIZED_ARM: _versions()},
+                splits=["train"],
+                repeats=2,
+                cases_dir=cases,
+                exploratory=True,
+                out=out,
+            )
+    finally:
+        monkeypatch.undo()
+
+    assert out.exists()
+    document = json.loads(out.read_text(encoding="utf-8"))
+    assert [(r["arm"], r["repeat"]) for r in document["reports"]] == [
+        (BASELINE_ARM, 1),
+        (OPTIMIZED_ARM, 1),
+    ]
+    # Loadable, not merely present: a partial file nothing can re-analyse is
+    # the same loss wearing a filename.
+    assert outcomes_from(out)
+
+
+def test_writing_per_condition_is_opt_in(
+    registry: str, cases: Path, rollouts: list[dict[str, Any]], tmp_path: Path
+) -> None:
+    """``out=None`` writes nothing, which is what every other caller here wants."""
+    register_candidates(baseline_texts())
+    untouched = tmp_path / "nothing-should-appear-here.json"
+
+    measurement = measure(
+        arms={BASELINE_ARM: _versions()},
+        splits=["train"],
+        repeats=1,
+        cases_dir=cases,
+        exploratory=True,
+    )
+
+    assert measurement.conditions
+    assert not untouched.exists()
+
+
 def _registered_repeats() -> int:
     from harness.preregistration import MEASUREMENT, load
 

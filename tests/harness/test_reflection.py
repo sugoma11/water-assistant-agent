@@ -137,13 +137,14 @@ def test_the_two_pins_are_filled_from_two_settings() -> None:
 
 
 def test_the_pin_records_the_endpoint_and_the_decoding_it_binds() -> None:
-    """Five fields bound, four of them pinned, and the fifth deliberately not.
+    """Six fields bound, four of them pinned, and the other two deliberately not.
 
     Stated as an equality rather than as prose, so a parameter added to the pin
     without being bound — or bound without being pinned — fails here.
-    ``num_retries`` is the one exception and it is named as such: a litellm-side
-    retry count never reaches the provider, so it changes no request and no
-    result, and pinning it would claim a dependency that does not exist.
+    ``num_retries`` and ``timeout`` are the exceptions and are named as such:
+    litellm-side transport parameters never reach the provider, so they change
+    no request and no result, and pinning them would claim a dependency that
+    does not exist.
     """
     pin = reflection_model_pin(settings())
 
@@ -153,9 +154,26 @@ def test_the_pin_records_the_endpoint_and_the_decoding_it_binds() -> None:
         "temperature",
         "seed",
         "num_retries",
+        "timeout",
     }
     assert pin["endpoint"] == "https://example.invalid/v1"
     assert pin["decoding"] == {"temperature": 0.0, "seed": 42}
+
+
+def test_a_retry_count_without_a_timeout_would_never_fire() -> None:
+    """The two transport parameters are bound together, because neither works alone.
+
+    T134's first smoke search sat fifteen minutes on one ESTABLISHED socket
+    having spent nine seconds of CPU, against an endpoint answering a
+    rollout-sized call in about seven. ``num_retries`` was already 5 and could
+    not help: nothing had raised. Binding one without the other is the
+    configuration that looks robust and is not.
+    """
+    extra = settings().reflection_extra()
+
+    assert extra["num_retries"] >= 1
+    assert extra["timeout"] > 0
+    assert {"num_retries", "timeout"} <= set(BOUND_PARAMETERS)
 
 
 def test_the_reflection_model_can_be_given_its_own_endpoint_and_key() -> None:

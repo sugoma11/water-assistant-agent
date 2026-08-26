@@ -445,6 +445,7 @@ def measure(
     workers: int = 1,
     exploratory: bool = False,
     run_name: str = "measurement",
+    out: Path | None = None,
 ) -> Measurement:
     """Every condition of one measurement run, under one parent MLflow run.
 
@@ -453,6 +454,17 @@ def measure(
     across the arms rather than inside one of them, which is the difference
     between a run that is noisier than it should be and a run whose comparison is
     not interpretable at all.
+
+    Args:
+        out: Where to write after **every completed condition** (T135). Every
+            condition that finishes has been scored and logged already, so a run
+            killed part-way through has nothing left to compute and everything
+            left to lose — the P8c run survived only because its budget lasted to
+            the last condition, and this one is three times as long. The file is
+            rewritten whole each time rather than appended to, because it is one
+            JSON document and a partial one has to stay loadable by
+            :func:`outcomes_from`; ``None`` writes only at the end, which is what
+            a test wants.
 
     Raises:
         PreregistrationViolation: the run's parameters are not the registered
@@ -515,6 +527,8 @@ def measure(
                             workers=workers,
                         )
                     )
+                    if out is not None:
+                        measurement.write(out)
     return measurement
 
 

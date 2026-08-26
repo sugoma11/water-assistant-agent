@@ -69,6 +69,17 @@ class AssistantSettings(BaseSettings):
     # are a fact about the endpoint rather than about the candidate.
     llm_num_retries: int = 5
 
+    # Seconds litellm waits for a response before raising, so that
+    # `llm_num_retries` has something to fire on. Same litellm-side category as
+    # the retry count: it never reaches the provider, changes no request and
+    # moves no pin. It exists because a retry count is worthless against a
+    # request that never returns — T134's first smoke search sat 15 minutes on
+    # one ESTABLISHED socket to OpenRouter having spent 9 seconds of CPU, while
+    # a rollout-sized call to the same endpoint takes ~7 s. Unbounded, one such
+    # stall halts a 2253-rollout run for as long as nobody is watching; bounded,
+    # it costs one retry.
+    llm_timeout_s: float = 180.0
+
     # --- Decoding, pinned (agent_architecture.md §5; decisions.md § Model pinning) ---
     # Greedy decoding plus one fixed seed, sent on every call. The seed is **sent
     # but not verifiably honoured** — these endpoints serve open-weight models
@@ -141,6 +152,7 @@ class AssistantSettings(BaseSettings):
             "seed": self.llm_seed,
             "caching": self.llm_cache_enabled,
             "num_retries": self.llm_num_retries,
+            "timeout": self.llm_timeout_s,
         }
         if self.llm_api_base is not None:
             extra["api_base"] = self.llm_api_base

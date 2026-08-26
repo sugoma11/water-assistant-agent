@@ -149,6 +149,10 @@ def main(argv: list[str] | None = None) -> int:
         workers=args.workers,
         exploratory=args.exploratory,
         run_name=f"measurement-{stamp}",
+        # Written after every completed condition, not only at the end (T135).
+        # A killed run leaves the conditions that finished, and `just
+        # measure-report <file>` renders §7's report from whatever is there.
+        out=out,
     )
 
     for condition in measurement.conditions:

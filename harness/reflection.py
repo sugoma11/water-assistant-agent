@@ -70,14 +70,18 @@ BOUND_PARAMETERS: tuple[str, ...] = (
     "temperature",
     "seed",
     "num_retries",
+    "timeout",
 )
 """What :func:`pinned_reflection_lm` fills in, and the whole of it.
 
 Each is a field GEPA's bare call omits, and the first four are fields the pin
-records. ``num_retries`` is the exception and is deliberately *not* pinned: it
-is a litellm-side count that never reaches the provider, so it changes no
-request and no result — what it changes is whether a burst of empty HTTP 500s
-from the endpoint (``findings.md``) ends a search that was otherwise fine.
+records. ``num_retries`` and ``timeout`` are the exceptions and are deliberately
+*not* pinned: both are litellm-side transport parameters that never reach the
+provider, so they change no request and no result — what they change is whether
+a burst of empty HTTP 500s from the endpoint (``findings.md``), or a response
+that simply never arrives (T134), ends a search that was otherwise fine. The
+two go together and neither works alone: a retry count cannot fire against a
+request that never returns.
 Nothing beyond these is added: a parameter this repo invented and the pin did not
 carry would be the failure this module exists to prevent, pointing the other way.
 

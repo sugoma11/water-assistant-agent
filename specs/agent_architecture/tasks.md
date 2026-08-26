@@ -67,6 +67,7 @@ Three rules make a packet fit:
 | **P8a** candidate surface, `predict_fn` | T120, T121, T125 | arch §6, §2's optimizable-text bullet; `decisions.md § The optimizer entry point and the candidate surface`; `findings.md § Optimizer internals` | two records with different `as_of` evaluated concurrently *through* `predict_fn`; the unread-prompt assertion fires when a component is unread |
 | **P8b** scorers, search wiring | T122–T124, T126 | arch §7; `decisions.md § Candidate selection and the scorers' aggregation` | a short search over a handful of train cases completes; the skip semantics run through this repo's own aggregation callable, asserted to be passed — omitting it silently makes the objective the mean of the numeric scorer values |
 | **P8c** measurement run, statistics | T127–T129 | arch §7's reporting rules; `decisions.md § Replication and the LLM cache`; `specs/prompt-tuning-stats/plan.md` §5–§7 | three repeats × two arms; the bootstrap resamples `template_id`; both gaps separate; test_unseen as a win/loss table |
+| **P9** what the first run exposed | T131–T135 | `findings.md § The measurement run (P8c)` and the two entries above it | the spike says what reaches the reflection model, measured rather than read; the repeat settles whether the arms were comparable |
 
 **Sequencing that the table does not show.**
 
@@ -4313,6 +4314,70 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
 
 ---
 
+## Phase 9 — What the first measured run exposed
+
+P8c produced numbers and, in producing them, found four things wrong with the
+apparatus that produced them. None of them invalidates the reported figures —
+the statistics never touch a trace and the exclusion counts are published — but
+three of them decide whether a *second* run means more than the first.
+
+**The ordering is not the numbering.** T131 comes first and changes no code: it
+measures what the search actually optimizes on, and T132–T134 are all guesses
+without it. T135 is the only one that can proceed in parallel.
+
+- [ ] T131 **Spike — capture what actually reaches GEPA, and change nothing.**
+  Intercept `MlflowGEPAAdapter.make_reflective_dataset`'s return value and the
+  reflection model's literal `litellm.completion` request during a short search,
+  write both to `findings.md`, and answer four questions with evidence rather
+  than with source reading:
+  (i) the `trace` field is empty for every record — confirming T128's finding
+  from the other side;
+  (ii) `component_name` carries T120's registry prefix (`agent_tool_…`), reaches
+  the reflection model through the dataset records, and is the name the model
+  then writes into proposed text — which is how the optimized GR2L docstring came
+  to instruct the agent to call a tool that does not exist;
+  (iii) GEPA's proposer template has exactly two slots, `<curr_param>` and
+  `<side_info>`, and calls every component "instructions for an assistant"
+  (`gepa/strategies/instruction_proposal.py:13-29`) — so a *tool description* is
+  proposed for as though it were a system prompt;
+  (iv) what `<side_info>` actually contains per record, and how much of the
+  scorers' rationales survives into it.
+  Runnable against the scripted model or a 3-record smoke; costs nothing and
+  needs no budget decision. → T126, T128
+- [ ] T132 **Tracing: give the reflective dataset its span half back.** Decorate
+  this repo's `predict_fn` with `@mlflow.trace` and assert a trace exists per
+  rollout. Not `autolog`: `mlflow.litellm.autolog()` does not produce the trace
+  root, and `MLFLOW_GENAI_EVAL_SKIP_TRACE_VALIDATION` makes it worse by skipping
+  the wrap as well as the probe (`findings.md`).
+  **This changes what a search reflects on**, so searches before and after it are
+  not comparable and the change belongs to a new registration rather than an
+  amendment. → T131
+- [ ] T133 **The candidate surface has two kinds of component and GEPA's proposer
+  has one.** Six of the seven optimizable components are tool *descriptions*; the
+  proposer is told all seven are assistant instructions, and the P8c search duly
+  rewrote a docstring into a system prompt with a Role section and a routing
+  table. Decide and record: a per-component-kind `prompt_template` through
+  `gepa_kwargs`, or an accepted limitation stated in §8. Note the prefix cannot
+  simply be renamed away — `candidate_prompts` pins the seven registered names,
+  and the prefix exists because the registry is shared with the text-to-SQL
+  experiments (T120). → T131
+- [ ] T134 **The repeat §7 asks for.** Exclusions diverged between arms on
+  test_seen (14/125 baseline, 25/125 optimized), which is the architecture's own
+  stated condition for repeating a run — so the P8c comparison is recorded and
+  not established. A second run under a fresh registration is what would settle
+  it, and it needs a budget decision before anything else: the first cost \$4.96
+  of \$5. Consider in the same registration whether the holdout's capture gap is
+  worth closing first — test_unseen lost 30 of 56 cases in one arm and 28 in the
+  other to replay misses, and two of its seven templates were measured in neither
+  arm. → T131, T132, T116
+- [ ] T135 **`Measurement.write` runs once, at the end.** A run killed part-way
+  leaves nothing on disk even though every completed condition has been scored
+  and logged; the P8c run survived only because the budget lasted to the last
+  condition. Write incrementally, or write per condition. Independent of the
+  other four. → T128
+
+---
+
 ## Final
 
 - [ ] T130 Run the retrospective skill to review all implemented changes for code
@@ -4323,7 +4388,7 @@ diff list exists, and the irrigation spec contradicts nothing in the code.
 
 ## Summary
 
-**101 tasks** across nine phases, 15 of them parallelizable, executed as **23
+**106 tasks** across ten phases, 16 of them parallelizable, executed as **24
 packets** — one session each, mapped above.
 
 | Phase | Tasks | Parallelizable | Packets | Gates |
@@ -4337,6 +4402,7 @@ packets** — one session each, mapped above.
 | P6 harness and pilot | 8 | — | 4 | **T107 freezes the testbed** |
 | P7 oracles and generation | 7 | — | 5 | T115, pulled forward to P2b, gates capture |
 | P8 optimizer | 10 | — | 3 | — |
+| P9 what the first run exposed | 5 | 1 | 1 | T131 blocks T132–T134 |
 | final | 1 | — | — | — |
 
 **Parallel opportunities.** P0's documentation edits (T001–T005, T008) touch six

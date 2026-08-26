@@ -29,12 +29,20 @@ _DIRECT_ENDPOINT = "provider-default"
 
 
 def _model_pin(model_id: str, settings: AssistantSettings) -> dict[str, Any]:
-    """One model's pin record: served id, endpoint and decoding parameters.
+    """One model's pin record: served id, endpoint, who serves it, and decoding.
 
     The shape is shared because the *claim* is shared — every model this package
     builds is a live dependency under an undated alias, and what identifies it is
-    the same three things each time. Four copies of this dict would let one of
+    the same four things each time. Four copies of this dict would let one of
     them quietly stop recording the endpoint.
+
+    **``served_by`` is the fourth, and an endpoint is not a server** (T134).
+    OpenRouter routes one model id across many providers that differ in
+    quantization — deepseek-v4-flash-0731 has 29, from fp4 to bf16 — and an
+    unpinned run draws a different one call by call, which a canary taken before
+    the run cannot see and the endpoint field does not distinguish. ``null``
+    means the routing was left to the provider, which is a fact about the run
+    worth recording as much as a slug is.
 
     The ``canary`` slot is deliberately absent: a request/response canary can only
     be captured by talking to the endpoint, which this module never does on its
@@ -44,6 +52,7 @@ def _model_pin(model_id: str, settings: AssistantSettings) -> dict[str, Any]:
     return {
         "model_id": model_id,
         "endpoint": settings.llm_api_base or _DIRECT_ENDPOINT,
+        "served_by": settings.llm_openrouter_provider or None,
         "decoding": {
             "temperature": settings.llm_temperature,
             "seed": settings.llm_seed,
@@ -121,9 +130,14 @@ def reflection_model_pin(settings: AssistantSettings | None = None) -> dict[str,
     """
     settings = settings or get_settings()
     extra = settings.reflection_extra()
+    provider = ((extra.get("extra_body") or {}).get("provider") or {}).get("only") or []
     return {
         "model_id": settings.reflection_model,
         "endpoint": extra.get("api_base") or _DIRECT_ENDPOINT,
+        # Read back off the bound kwargs rather than off the settings field, so
+        # this cannot claim a provider the reflection call did not pin — the
+        # reflection endpoint is its own and may not be OpenRouter at all.
+        "served_by": provider[0] if provider else None,
         "decoding": {
             "temperature": extra["temperature"],
             "seed": extra["seed"],

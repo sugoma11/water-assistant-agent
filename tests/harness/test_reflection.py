@@ -137,14 +137,15 @@ def test_the_two_pins_are_filled_from_two_settings() -> None:
 
 
 def test_the_pin_records_the_endpoint_and_the_decoding_it_binds() -> None:
-    """Six fields bound, four of them pinned, and the other two deliberately not.
+    """Seven fields bound, five of them pinned, and the other two deliberately not.
 
     Stated as an equality rather than as prose, so a parameter added to the pin
     without being bound — or bound without being pinned — fails here.
     ``num_retries`` and ``timeout`` are the exceptions and are named as such:
     litellm-side transport parameters never reach the provider, so they change
     no request and no result, and pinning them would claim a dependency that
-    does not exist.
+    does not exist. ``extra_body`` is not an exception — it decides which server
+    answers, and the pin records it as ``served_by``.
     """
     pin = reflection_model_pin(settings())
 
@@ -155,9 +156,73 @@ def test_the_pin_records_the_endpoint_and_the_decoding_it_binds() -> None:
         "seed",
         "num_retries",
         "timeout",
+        "extra_body",
     }
     assert pin["endpoint"] == "https://example.invalid/v1"
     assert pin["decoding"] == {"temperature": 0.0, "seed": 42}
+
+
+def test_the_provider_pin_reaches_gepas_call_and_the_pin_record() -> None:
+    """An endpoint is not a server, and OpenRouter is a router (T134).
+
+    One model id, 29 providers, quantizations from fp4 to bf16, and the router
+    prefers the cheapest — which for deepseek-v4-flash-0731 is the one that
+    returns the chain of thought inside ``content``. So the pin has to travel on
+    the reflection call too: a search drawing its proposals from a rotating
+    server is the reflection-model half of the swap
+    ``reflection_model_canary_sha256`` exists to detect, and a canary taken
+    before the search cannot see it.
+
+    ``allow_fallbacks`` is asserted false because a soft pin is not one: it would
+    drift to another provider exactly when the pinned one is unavailable, which
+    is the moment the record stops being true.
+    """
+    pinned = settings(
+        llm_openrouter_provider="deepinfra",
+        llm_api_base="https://openrouter.ai/api/v1",
+    )
+
+    body = pinned.reflection_extra()["extra_body"]["provider"]
+    assert body == {"only": ["deepinfra"], "allow_fallbacks": False}
+    assert reflection_model_pin(pinned)["served_by"] == "deepinfra"
+    assert task_model_pin(pinned)["served_by"] == "deepinfra"
+
+
+def test_an_unpinned_provider_is_recorded_as_unpinned_rather_than_omitted() -> None:
+    """``None`` is a fact about the run, not a missing field.
+
+    Left to OpenRouter's routing, a run's answers come from whichever servers it
+    happened to pick, and the pin file should say so rather than look like a run
+    that pinned something.
+    """
+    unpinned = settings(
+        llm_openrouter_provider=None,
+        llm_api_base="https://openrouter.ai/api/v1",
+    )
+
+    assert "extra_body" not in unpinned.reflection_extra()
+    assert reflection_model_pin(unpinned)["served_by"] is None
+    assert task_model_pin(unpinned)["served_by"] is None
+
+
+def test_the_provider_block_never_reaches_a_non_openrouter_endpoint() -> None:
+    """Gated on the endpoint, so a split deployment does not send it to kisski.
+
+    The reflection model may be served somewhere else entirely, and
+    ``provider`` is an OpenRouter request-body field that another server has no
+    reason to understand. Decided against the reflection model's OWN endpoint,
+    which is why this is asserted here rather than inferred from
+    ``litellm_extra``.
+    """
+    split = settings(
+        llm_openrouter_provider="deepinfra",
+        llm_api_base="https://openrouter.ai/api/v1",
+        reflection_api_base="https://chat-ai.academiccloud.de/v1",
+    )
+
+    assert "extra_body" in split.litellm_extra()
+    assert "extra_body" not in split.reflection_extra()
+    assert reflection_model_pin(split)["served_by"] is None
 
 
 def test_a_retry_count_without_a_timeout_would_never_fire() -> None:

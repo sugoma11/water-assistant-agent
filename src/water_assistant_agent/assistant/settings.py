@@ -51,6 +51,33 @@ class AssistantSettings(BaseSettings):
     llm_api_base: str | None = None
     llm_api_key: str | None = None
 
+    # OpenRouter is a router, not a server: one model id is served by many
+    # providers that differ in quantization, throughput and price, and an
+    # unpinned run silently mixes them call by call. deepseek-v4-flash-0731 has
+    # 29 of them at fp4, fp8, bf16 and unstated, and T134's first smoke search
+    # drew five different ones in eight calls — which is §5's provider-swap
+    # hazard happening INSIDE one run rather than between two, and invisible to
+    # a canary taken before it. Set to a provider slug (as listed by
+    # https://openrouter.ai/api/v1/models/<model>/endpoints) to pin every
+    # OpenRouter call of a run to one server.
+    #
+    # The pin travels only as the `provider` request-body block. Appending the
+    # slug to the model id (`<model>:parasail`) is NOT a pin — OpenRouter
+    # ignores unknown suffixes and routes wherever it likes, failing open.
+    #
+    # Gated on the endpoint actually being OpenRouter, so a deployment served by
+    # kisski/blablador never receives the field. Unset ⇒ OpenRouter's own
+    # routing and no request anywhere changes shape. The same mechanism and the
+    # same env var name as `experiments.text2sql.harness`, which reached this
+    # conclusion first; not imported from there because the product package must
+    # not depend on the experiments package.
+    llm_openrouter_provider: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "LLM_OPENROUTER_PROVIDER", "WATER_ASSISTANT_LLM_OPENROUTER_PROVIDER"
+        ),
+    )
+
     # The reflection model's own endpoint and key, defaulting to the shared pair.
     # It is a *second, distinct* model (§5) and may be served somewhere else or
     # under a different key — these deployments meter per key, and the optimizer's
@@ -158,7 +185,23 @@ class AssistantSettings(BaseSettings):
             extra["api_base"] = self.llm_api_base
         if self.llm_api_key is not None:
             extra["api_key"] = self.llm_api_key
+        extra.update(self.openrouter_provider_kwargs(self.llm_api_base))
         return extra
+
+    def openrouter_provider_kwargs(self, api_base: str | None) -> dict[str, Any]:
+        """``extra_body`` pinning the OpenRouter provider, or ``{}`` when it does not apply.
+
+        Empty for every non-OpenRouter endpoint and whenever the pin is unset,
+        which is what keeps the field off servers that would not understand it.
+        ``allow_fallbacks: False`` makes the pin hard: a run either gets the
+        pinned provider or fails loudly, rather than drifting onto another one
+        mid-measurement — the drift being the whole thing this prevents, and the
+        one failure mode a loud error is strictly better than.
+        """
+        slug = (self.llm_openrouter_provider or "").strip()
+        if not slug or not api_base or "openrouter.ai" not in api_base:
+            return {}
+        return {"extra_body": {"provider": {"only": [slug], "allow_fallbacks": False}}}
 
     def reflection_extra(self) -> dict[str, Any]:
         """The same, for the reflection model's own endpoint and key.
@@ -173,6 +216,13 @@ class AssistantSettings(BaseSettings):
         extra = self.litellm_extra()
         base = self.reflection_api_base or self.llm_api_base
         key = self.reflection_api_key or self.llm_api_key
+        # Re-decided against the reflection model's OWN endpoint. `litellm_extra`
+        # applied it against the shared one, and a split deployment can put the
+        # two on different hosts — sending an OpenRouter `provider` block to a
+        # kisski server, or dropping the pin from a reflection call that does run
+        # on OpenRouter. Both directions are wrong for the same reason.
+        extra.pop("extra_body", None)
+        extra.update(self.openrouter_provider_kwargs(base))
         if base is not None:
             extra["api_base"] = base
         if key is not None:

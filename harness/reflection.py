@@ -71,6 +71,7 @@ BOUND_PARAMETERS: tuple[str, ...] = (
     "seed",
     "num_retries",
     "timeout",
+    "extra_body",
 )
 """What :func:`pinned_reflection_lm` fills in, and the whole of it.
 
@@ -82,6 +83,16 @@ a burst of empty HTTP 500s from the endpoint (``findings.md``), or a response
 that simply never arrives (T134), ends a search that was otherwise fine. The
 two go together and neither works alone: a retry count cannot fire against a
 request that never returns.
+
+``extra_body`` is the sixth and it *is* pinned, under ``served_by`` (T134). It
+carries the OpenRouter provider block, and it is the one entry here that changes
+which machine answers rather than how the answer is waited for: unpinned,
+GEPA's proposals are drawn from whichever of that model's 29 providers OpenRouter
+picks per call, at quantizations from fp4 to bf16. A search whose candidates come
+from a rotating server is the reflection-model half of exactly the swap
+``reflection_model_canary_sha256`` exists to detect, so it is bound here and
+recorded in the pin.
+
 Nothing beyond these is added: a parameter this repo invented and the pin did not
 carry would be the failure this module exists to prevent, pointing the other way.
 

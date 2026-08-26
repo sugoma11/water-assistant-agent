@@ -54,6 +54,7 @@
     "sql_fixer": "openrouter/deepseek/deepseek-v4-flash-0731",
     "reflection": "openrouter/deepseek/deepseek-v4-flash-0731",
     "endpoint": "https://openrouter.ai/api/v1",
+    "served_by": "deepinfra",
     "decoding": {"temperature": 0.0, "seed": 42},
     "why_this_model": [
       "A DATED snapshot, which is the first time §5's model pin names something the",
@@ -85,9 +86,9 @@
     "limit": 6.0,
     "available_at_registration": 23.25,
     "estimate": {
-      "search": 0.81,
-      "measurement": 2.54,
-      "total": 3.35,
+      "search": 1.08,
+      "measurement": 3.35,
+      "total": 4.4,
       "basis": [
         "P8c's own token counts at this model's published rates: the registered search",
         "spent 13.28M prompt and 0.109M completion tokens over 567 rollouts, and one",
@@ -100,7 +101,7 @@
       ]
     },
     "if_exhausted": "The split order below decides what is lost, exactly as amendment 3 of registration 1 decided it. Registered before any test rollout and on no test number.",
-    "ledger_prices_usd_per_mtok": {"input": 0.06, "output": 0.12}
+    "ledger_prices_usd_per_mtok": {"input": 0.08, "output": 0.18}
   },
 
   "arms": {
@@ -267,5 +268,64 @@
     }
   ],
 
-  "amendments": []
+  "amendments": [
+    {
+      "id": 1,
+      "on": "2026-08-26",
+      "before_any_test_rollout": true,
+      "what": [
+        "models.served_by: null → 'deepinfra'. Every OpenRouter call of this run is",
+        "pinned to one provider with allow_fallbacks=false, on all three paths: the",
+        "ADK rollout, the text-to-SQL chain's bare litellm calls, and GEPA's",
+        "reflection call.",
+        "budget.ledger_prices_usd_per_mtok: 0.06/0.12 → 0.08/0.18, which is what that",
+        "provider actually bills.",
+        "budget.estimate.total: 3.35 → 4.4. The registered limit of 6.0 is UNCHANGED."
+      ],
+      "why": [
+        "An endpoint is not a server, and this run had not noticed. OpenRouter serves",
+        "deepseek-v4-flash-0731 from 29 providers at quantizations from fp4 through",
+        "fp8 to bf16, and routes per request: the first smoke search drew five",
+        "different ones in eight calls. That is §5's provider-swap hazard occurring",
+        "INSIDE a single run rather than between two, where no canary taken before",
+        "the run can see it and where `endpoint` does not distinguish it. Nothing was",
+        "registered about it because nothing in the testbed had ever named it — the",
+        "text-to-SQL experiments solved the same problem first",
+        "(`experiments.text2sql.harness`, LLM_OPENROUTER_PROVIDER) and the testbed",
+        "did not inherit it.",
+        "The choice of provider is not arbitrary and is not cost-driven. Screened on",
+        "three failure modes: `relace` — the CHEAPEST, therefore the router's",
+        "preference, and priced at exactly what this registration originally",
+        "assumed — returns the chain of thought inside `content`, which is where the",
+        "SQL builder reads its query, and produced an 883-character 'SQL' beginning",
+        "'We need to query outflow table' in the smoke search; it also hung four",
+        "consecutive calls on a serial probe. `parasail`, `baseten` and `fireworks`",
+        "rate-limit. `open-inference` and `morph` answer cleanly at 40 s and 55 s",
+        "mean, which is nine to twelve times `deepinfra` and turns this run into",
+        "days. `deepinfra` answered 3/3, leaked nothing, honoured tool calls and",
+        "averaged 4.4 s.",
+        "No test rollout has run. The measured surface here is a provider screen on",
+        "throwaway prompts, not a split."
+      ],
+      "cost": [
+        "About $1.05 more than the unpinned estimate, because the router's cheapest",
+        "provider is the one that cannot be used. That is the price of knowing which",
+        "machine answered, and it is paid inside the registered limit.",
+        "A hard pin fails loudly when deepinfra is unavailable rather than drifting",
+        "to another provider. A run that dies mid-measurement is the accepted",
+        "failure; a run that quietly finishes on three different servers is not, and",
+        "T135's per-condition write is what makes the first one survivable.",
+        "The comparison with P8c loses one more axis. P8c was unpinned, so its",
+        "numbers come from whatever mixture OpenRouter chose that day — which is",
+        "not recoverable after the fact and is now a fourth thing that differs",
+        "between the runs."
+      ],
+      "not_amended": [
+        "The arms, the splits, the repeats, the pairing, the bootstrap unit and its",
+        "seed, the two gaps, the win/loss table, the exclusion rule, the diagnostics,",
+        "the capture neighbourhood, the budget LIMIT, and the whole protocol section.",
+        "The served model id is unchanged: this names which server answers for it."
+      ]
+    }
+  ]
 }

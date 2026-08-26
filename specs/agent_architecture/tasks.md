@@ -4328,22 +4328,23 @@ without it. T135 is the only one that can proceed in parallel.
 - [ ] T131 **Spike — capture what actually reaches GEPA, and change nothing.**
   Intercept `MlflowGEPAAdapter.make_reflective_dataset`'s return value and the
   reflection model's literal `litellm.completion` request during a short search,
-  write both to `findings.md`, and answer four questions with evidence rather
-  than with source reading:
-  (i) the `trace` field is empty for every record — confirming T128's finding
-  from the other side;
-  (ii) `component_name` carries T120's registry prefix (`agent_tool_…`), reaches
-  the reflection model through the dataset records, and is the name the model
-  then writes into proposed text — which is how the optimized GR2L docstring came
-  to instruct the agent to call a tool that does not exist;
-  (iii) GEPA's proposer template has exactly two slots, `<curr_param>` and
-  `<side_info>`, and calls every component "instructions for an assistant"
-  (`gepa/strategies/instruction_proposal.py:13-29`) — so a *tool description* is
-  proposed for as though it were a system prompt;
-  (iv) what `<side_info>` actually contains per record, and how much of the
-  scorers' rationales survives into it.
-  Runnable against the scripted model or a 3-record smoke; costs nothing and
-  needs no budget decision. → T126, T128
+  write both to `findings.md`. **Three of the original questions are already
+  answered** by the interception this task was written to justify — the rendered
+  prompt carries `component_name` as the prefixed registry name, contains no
+  `"trace"` at all, and applies a per-component template when one is supplied
+  (`findings.md`). What is left is the part that decides whether the search had a
+  usable signal:
+  (i) **what `<side_info>` actually contains per record**, field by field, and
+  how the reflective dataset's dicts are serialized into it;
+  (ii) **how much of the scorers' rationales survives** — §7 designed
+  `Feedback.rationale` as the search signal and `harness/scorers.py` writes four
+  per case, so whether all four arrive, truncated or whole, is the difference
+  between a search that was informed and one that was guessing;
+  (iii) whether the **minibatch** the proposal is built from is the same
+  population the score came from, since a proposal formed on three records is
+  accepted on a full evaluation of a hundred.
+  Runnable against the scripted model with `litellm.completion` intercepted;
+  costs nothing and needs no budget decision. → T126, T128
 - [ ] T132 **Tracing: give the reflective dataset its span half back.** Decorate
   this repo's `predict_fn` with `@mlflow.trace` and assert a trace exists per
   rollout. Not `autolog`: `mlflow.litellm.autolog()` does not produce the trace
@@ -4352,15 +4353,33 @@ without it. T135 is the only one that can proceed in parallel.
   **This changes what a search reflects on**, so searches before and after it are
   not comparable and the change belongs to a new registration rather than an
   amendment. → T131
-- [ ] T133 **The candidate surface has two kinds of component and GEPA's proposer
-  has one.** Six of the seven optimizable components are tool *descriptions*; the
-  proposer is told all seven are assistant instructions, and the P8c search duly
-  rewrote a docstring into a system prompt with a Role section and a routing
-  table. Decide and record: a per-component-kind `prompt_template` through
-  `gepa_kwargs`, or an accepted limitation stated in §8. Note the prefix cannot
-  simply be renamed away — `candidate_prompts` pins the seven registered names,
-  and the prefix exists because the registry is shared with the text-to-SQL
-  experiments (T120). → T131
+- [ ] T133 **Tell the proposer which kind of component it is rewriting.** Six of
+  the seven optimizable components are tool *descriptions*; GEPA's default
+  metaprompt calls all of them "instructions for an assistant", and the P8c
+  search duly rewrote the GR2L docstring into a system prompt with a Role section
+  and a routing table naming a tool that does not exist.
+  **The parameter is supported and the path to it is proven**, so this is wiring
+  rather than a limitation to accept: `gepa.optimize` takes
+  `reflection_prompt_template` as a **dict of component name → template**;
+  MLflow's merge literal does not carry the key, so `gepa_kwargs` passes it
+  through; and GEPA's `propose_new_texts` guard passes because
+  `MlflowGEPAAdapter` does not define one. A search wired with two sentinel
+  templates put the root template on the root instruction's proposal and the tool
+  template on all four tool proposals (`findings.md`).
+  So: write the two templates — one for the root instruction, one for a tool
+  description that says a function declaration is what it is and that the text is
+  read by a function-calling model beside five siblings — and pass them through
+  `run_search`. Both must keep `<curr_param>` and `<side_info>`, which
+  `validate_prompt_template` enforces.
+  Two things to carry with it. The **prefix leak**: `component_name` reaches the
+  model as the *registered* name, and it cannot simply be renamed away —
+  `candidate_prompts` pins the seven names and the prefix exists because the
+  registry is shared with the text-to-SQL experiments (T120) — so the tool
+  template should tell the model what the callable name actually is. And
+  **T126's `gepa_kwargs == {}` assertion** must narrow rather than disappear: what
+  it protects is that no `frontier_type` is smuggled in, since selection runs on
+  the aggregated scalar. The templates are search hyperparameters and are
+  pre-registered with the rest. → T131
 - [ ] T134 **The repeat §7 asks for.** Exclusions diverged between arms on
   test_seen (14/125 baseline, 25/125 optimized), which is the architecture's own
   stated condition for repeating a run — so the P8c comparison is recorded and

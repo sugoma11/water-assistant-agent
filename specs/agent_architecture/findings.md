@@ -501,6 +501,45 @@ call.
 *Verified:* the killed search's log, its socket table and CPU while stalled.
 *Date:* 2026-08-25.
 
+**GEPA's proposer calls every component "instructions for an assistant", and the
+metaprompt is a supported per-component parameter.** The default template is two
+slots and one framing: *"I provided an assistant with the following
+**instructions**… Your task is to write a new **instruction** for the
+assistant"* (`gepa/strategies/instruction_proposal.py:13-29`), with
+`<curr_param>` and `<side_info>` the only substitutions. Six of this repo's seven
+optimizable components are **tool descriptions**, so the proposer is told a
+function declaration is a system prompt — which is exactly what the P8c search
+produced when it rewrote the GR2L docstring into a Role section with a routing
+table.
+
+`gepa.optimize` takes `reflection_prompt_template: str | dict[str, str] | None`
+(`api.py:58,140`), where a dict maps **component name → template**, and the path
+to it is clear in both places it could have been blocked. MLflow's merge literal
+does not carry the key (`gepa_optimizer.py:349-357`), so `gepa_kwargs` passes it
+through; and GEPA's guard —
+`assert not (adapter is not None and getattr(adapter, "propose_new_texts", None) is not None)`
+(`api.py:343-347`) — passes because `MlflowGEPAAdapter` implements only
+`evaluate` and `make_reflective_dataset` while `GEPAAdapter.propose_new_texts` is
+a class attribute set to `None`.
+
+**Demonstrated end to end, not read.** A search wired with a dict of two sentinel
+templates — one for `agent_root_instruction`, one for every `agent_tool_*` —
+captured 5 intercepted reflection requests: the root instruction's proposal
+carried the root sentinel, and all four tool-component proposals carried the tool
+sentinel. Per-component dispatch works, so §7's two kinds of component can be
+told apart at the one place it matters.
+
+**The same capture confirms the prefix leak.** `component_name` appears in the
+rendered prompt, and it is the *registered* name — `agent_tool_…`, T120's
+namespacing against the shared text-to-SQL registry — which is where the
+optimized docstring got the tool name `agent_tool_predict_green_roof_water_
+balance_tool`, a string no toolset resolves. And `"trace"` does not appear in the
+rendered `<side_info>` at all, which is the trace finding below arriving from the
+proposer's side.
+*Verified:* `gepa_kwargs={"reflection_prompt_template": {...}}` through
+`optimize_prompts` with `litellm.completion` intercepted, on gepa 0.1.1 /
+mlflow 3.13.0. *Date:* 2026-08-26.
+
 **The search logged no traces at all, because MLflow decided `predict_fn` was
 already traced.** `convert_predict_fn` probes the function once under a patched
 `NoOpTracer`, and wraps it in `mlflow.trace` **only if it saw no spans**

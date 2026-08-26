@@ -8,20 +8,99 @@
     "than quietly redefining what was promised. Amendments are appended to",
     "'amendments' with their reason, never applied by rewriting a value in place."
   ],
-  "registered_on": "2026-08-25",
+  "registered_on": "2026-08-26",
+  "registration": 2,
+
+  "supersedes": {
+    "registration": 1,
+    "registered_on": "2026-08-25",
+    "sha256": "cb609c7ff9f0d015c78c96abd084a3c9fc17c42ef5d4e1d17f43721676906fe9",
+    "what_it_produced": "eval/measurements/20260825T174410Z.json — the P8c run, reported in findings.md § The measurement run (P8c)",
+    "why_a_second_one": [
+      "§7's own repeat condition fired on that run and this is the repeat it asks for",
+      "(T134). Residual exclusion counts diverged between the arms on the split",
+      "carrying the primary estimand — 14 of 125 baseline against 25 of 125 optimized",
+      "on test_seen, driven by `upstream` (20 vs 34) and `text_to_sql_agent` (1 vs 9) —",
+      "which is the architecture's stated condition for repeating a run, so P8c's",
+      "comparison is recorded and not established.",
+      "A repeat under registration 1 is not what is run here. The task model has moved",
+      "and so has the capture surface, both for reasons stated below, so this is a",
+      "fresh registration rather than a second run under the old one: nothing in it is",
+      "chosen to make a P8c number look different, and the two runs are reported side",
+      "by side as two measurements rather than pooled."
+    ]
+  },
+
   "registered_against": {
-    "commit": "1a1b5d823d4f7441be649e62a980ac6dc99dff43",
-    "note": "T127, the run ledger. The last commit before any test rollout exists.",
+    "commit": "9e47934095cf1002b0bac3921009b1bf458ed9ea",
+    "note": "T134's setup. The last commit before any rollout of this registration exists; it carries the capture widening, the model re-pin and the two thought-part fixes, and no test rollout has run against it.",
     "case_files": {
       "train.json": "d66cc411ec89da4a06172657de075f0bcfd653832273f1f9d536823d599bd634",
       "test_seen.json": "a0d0a016121b595ffe3a740978588ca85300da24f9d2f1230a78c01c42409a11",
       "test_unseen.json": "a4c67c89df11c96a1465128016177f3dc367e8cc4a775823eef9ab364bc3ce4c"
     },
+    "case_files_note": "Byte-identical to registration 1's. The suite is not re-drawn for the repeat — a repeat over different cases would answer a different question — and `just cases-check` confirms the committed files are a fresh generation pass.",
     "splits": {
       "train": {"cases": 100, "templates": 25},
       "test_seen": {"cases": 125, "templates": 25},
       "test_unseen": {"cases": 56, "templates": 7}
     }
+  },
+
+  "models": {
+    "task": "openrouter/deepseek/deepseek-v4-flash-0731",
+    "sub_agent": "openrouter/deepseek/deepseek-v4-flash-0731",
+    "sql_builder": "openrouter/deepseek/deepseek-v4-flash-0731",
+    "sql_fixer": "openrouter/deepseek/deepseek-v4-flash-0731",
+    "reflection": "openrouter/deepseek/deepseek-v4-flash-0731",
+    "endpoint": "https://openrouter.ai/api/v1",
+    "decoding": {"temperature": 0.0, "seed": 42},
+    "why_this_model": [
+      "A DATED snapshot, which is the first time §5's model pin names something the",
+      "provider cannot silently replace. decisions.md § Model pinning records the",
+      "whole canary mechanism as a workaround for undated aliases; -0731 is not one,",
+      "so the canary becomes a second check rather than the only one.",
+      "It is also cheap enough to buy back the replication amendment 1 sold. At",
+      "$0.06/$0.12 per Mtok against gemma-4-31b-it's $0.10/$0.34, three repeats of",
+      "both arms on all three splits cost less than P8c's single repeat did."
+    ],
+    "one_model_in_both_roles": [
+      "REGISTERED DEVIATION from §5, and the largest thing about this run that is not",
+      "a repeat. §5 asks for a reflection model distinct from the model under test so",
+      "that a result can be attributed to one of the two; here they are the same served",
+      "model on the same endpoint, so the search is a model reflecting on its own",
+      "rollouts and this run cannot separate 'the proposer is weak' from 'the task",
+      "model is weak'.",
+      "It is chosen rather than inherited. P8c split the two roles across providers to",
+      "solve a quota problem (T128) that OpenRouter does not have, and holding the",
+      "teacher fixed while the student moved would confound the model change with the",
+      "role split. One model in both roles is the cleaner comparison against P8c and",
+      "the weaker claim about attribution; the pins stay two separate slots, so the",
+      "choice is recorded rather than lost."
+    ]
+  },
+
+  "budget": {
+    "currency": "USD",
+    "limit": 6.0,
+    "available_at_registration": 23.25,
+    "estimate": {
+      "search": 0.81,
+      "measurement": 2.54,
+      "total": 3.35,
+      "basis": [
+        "P8c's own token counts at this model's published rates: the registered search",
+        "spent 13.28M prompt and 0.109M completion tokens over 567 rollouts, and one",
+        "repeat of the measurement spent 13.90M and 0.112M over 562. Three repeats is",
+        "that measurement figure times three.",
+        "The estimate is a floor, not a ceiling. A reasoning model bills its trace as",
+        "completion tokens and P8c's task model emitted none, so completion cost may",
+        "run several times the number above — which is still cents against this limit,",
+        "and is why the limit is 6.0 rather than the estimate."
+      ]
+    },
+    "if_exhausted": "The split order below decides what is lost, exactly as amendment 3 of registration 1 decided it. Registered before any test rollout and on no test number.",
+    "ledger_prices_usd_per_mtok": {"input": 0.06, "output": 0.12}
   },
 
   "arms": {
@@ -34,7 +113,12 @@
       "encoding, and left it for the search, because the encoding lives in the",
       "optimizable text. A candidate repairing it is measuring what the thesis claims",
       "to measure, and this sentence exists so that improvement cannot later be read",
-      "as a baseline that was quietly weakened."
+      "as a baseline that was quietly weakened.",
+      "It is NOT P8c's baseline text. T136 added one sentence to each of the six tool",
+      "texts saying that the text is a tool declaration and naming the callable it",
+      "declares — 605 characters over six components, reaching the task model on every",
+      "rollout of BOTH arms. So it moves the reference arm and the search's seed by the",
+      "same amount, and a baseline number from this run is not comparable with P8c's."
     ],
     "optimized": [
       "Whatever candidate the one registered search selects. Not the best of several",
@@ -49,7 +133,7 @@
     "split": "train",
     "limit": null,
     "max_metric_calls": 500,
-    "reflection_model": "openai/qwen3.5-122b-a10b",
+    "reflection_model": "openrouter/deepseek/deepseek-v4-flash-0731",
     "gepa_kwargs": {},
     "llm_cache": "on",
     "response_cache_mode": "record",
@@ -65,12 +149,43 @@
   "measurement": {
     "arms": ["baseline", "optimized"],
     "splits": ["test_seen", "test_unseen", "train"],
-    "repeats": 1,
+    "repeats": 3,
     "temperature": 0.0,
     "seed": 42,
     "llm_cache": "off",
     "response_cache_mode": "replay",
-    "pairing": "the identical committed cases, in file order, for every arm and every repeat"
+    "pairing": "the identical committed cases, in file order, for every arm and every repeat",
+    "repeats_note": [
+      "Three, which is what registration 1 registered before amendment 1 cut it to one",
+      "on budget. The three repeats ARE the replication and are what makes the LLM",
+      "response cache's being off matter: a prompt-keyed hit would hand the first",
+      "repeat's bytes to the other two."
+    ]
+  },
+
+  "capture": {
+    "neighbourhood": [-3, -2, -1, 1, 2, 3],
+    "was": [-1, 1],
+    "why": [
+      "Registered rather than tuned quietly, because it changes the exclusion rate and",
+      "the exclusion rate is what §7 reads the arms against. The response cache is",
+      "keyed on the request, so a candidate reading 'the next d days' differently from",
+      "the oracle misses, and on the measurement path a miss excludes the case. ±1 was",
+      "sized on one behaviour the pilot observed; P8c then lost 30 of 56 test_unseen",
+      "cases in one arm and 28 in the other to those misses, and T22 and T23 were",
+      "measured in NEITHER arm — the holdout's population, not a rounding error.",
+      "±3 is a wider warm cache and nothing else: the neighbours are answered through",
+      "each family's own oracle, so no window here is one this repository computed.",
+      "509 → 947 entries, every case still reproduces its committed answer against the",
+      "live services, and `just capture-verify` replays all of them with zero live",
+      "calls."
+    ],
+    "what_it_does_not_fix": [
+      "A miss is still possible and still excludes. What a candidate reaches for is",
+      "unknowable before the search, and this is a wider guess rather than a solution,",
+      "so §7 still publishes the exclusion count per arm and still reads each arm's",
+      "against the other's rather than against zero."
+    ]
   },
 
   "analysis": {
@@ -99,14 +214,29 @@
       "parse_failures"
     ],
     "parse_failure": "reported apart from answer accuracy, so a candidate degrading the output format stays distinguishable from one degrading reasoning",
-    "residual_nondeterminism": "NOT MEASURED under amendment 1 — one repeat cannot disagree with itself. Reported as unmeasured rather than as zero, and every arm difference in this run is therefore read without a noise floor",
-    "multiplicity": "no correction across the four metrics. They are four declared quantities, not a family searched over for a winner; the interval and the noise floor carry the uncertainty and the suite is stated to detect large effects only"
+    "residual_nondeterminism": "MEASURED, from the three repeats per condition. This is the quantity registration 1 gave up under its amendment 1 and reported as unmeasured; every arm difference in this run is read against it, and a difference smaller than it is reported as within the noise floor rather than as a small effect.",
+    "multiplicity": "no correction across the four metrics. They are four declared quantities, not a family searched over for a winner; the interval and the noise floor carry the uncertainty and the suite is stated to detect large effects only",
+    "comparison_with_p8c": [
+      "REPORTED SIDE BY SIDE, NEVER POOLED AND NEVER DIFFERENCED. Three things moved",
+      "between the two runs — the task model, the six tool texts (T136) and the capture",
+      "neighbourhood — so a difference between the runs is not attributable to any one",
+      "of them. What carries across is the QUALITATIVE question §7's repeat condition",
+      "asks: whether the exclusion counts diverge between the arms again, and whether",
+      "the direction of the answer metric's movement reproduces. Both are stated as",
+      "such and neither is given an interval."
+    ]
   },
 
   "protocol": {
     "method_debugging": [
       "train only. Every defect the pilot and the packets found was found on train",
-      "or on the pilot's own cases; the two test splits have never been run."
+      "or on the pilot's own cases. The two test splits have been run ONCE, under",
+      "registration 1, and their numbers are in findings.md — so unlike registration 1",
+      "this registration is not written by someone who has never seen a test number.",
+      "Nothing in it is chosen on one: the model was chosen on price and on being a",
+      "dated snapshot, the repeats restore what was registered before amendment 1 cut",
+      "them, the capture widening is driven by an exclusion count that §7 publishes",
+      "precisely so it can be acted on, and the split order is copied unchanged."
     ],
     "reporting": [
       "Both arms on all three splits, whatever the numbers are. A repeated run is",
@@ -122,102 +252,20 @@
     ]
   },
 
-  "amendments": [
+  "known_gaps": [
     {
-      "id": 1,
-      "on": "2026-08-25",
-      "before_any_test_rollout": true,
-      "what": [
-        "measurement.repeats: 3 → 1.",
-        "search.reflection_model: openai/qwen3.5-397b-a17b → openai/qwen3.5-122b-a10b.",
-        "task model: openai/qwen3.6-35b-a3b @ saia.gwdg.de → openrouter/google/gemma-4-31b-it,",
-        "and the same for the three text-to-SQL chain models, which share its endpoint.",
-        "reflection endpoint: split from the task model's onto its own base and key."
-      ],
-      "why": [
-        "Infrastructure, measured rather than assumed, and none of it is a result.",
-        "saia.gwdg.de stopped serving chat completions entirely — /v1/models answers 200",
-        "in 0.1 s while /v1/chat/completions hangs past 110 s or returns an empty 500 with",
-        "x-kong-upstream-latency: 10. chat-ai.academiccloud.de serves both models but",
-        "returns empty 500s at 25–60 %, and meters 1000 requests/day/key against a measured",
-        "~13 requests per rollout — 8600 requests for this run, four to nine days across two",
-        "keys. OpenRouter serves gemma-4-31b-it reliably at $0.10/$0.34 per Mtok against a",
-        "$5 budget; the run costs about $2.6 there. The reflection model stays on free quota",
-        "because a search makes ~30 proposal calls, which fits what 8600 rollout calls do not.",
-        "Repeats fell to 1 for the same budget: three repeats of both arms on all three",
-        "splits is 1686 rollouts and about $10.60."
-      ],
-      "cost": [
-        "The three repeats were the replication, so this run does not measure residual",
-        "nondeterminism at all — the quantity every arm difference was to be read against",
-        "is unmeasured, not zero. decisions.md § Replication and the LLM cache already",
-        "considered dropping replication and rejected it on exactly this ground: the error",
-        "term becomes stated rather than bounded, on a suite already limited to large",
-        "effects. That is the price, and it is paid knowingly.",
-        "The LLM response cache stays OFF regardless. With one repeat it can no longer",
-        "collapse replicates, but off is the measurement path's setting and a run that",
-        "turned it on would not be comparable with a later three-repeat run."
-      ],
-      "not_amended": [
-        "The arms, the splits, the pairing, the bootstrap unit and its seed, the two gaps,",
-        "the win/loss table, the exclusion rule, the diagnostics, and the whole protocol",
-        "section. Nothing here was relaxed because of a number: no test rollout has run."
-      ]
+      "id": "T132",
+      "what": "The reflective dataset reaches GEPA without its span half: MLflow stands down from tracing when ADK is already tracing, so the search reflects on `Feedback.rationale` and the inputs, and not on the ADK tool spans.",
+      "status": "NOT FIXED in this run. tasks.md orders it before a rerun and it is not landed; the run proceeds with it declared rather than waiting.",
+      "effect": "The proposer sees less about a rollout than the design intends, which weakens the search in both runs equally — P8c had the same gap — so it does not confound the comparison, and it does bound what a null result would mean."
     },
     {
-      "id": 2,
-      "on": "2026-08-25",
-      "before_any_test_rollout": true,
-      "what": ["search.max_metric_calls: 100 → 500."],
-      "why": [
-        "The registered 100 buys zero proposals, and that is arithmetic rather than a",
-        "result. MLflow passes `trainset` and no `valset`, so GEPA evaluates the seed",
-        "candidate over the whole trainset before proposing anything — len(trainset) = 100",
-        "metric calls — and each accepted candidate costs another full evaluation, with",
-        "reflection minibatches of 3 in between (gepa/api.py:328, core/engine.py). A budget",
-        "equal to the trainset size is therefore spent entirely on measuring the seed, and",
-        "the search returns it unchanged. 500 leaves 400 after the seed's evaluation: about",
-        "three accepted candidates at a full evaluation each, plus their minibatches.",
-        "Chosen on GEPA's budget accounting and the split's size, both of which are known",
-        "without running anything. No test rollout has run."
-      ],
-      "cost": [
-        "About €1.0 more of task-model spend than the registered 100 would have cost, and",
-        "roughly two hours of wall clock. The budget is still a fixed, pre-registered",
-        "number and the search still gets exactly one run."
-      ],
-      "not_amended": [
-        "Everything else, including the fact that this remains one search whose selection",
-        "defines the optimized arm — not the best of several."
-      ]
-    },
-    {
-      "id": 3,
-      "on": "2026-08-25",
-      "before_any_test_rollout": true,
-      "what": [
-        "measurement.splits: order changed from [train, test_seen, test_unseen] to",
-        "[test_seen, test_unseen, train]. The set is unchanged and so is everything",
-        "measured on each."
-      ],
-      "why": [
-        "Budget ordering, decided before any test rollout and on no test number. The",
-        "registered search cost $2.76 of the $5 available, and the measurement's 562",
-        "rollouts are estimated at $1.7-2.7 against $2.24 remaining — close enough that",
-        "the run may not finish. Which split is at risk if it does not is a choice, and",
-        "the honest one is to put the splits that carry the primary estimand and the",
-        "template-overfit holdout first. Train is last because its number is a selection",
-        "score rather than an inference, and because losing it costs one of the two gaps",
-        "rather than the comparison itself.",
-        "This changes no measurement, no metric and no analysis — only which result is",
-        "missing if the money runs out, and that this was decided in advance."
-      ],
-      "cost": [
-        "If the budget is exhausted during train, the train → test_seen gap cannot be",
-        "computed and is reported as not measured. The test_seen paired comparison, the",
-        "test_unseen win/loss table and the test_seen → test_unseen gap are unaffected."
-      ],
-      "not_amended": ["Everything else."]
+      "id": "T137",
+      "what": "The proposer is asked to rewrite, not to revise, and nothing checks a candidate that names a callable no toolset resolves. P8c's winner is what that produces: one tool description rewritten into a root-agent system prompt naming `agent_tool_predict_green_roof_water_balance_tool`, which does not exist.",
+      "status": "NOT FIXED in this run. tasks.md orders it before a rerun and it is not landed.",
+      "effect": "A candidate of this run may be broken the same way, and nothing will refuse it. T136's sentence inside each tool text is the seed-side half that IS landed, so the seed says what each text is even though the metaprompt does not constrain how much of it to change. Any candidate naming a callable outside TOOL_NAMES is reported in findings.md by hand for this run."
     }
-  ]
+  ],
+
+  "amendments": []
 }

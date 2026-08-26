@@ -151,18 +151,33 @@ def test_an_amendment_is_appended_with_its_reason_and_its_cost() -> None:
         assert amendment["not_amended"]
 
 
-def test_a_run_of_one_repeat_measures_no_noise_floor_and_the_registration_says_so() -> None:
-    """The cost of amendment 1, written where a reader of the numbers will meet it.
+def test_the_noise_floor_claim_agrees_with_the_repeat_count() -> None:
+    """A run cannot register one repeat and claim a measured noise floor, or the reverse.
 
-    Three repeats were the replication. One repeat cannot disagree with itself,
-    so the quantity every arm difference was to be read against is *unmeasured* —
-    which is a different claim from zero, and the registration is where the
-    difference is stated rather than left to whoever reads the report.
+    The repeats **are** the replication, so the two fields are one decision stated
+    twice and the failure worth catching is them disagreeing — a registration
+    saying "MEASURED" over a single repeat would put a noise floor in the report
+    that no repeat could have produced.
+
+    Registration 1 registered three, cut them to one under its amendment 1 on
+    budget, and paid for it by reporting residual nondeterminism as *unmeasured* —
+    a different claim from zero, and stated here rather than left to whoever read
+    the report. Registration 2 buys them back on a cheaper model, so this asserts
+    the agreement rather than either value: the choice belongs to the run.
+
+    ``llm_cache: off`` is asserted either way. With three repeats a prompt-keyed
+    hit would hand the first repeat's bytes to the other two, and with one it is
+    what keeps the run comparable with a three-repeat one.
     """
     registered = load()
+    repeats = registered["measurement"]["repeats"]
+    floor = registered["analysis"]["residual_nondeterminism"]
 
-    assert registered["measurement"]["repeats"] == 1
-    assert registered["analysis"]["residual_nondeterminism"].startswith("NOT MEASURED")
+    assert repeats >= 1
+    if repeats == 1:
+        assert floor.startswith("NOT MEASURED")
+    else:
+        assert floor.startswith("MEASURED")
     assert registered["measurement"]["llm_cache"] == "off"
 
 

@@ -188,6 +188,9 @@ def make_irrigation_tool(ctx: "ScenarioContext") -> IrrigationTool:
     ) -> dict[str, Any]:
         """Decide whether a green roof should be irrigated, using the site's own rule.
 
+        This text is the declaration of ``calc_irrigation``, one of the tools the
+        assistant may call.
+
         **Fetches its own weather forecast and reads the roof's own soil-moisture
         sensor** — do not call the weather tool first and do not query the database
         for the roof's moisture. It then runs the deployed controller's water

@@ -64,10 +64,16 @@ on (``findings.md`` § Codebase seams)."""
 
 AGENT_DESCRIPTION = (
     "Water-Management Data Analyst for green-roof sensor data "
-    "(outflow, radiation, soil moisture, soil temperature, weather)."
+    "(outflow, radiation, soil moisture, soil temperature, weather).\n\n"
+    "This text is the declaration of ``text_to_sql_agent``, one of the tools the "
+    "assistant may call."
 )
 """The sub-agent's outward description — an optimizable candidate component
-(T120), which is why :func:`build_text_to_sql_agent` takes it as an argument."""
+(T120), which is why :func:`build_text_to_sql_agent` takes it as an argument.
+
+Its second sentence is the one every tool text carries (T136): this is the sixth
+tool's declared text, and ``AgentTool`` presents it where the five function tools
+present a ``__doc__``, so it says what it is in the same words they do."""
 
 _RESPONSE_SHAPE_TEXT = """On success: {"status": "success", "sql": <string>, "reasoning": <string>}
 On failure: {"status": "error", "error_details": <string>}"""

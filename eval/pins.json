@@ -13,23 +13,23 @@
     "candidate_prompts": {
       "calc_irrigation": {
         "prompt": "agent_tool_calc_irrigation",
-        "sha256": "01ef06e3e6d0f71b3385d6976e795ca4729b8783f09800e856d743c2cbe027cd"
+        "sha256": "c10020e92b2e7d8d53a315027040900b4dbdf9377f464d33a8e52f3b98ff2e7d"
       },
       "get_weather_forecast_tool": {
         "prompt": "agent_tool_get_weather_forecast_tool",
-        "sha256": "9643594682ae042f9f1151fdd5ecbac2264fab8d947590492ed04f23c342de43"
+        "sha256": "a137789af23f17c1ab505d0217171b3d1e75e331c44708d567e4c571cf4a0628"
       },
       "lookup_reference": {
         "prompt": "agent_tool_lookup_reference",
-        "sha256": "05cebb88cb900637b600641937f5690574b2e550e46ddf8e94eb12f2f4e41584"
+        "sha256": "0e3ac00f00fee37d1708aa15211f902df7247f81d58d0a051cfdedb41b72f1ce"
       },
       "plot_timeseries": {
         "prompt": "agent_tool_plot_timeseries",
-        "sha256": "3b0dcb670b2b4a08d949fcaeec388efb4875bbb8cd4d6f90d52104a675bf00ba"
+        "sha256": "becdf9d832c61370ace708369bf0208659fb1c2f5425cebcd5da86da2120ee71"
       },
       "predict_green_roof_water_balance_tool": {
         "prompt": "agent_tool_predict_green_roof_water_balance_tool",
-        "sha256": "c634585d563423ce0485e35ad5fe72fc099961990fe1ce3643a0c85312103707"
+        "sha256": "0d36ce06412c68218da5b179c2e1cc3d391b8132bf3a4b8ebac9f8c31a0dfa20"
       },
       "root_instruction": {
         "prompt": "agent_root_instruction",
@@ -37,7 +37,7 @@
       },
       "text_to_sql_agent": {
         "prompt": "agent_tool_text_to_sql_agent",
-        "sha256": "7fb2526719669bcb2becccf9af18376dea122d24df4b485d5ea8c0adbcff116e"
+        "sha256": "417fb0e51d2e4e1e30292738be2d1afed766c4b48c3ba3143f5cb3b4465038e6"
       }
     },
     "card_store_sha256": "9348c18386c970a339b65f34f332bbce21c0750c421e139638bfbf39006f4afc",

@@ -155,6 +155,9 @@ def make_lookup_reference_tool() -> LookupReferenceTool:
     ) -> dict[str, Any]:
         """Look up what the site's own documentation states about a topic.
 
+        This text is the declaration of ``lookup_reference``, one of the tools the
+        assistant may call.
+
         This is the authority for **documented rules, thresholds, definitions and
         reference values** — what the operations manual says, as opposed to what
         the sensors recorded or a model predicts. It reads a fixed set of

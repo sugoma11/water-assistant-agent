@@ -29,15 +29,6 @@ travels with every run, so a reader can tell which registration a number was
 produced under — and an edit after the fact moves the hash rather than quietly
 redefining what was promised. It is the same mechanism ``eval/pins.json`` uses
 and for the same reason.
-
-**Amendments and additions are different things.** An amendment changes a
-registered value and is made *before any test rollout*, which is what makes it
-legitimate; every entry in ``amendments`` states that and is held to it. An
-**addition** registers a new section whose arm could not have existed earlier —
-:data:`REPAIR_MEASUREMENT`, whose candidate the search had not yet selected — and
-it changes no registered value. It is filed apart because it cannot make the
-amendments' claim, and filing it as one would either mislabel it or give up the
-rule for everything above it.
 """
 
 from __future__ import annotations
@@ -60,17 +51,6 @@ PREREG_FILE = REPO_ROOT / "eval" / "preregistration.json"
 SEARCH = "search"
 MEASUREMENT = "measurement"
 ANALYSIS = "analysis"
-
-REPAIR_MEASUREMENT = "repair_measurement"
-"""The third arm's own section (T136).
-
-The repaired candidate cannot be reported as the optimized arm — §7 defines that
-arm as whatever the one registered search selects — so it is registered
-separately or it is nothing at all. Kept apart from :data:`MEASUREMENT` rather
-than added to its ``arms`` list because the two are answering different
-questions: one is the pre-registered comparison, the other is a follow-up whose
-candidate did not exist when the first was written.
-"""
 
 
 class PreregistrationViolation(RuntimeError):
@@ -201,7 +181,6 @@ __all__ = [
     "ANALYSIS",
     "MEASUREMENT",
     "PREREG_FILE",
-    "REPAIR_MEASUREMENT",
     "PreregistrationViolation",
     "SEARCH",
     "deviations",

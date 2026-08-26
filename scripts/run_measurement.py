@@ -26,7 +26,6 @@ Usage::
 
     just pins-task                       # first, and immediately before
     just measure                         # the registered run
-    just measure-repaired                # T136's third arm, under its own section
     just measure-report <file>           # re-render a written measurement
     uv run python scripts/run_measurement.py --splits train --repeats 1 \\
         --exploratory                    # a short one, labelled as one
@@ -53,13 +52,7 @@ from harness.measure import (  # noqa: E402
     outcomes_from,
     registered_protocol,
 )
-from harness.preregistration import (  # noqa: E402
-    MEASUREMENT,
-    PREREG_FILE,
-    REPAIR_MEASUREMENT,
-    digest,
-    load,
-)
+from harness.preregistration import PREREG_FILE, digest, load  # noqa: E402
 from harness.stats import render  # noqa: E402
 
 load_dotenv()
@@ -96,31 +89,20 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="print the registration and its digest, and exit",
     )
-    parser.add_argument(
-        "--repaired",
-        action="store_true",
-        help=(
-            "add T136's repaired candidate as a third arm, and hold the run to the "
-            "`repair_measurement` registration rather than to `measurement`. Never "
-            "reported as the optimized arm: that one is whatever the registered "
-            "search selected."
-        ),
-    )
     # Defaulted from the registration, not from the module's constants: the
     # registered protocol is what a bare `just measure` should run, and a default
     # that disagreed with it would make the honest invocation the refused one.
-    # Filled in after parsing rather than here, because `--repaired` chooses which
-    # registration they come from.
+    registered_splits, registered_repeats = registered_protocol()
     parser.add_argument(
         "--splits",
         nargs="+",
-        default=None,
+        default=registered_splits,
         help="which splits to measure (default: the registered ones)",
     )
     parser.add_argument(
         "--repeats",
         type=int,
-        default=None,
+        default=registered_repeats,
         help="repeats per condition (default: the registered count)",
     )
     parser.add_argument(
@@ -147,32 +129,26 @@ def main(argv: list[str] | None = None) -> int:
     if args.analyze is not None:
         return analyze(args.analyze)
 
-    section = REPAIR_MEASUREMENT if args.repaired else MEASUREMENT
-    registered_splits, registered_repeats = registered_protocol(section)
-    splits = registered_splits if args.splits is None else args.splits
-    repeats = registered_repeats if args.repeats is None else args.repeats
-
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out = args.out or MEASUREMENTS / f"{stamp}.json"
-    arms = arm_versions(repaired=args.repaired)
+    arms = arm_versions()
 
     print(f"Tracking:  {mlflow.get_tracking_uri()}")
-    print(f"Prereg:    {digest()}  section {section}")
+    print(f"Prereg:    {digest()}")
     for arm, versions in arms.items():
         print(f"Arm {arm:<10} {json.dumps(dict(sorted(versions.items())))}")
     print(
-        f"Conditions: {len(arms)} arm(s) × {len(splits)} split(s) × "
-        f"{repeats} repeat(s)\n"
+        f"Conditions: {len(arms)} arm(s) × {len(args.splits)} split(s) × "
+        f"{args.repeats} repeat(s)\n"
     )
 
     measurement = measure(
         arms=arms,
-        splits=splits,
-        repeats=repeats,
+        splits=args.splits,
+        repeats=args.repeats,
         workers=args.workers,
         exploratory=args.exploratory,
         run_name=f"measurement-{stamp}",
-        section=section,
     )
 
     for condition in measurement.conditions:

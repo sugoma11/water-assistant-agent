@@ -1047,6 +1047,9 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
     ) -> dict[str, Any]:
         """Draw a chart of one or more time series over a date window.
 
+        This text is the declaration of ``plot_timeseries``, one of the tools the
+        assistant may call.
+
         **Fetches its own data; do not query the database separately for
         plotting**, and do not pass values in — each series names a *source* and a
         *variable*, and the tool reads it. Use it when the user asks to see, show,

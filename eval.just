@@ -112,26 +112,3 @@ prereg:
 # Re-render §7's report from a written measurement; needs no model and no service
 measure-report file:
     uv run python scripts/run_measurement.py --analyze {{file}}
-
-# The one registered search selected a candidate whose single rewritten tool text names
-# a callable no toolset resolves. The repair is committed in eval/repair/ beside the text
-# it repairs and the diff between them, and it is a THIRD arm: §7 defines the optimized
-# arm as whatever that search selected, so a repaired candidate reported in its place
-# would be the "best of" the registration forbids. Registering it needs the registry.
-
-# Regenerate eval/repair/gr2l.diff from the two committed texts
-repair-diff:
-    uv run python scripts/register_repair.py --diff
-
-# Hold the committed repair to the registered candidate it repairs, and to its own diff
-repair-check:
-    uv run python scripts/register_repair.py --check
-
-# Register the repaired candidate as the third arm and record eval/repaired_candidate.json
-repair-register:
-    uv run python scripts/register_repair.py
-
-# Three arms × three splits, held to the `repair_measurement` registration. Needs its
-# own budget decision (T134): it is 281 more rollouts than the registered run bought.
-measure-repaired:
-    uv run python scripts/run_measurement.py --repaired

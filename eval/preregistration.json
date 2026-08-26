@@ -6,10 +6,7 @@
     "the registered search and before any test rollout; its sha256 travels with every",
     "run (harness/preregistration.py), so an edit after the fact moves the hash rather",
     "than quietly redefining what was promised. Amendments are appended to",
-    "'amendments' with their reason, never applied by rewriting a value in place.",
-    "A section registered after a search has run — one whose arm could not exist",
-    "before it — goes in 'additions' instead: every amendment is made before any test",
-    "rollout, and an entry that cannot claim that is not filed as if it could."
+    "'amendments' with their reason, never applied by rewriting a value in place."
   ],
   "registered_on": "2026-08-25",
   "registered_against": {
@@ -104,65 +101,6 @@
     "parse_failure": "reported apart from answer accuracy, so a candidate degrading the output format stays distinguishable from one degrading reasoning",
     "residual_nondeterminism": "NOT MEASURED under amendment 1 — one repeat cannot disagree with itself. Reported as unmeasured rather than as zero, and every arm difference in this run is therefore read without a noise floor",
     "multiplicity": "no correction across the four metrics. They are four declared quantities, not a family searched over for a winner; the interval and the noise floor carry the uncertainty and the suite is stated to detect large effects only"
-  },
-
-  "repair_measurement": {
-    "_comment": [
-      "T136's third arm, registered after the search rather than before it, because",
-      "the candidate it repairs did not exist until the search selected one. It is",
-      "registered here and NOT added to measurement.arms: the optimized arm is",
-      "defined above as whatever candidate the one registered search selects, and a",
-      "hand-repaired candidate reported in its place would be the 'best of' this",
-      "registration forbids. Its numbers are its own or there are none."
-    ],
-    "arm": [
-      "The selected candidate with exactly one component changed: the GR2L tool",
-      "description, replaced by eval/repair/gr2l_repaired.md. The other six",
-      "components are the selected candidate's own registered versions, byte for",
-      "byte. eval/repair/gr2l_selected.md holds the text being repaired as the",
-      "search registered it and eval/repair/gr2l.diff is the diff between the two,",
-      "regenerated from them rather than typed; harness/repair.py's verify() holds",
-      "all three to each other and to the registry before anything is registered."
-    ],
-    "what_the_repair_changes": [
-      "The callable's name: the selected text names agent_tool_predict_green_roof_",
-      "water_balance_tool — the registered PROMPT name, which is what component_name",
-      "hands the reflection model — five times and the real callable never. Its",
-      "routing table therefore points at a tool no toolset resolves.",
-      "The scope: routing rules for the other tools, written inside one tool's",
-      "declaration, are recast as when THIS tool applies. All four routing",
-      "discriminations survive; that rewrite is the whole difference between",
-      "candidate 1 and the winner and it moved trajectory 0.76 -> 0.87, so a repair",
-      "that deleted the routing content would discard the gain being measured.",
-      "The duplicated contract: the '## Response Format' section restating the root",
-      "instruction's answer contract is dropped. The two copies already disagree —",
-      "it adds a final_text key and an 'error' status the contract does not have —",
-      "and a disagreement between them is invisible from either side alone."
-    ],
-    "arms": ["baseline", "optimized", "repaired"],
-    "splits": ["test_seen", "test_unseen", "train"],
-    "repeats": 1,
-    "temperature": 0.0,
-    "seed": 42,
-    "llm_cache": "off",
-    "response_cache_mode": "replay",
-    "pairing": "the identical committed cases, in file order, for every arm and every repeat",
-    "analysis": [
-      "The analysis section above, unchanged, with one addition: the repaired arm is",
-      "reported against BOTH the baseline and the optimized arm, because the two",
-      "differences answer different questions — whether the repair kept the search's",
-      "gain, and whether it kept the routing content that produced it.",
-      "The primary estimand of this registration is the paired difference repaired -",
-      "optimized on test_seen. It is a follow-up and never a replacement for the",
-      "primary estimand above."
-    ],
-    "budget": [
-      "NOT YET DECIDED. The registered run cost $4.963 of the $5 available, and this",
-      "one is a third arm over three splits — 281 more rollouts. It is T134's budget",
-      "decision, taken with the repeat §7's own condition asks for, and this section",
-      "is registered before that decision rather than after it so that the arm was",
-      "defined before anyone knew what it would score."
-    ]
   },
 
   "protocol": {
@@ -280,55 +218,6 @@
         "test_unseen win/loss table and the test_seen → test_unseen gap are unaffected."
       ],
       "not_amended": ["Everything else."]
-    }
-  ],
-
-  "additions": [
-    {
-      "id": 1,
-      "on": "2026-08-26",
-      "section": "repair_measurement",
-      "_comment": [
-        "An ADDITION and deliberately not an amendment. Every amendment above is made",
-        "before any test rollout, which is what makes it legitimate; this one could",
-        "not be, and calling it an amendment would either mislabel it or give up that",
-        "rule for everything. It changes no registered value — it registers a new arm",
-        "under a section of its own, and is held to a different and weaker claim:",
-        "that its own arm had never been run when it was written."
-      ],
-      "what": [
-        "A new 'repair_measurement' section was ADDED. No registered value was changed:",
-        "arms, search, measurement, analysis and protocol are byte-identical to what",
-        "they were when the registered search and the P8c measurement ran under digest",
-        "cb609c7ff9f0d015c78c96abd084a3c9fc17c42ef5d4e1d17f43721676906fe9. This moves",
-        "the file's hash, which is the mechanism working rather than failing: a reader",
-        "comparing a run's logged prereg.sha256 against this file finds this entry and",
-        "can see exactly what was added."
-      ],
-      "why": [
-        "The one registered search selected candidate 4, whose whole difference from",
-        "candidate 1 is one rewritten GR2L tool description — and that description",
-        "names agent_tool_predict_green_roof_water_balance_tool five times and the",
-        "real callable never, so its routing table points at a tool no toolset",
-        "resolves. The repaired candidate is a legitimate thing to measure and an",
-        "illegitimate thing to report as the optimized arm, so it gets a section of",
-        "its own. It could not have been registered in advance: the defect is a",
-        "property of a candidate that did not exist until the search selected it."
-      ],
-      "before_any_rollout_of_its_own_arm": true,
-      "cost": [
-        "The optimized arm's numbers are unaffected — this adds an arm, it does not",
-        "reinterpret one. What it costs is that this section, unlike everything above",
-        "it, was written after P8c's numbers existed. Its own arm has never been run,",
-        "and its budget was undecided when it was registered, so the arm was defined",
-        "before anyone knew what it would score — but that is a weaker guarantee than",
-        "the one the amendments carry, and it is stated here rather than blurred."
-      ],
-      "not_changed": [
-        "Everything else, and in particular the definition of the optimized arm:",
-        "whatever candidate the one registered search selects. The repaired candidate",
-        "is a third arm and is never reported in its place."
-      ]
     }
   ]
 }

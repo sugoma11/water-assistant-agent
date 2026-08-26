@@ -755,65 +755,6 @@ nondeterminism is reported as unmeasured rather than as zero, and every
 difference above is read without knowing what "small" means on this endpoint.
 That is amendment 1's stated cost, arriving exactly where it was said it would.
 
-## The selected candidate's tool text, and the third arm (T136)
-
-The registered search selected **candidate 4** (run `0fea85d0`, valset 0.82), and
-its entire difference from candidate 1 is **one** rewritten tool description:
-GR2L's, 6804 → 5597 chars. Registered at
-`agent_tool_predict_green_roof_water_balance_tool` v5; the other six components
-are candidate 1's own v5s, byte for byte. That single rewrite carries the
-trajectory move 0.76 → 0.87, which is what makes repairing it delicate rather
-than obvious.
-
-**Three defects, each decidable without a model.**
-
-* **The name.** The text names `agent_tool_predict_green_roof_water_balance_tool`
-  — the *registered prompt* name, which is what `component_name` hands the
-  reflection model — **five times, and the real callable never**. Its routing
-  table therefore points at a tool no toolset resolves. The two sibling tools it
-  names, `text_to_sql_agent` and `get_weather_forecast_tool`, are named
-  *correctly*, and the asymmetry is the tell: those came from the cases'
-  `expected_tool_calls`, and only the tool being rewritten came from
-  `component_name`.
-* **The scope.** It is a root-agent system prompt — `## Role`, "You are an
-  intelligent assistant", a three-tool routing table — legislating for the other
-  tools from inside one tool's declaration.
-* **The duplicated contract.** `## Response Format` restates the root
-  instruction's answer contract, and the two copies **already disagree**: the
-  copy adds a `final_text` key and an `"error"` status the contract does not
-  have. A disagreement between two copies is invisible from either side alone.
-
-**The repair, byte for byte.** 5597 → 3767 chars, committed as three files:
-`eval/repair/gr2l_selected.md` (the winner's text as registered),
-`gr2l_repaired.md` (the repair), and `gr2l.diff` (the unified diff, regenerated
-from the two rather than typed). `harness/repair.py`'s `verify` holds all three
-to each other and to the registry before anything is registered, which is the
-anti-drift check `just candidates-check` runs on the seed. What changed: the
-callable is named correctly; the routing table is recast from *which tool to
-pick* into *when this tool applies*; the role framing, the contract restatement
-and the three worked examples about other tools are deleted. **All four routing
-discriminations survive verbatim** — that content may be what moved the score, so
-a repair that deleted it would discard the gain the arm exists to measure.
-
-**Registered as a third arm, and it is not the optimized one.** §7 defines the
-optimized arm as *whatever candidate the one registered search selects*,
-explicitly not a hand-picked one, so the repair gets its own registration section
-(`repair_measurement`, amendment 4) and its own file,
-`eval/repaired_candidate.json`. Registered at GR2L v6 with the other six
-components unchanged at v5, so the repaired arm differs from the arm it repairs
-in exactly one string. `arm_versions(repaired=True)` is opt-in by name rather
-than implied by the file existing.
-
-**It has no numbers.** Measuring it is three arms over three splits — 281 more
-rollouts than the registered run bought, against \$0.037 left of the \$5 — so it
-needs T134's budget decision. The arm was defined and registered before that
-decision, which is the point: it was fixed before anyone knew what it would
-score.
-*Verified:* `just repair-check` against the live registry — the committed
-selected text is byte-identical to the GR2L prompt's v5, and v6 is
-byte-identical to the committed repair. 13 tests in
-`tests/harness/test_repair.py`. *Date:* 2026-08-26.
-
 ## External endpoints and what they can carry
 
 Measured while sizing P8c's measurement run, and the reason the run is routed the

@@ -67,7 +67,7 @@ Three rules make a packet fit:
 | **P8a** candidate surface, `predict_fn` | T120, T121, T125 | arch §6, §2's optimizable-text bullet; `decisions.md § The optimizer entry point and the candidate surface`; `findings.md § Optimizer internals` | two records with different `as_of` evaluated concurrently *through* `predict_fn`; the unread-prompt assertion fires when a component is unread |
 | **P8b** scorers, search wiring | T122–T124, T126 | arch §7; `decisions.md § Candidate selection and the scorers' aggregation` | a short search over a handful of train cases completes; the skip semantics run through this repo's own aggregation callable, asserted to be passed — omitting it silently makes the objective the mean of the numeric scorer values |
 | **P8c** measurement run, statistics | T127–T129 | arch §7's reporting rules; `decisions.md § Replication and the LLM cache`; `specs/prompt-tuning-stats/plan.md` §5–§7 | three repeats × two arms; the bootstrap resamples `template_id`; both gaps separate; test_unseen as a win/loss table |
-| **P9** what the first run exposed | T131–T137 | `findings.md § The measurement run (P8c)` and the three entries above it | the spike says what reaches the reflection model, measured rather than read; the repeat settles whether the arms were comparable; the tool text the search wrote names a tool that exists |
+| **P9** what the first run exposed | T131–T137 | `findings.md § The measurement run (P8c)` and the three entries above it | the spike says what reaches the reflection model, measured rather than read; every tool's own text says it is a tool, and the proposer is told so too; the rerun starts from a seed no candidate can mistake for a system prompt |
 
 **Sequencing that the table does not show.**
 
@@ -4328,10 +4328,11 @@ without it. T135 is the only one that can proceed in parallel.
 **Two more came out of running it.** T131's capture and the registered search's
 own artifacts turned T133's example into a mechanism: the proposer is shown
 rollout-level evidence whatever component it is editing, so it writes agent-level
-fixes into a tool's declaration, and the winning candidate carries one. T136
-repairs that text and T137 constrains the proposer that wrote it — the shipped
-candidate and the next search being two different problems, and only the second
-one preventable.
+fixes into a tool's declaration, and the winning candidate carries one. Nothing
+here repairs that candidate — it is discarded with the rest of the first run, and
+the experiments are rerun from scratch. T136 and T137 are what changes first:
+T136 makes each tool's text say it is a tool, T137 asks the proposer to revise
+rather than replace and catches it when it does not.
 
 - [x] T131 **Spike — capture what actually reaches GEPA, and change nothing.**
   Intercept `MlflowGEPAAdapter.make_reflective_dataset`'s return value and the
@@ -4437,65 +4438,81 @@ one preventable.
   and logged; the P8c run survived only because the budget lasted to the last
   condition. Write incrementally, or write per condition. Independent of the
   other four. → T128
-- [x] T136 **Repair the selected candidate's tool text surgically, and register
-  it as the different candidate it is.** The registered search's winner
-  (candidate 4 of run `0fea85d0`, valset 0.82) is candidate 1 plus **one**
-  rewritten tool description: GR2L's, 6804 → 5597 chars, turned into a
-  root-agent system prompt with a `## Role` section, a three-tool routing table
-  and a `## Response Format` restating the answer contract. Three defects, each
-  a byte-level fix. It names `agent_tool_predict_green_roof_water_balance_tool`
-  **five times and the real callable never**, so its routing table points at a
-  tool no toolset resolves — while the two other tools it names are named
-  correctly, having come from the cases' `expected_tool_calls` rather than from
-  `component_name`. It legislates for *other* tools inside one tool's
-  declaration. And it restates the root instruction's contract, where a
-  disagreement between the two copies would be invisible.
-  **Surgical means measured, not tidied.** That rewrite is the whole difference
-  between candidate 1 and the winner, and it moved trajectory 0.76 → 0.87, so
-  the routing content may be what is doing the work and a repair that deletes it
-  discards the gain. Fix the name, scope the text to the tool it declares, drop
-  what the root instruction already says — and commit the diff, byte for byte,
-  beside the candidate.
-  **It cannot be reported as the optimized arm.** §7's registration defines
-  that arm as *whatever candidate the one registered search selects*, explicitly
-  not a hand-picked one, so a repaired candidate is a **third arm** with its own
-  registration line and its own measured numbers, or it is nothing at all. It
-  needs T134's budget decision for the same reason. → T131, T134
-  **Repaired 5597 → 3767 chars and registered at GR2L v6**, with the other six
-  components left at the optimized arm's own v5 — so the repaired arm differs
-  from the arm it repairs in exactly one string, and the registry proves it:
-  registering the six byte-identical texts minted no version.
-  **All three defects gone, each checked without a model.** The callable is
-  named correctly and `agent_tool_predict_green_roof_water_balance_tool` appears
-  nowhere; the routing table is recast from *which tool to pick* into *when this
-  tool applies*; `## Response Format` is deleted, and it was not merely
-  redundant — its copy of the contract added a `final_text` key and an
-  `"error"` status the root instruction does not have.
-  **The gain is not discarded.** All four routing discriminations survive
-  verbatim and both sibling tools are still named, since that rewrite is the
-  whole difference between candidate 1 and the winner and carries the
-  trajectory move 0.76 → 0.87. What was deleted is the role framing, the
-  contract restatement and the three worked examples about other tools.
-  **Three committed files, and the diff is generated rather than typed.**
-  `eval/repair/gr2l_selected.md` is the winner's text byte for byte as
-  registered, `gr2l_repaired.md` is the repair, `gr2l.diff` is the unified diff
-  between them; `harness/repair.py`'s `verify` holds all three to each other and
-  to the registry, and `just repair-check` passes against the live one.
-  **Registered as a third arm and never as the optimized one.** Its own
-  `repair_measurement` section, its own `eval/repaired_candidate.json`, and
-  `arm_versions(repaired=True)` opt-in by name rather than implied by the file
-  existing. The registration entry is filed under a new **`additions`** list
-  rather than under `amendments`: every amendment is made before any test
-  rollout, and this section could not be — filing it as one would have
-  mislabelled it or given up that rule for all three entries above it.
-  **It has no numbers, by design.** Three arms over three splits is 281 more
-  rollouts against \$0.037 left, so measuring it is T134's budget decision; the
-  arm was defined and registered before it, which is the point.
-  Written up in `findings.md § The selected candidate's tool text, and the third
-  arm (T136)`. Verified by 13 tests in `tests/harness/test_repair.py`, plus one
-  in `test_preregistration.py` holding an addition to the weaker claim it can
-  make. `uv run ruff check .` and `uv run pytest` clean — 1353 passed, same 22
-  pre-existing findings, none in the testbed.
+- [x] T136 **Say in each tool's own text that it is a tool.** The registered
+  search's winner (candidate 4 of run `0fea85d0`) is candidate 1 plus **one**
+  rewritten tool description: GR2L's, turned into a root-agent system prompt
+  with a `## Role` section, a three-tool routing table naming
+  `agent_tool_predict_green_roof_water_balance_tool` — a callable no toolset
+  resolves — and a `## Response Format` restating the root instruction's answer
+  contract. Nothing told the proposer what it was holding: GEPA's default
+  metaprompt calls every component "instructions for an assistant", and
+  `<curr_param>` is prose with nothing in it that says otherwise.
+  **So put it in the text.** One short sentence in each of the six tool texts,
+  saying that this text is the declaration of a tool the assistant may call and
+  naming the callable it declares. It is the seed-side half of T133: whatever
+  the per-component template tells the proposer, the text being edited says the
+  same thing about itself, and — the proposer being asked to revise rather than
+  replace (T137) — it carries into every candidate derived from it.
+  **Six places, one of them not a docstring.** The five function tools'
+  docstrings — `predict_green_roof_water_balance_tool`
+  (`tools/gr2l.py:500`), `calc_irrigation` (`tools/irrigation.py:189`),
+  `plot_timeseries` (`tools/plot.py:1048`), `lookup_reference`
+  (`tools/reference.py:156`), `get_weather_forecast_tool`
+  (`tools/weather.py:80`) — plus `AGENT_DESCRIPTION`
+  (`agents/text_to_sql/agent.py:64`), which is the sixth tool's declared text
+  because `AgentTool` presents a `description` where the others present a
+  `__doc__`. The root instruction is not a tool and is not touched. The sentence
+  names the **real** callable, from `TOOL_NAMES` — not the registry's
+  `agent_tool_` prefix, which is what `component_name` leaks and what the search
+  kept writing (T133). Keep each docstring's one-line summary as line 1 and put
+  the sentence under it, so the declaration carries it early.
+  **It is not free, and it is not measured against anything.** That text reaches
+  the task model on every rollout of every arm, so it moves the baseline exactly
+  as much as it moves the search's seed — which is why it lands *before* the
+  fresh run and not between two arms of one.
+  **No repair, no re-registration, no third arm.** An earlier draft of this task
+  repaired the winner's GR2L text and registered it as a third arm; that is
+  dropped. The P8c candidates are not repaired, not re-registered and not
+  reported — the experiments are rerun from scratch once this, T132, T133 and
+  T137 have landed, and the old runs stand only as evidence about the apparatus.
+  **What moves with the docstrings**, since they *are* the seed
+  (`harness/candidates.py`'s `baseline_texts` reads them off freshly built
+  tools): `just pins-write` re-pins six `candidate_prompts` hashes;
+  `just candidates` mints v2 for those six components and leaves the root
+  instruction at v1 — unchanged text mints no version — and
+  `candidate_prompt_versions` re-pins with it. Independent of T131. → T134
+  **One sentence, the same one six times.** *This text is the declaration of*
+  `` `<callable>` ``*, one of the tools the assistant may call* — identical in
+  every one of the six apart from the name, placed under the one-line summary as
+  its own paragraph. Identical wording is the point: the six texts differ in
+  what they say about themselves only where they differ as tools, so a candidate
+  that reframes one of them is legible against the five it no longer resembles.
+  Every name is read back from a built toolset and checked against `TOOL_NAMES`,
+  so no text names the `agent_tool_` prefix. The root instruction is untouched.
+  **605 characters over six components**, on every rollout of every arm: 117 on
+  GR2L (6804 → 6921 chars), 105 on weather, 97 on the sub-agent description
+  (120 → 217 — the only one where the sentence is most of the text), 96 on
+  `lookup_reference`, 95 each on `calc_irrigation` and `plot_timeseries`.
+  **The six hashes moved and the seventh did not**, which is the check that the
+  edit went where it was aimed: `just pins-write` rewrote exactly the six
+  `candidate_prompts` entries and left `root_instruction`'s alone.
+  **The version pin did not move, and the prediction above is wrong about why.**
+  It assumed a registry holding the seed at v1. The registry this repo points at
+  holds P8c's search history: v2–v5 are search-written candidates, so
+  `just candidates` minted **v6 for all seven and v7 for GR2L** — including the
+  root instruction, whose text this task never touched, because its v5 is a
+  6683-char candidate rather than the seed and only the *latest* version is
+  compared. Its new v6 is byte-identical to v4, the previous seed registration.
+  Those numbers are one machine's registry history rather than a property of the
+  seed, and pinning them breaks the eight tests that call `run_search()` without
+  `versions=` and resolve the pin against a throwaway registry that has only v1.
+  So `candidate_prompt_versions` stays at v1 and is re-pinned by whoever
+  registers the seed against the registry the fresh run uses; until then
+  `just candidates-check` fails there, holding v1's pre-T136 text against the new
+  hashes. What a rerun needs from this is the general fact, not the numbers:
+  **re-registering the seed after a search minus its candidates is not a no-op.**
+  *Verified:* `uv run ruff check` clean on the touched packages (the two
+  `src/experiments/text2sql/` F401s are pre-existing), 1339 passed.
 - [ ] T137 **Make the proposer revise the text rather than replace it, and catch
   it when it does not.** T133 tells the proposer *what kind* of component it is
   rewriting; this is the other half — *how much* of it to change, and what
@@ -4548,7 +4565,7 @@ packets** — one session each, mapped above.
 | P6 harness and pilot | 8 | — | 4 | **T107 freezes the testbed** |
 | P7 oracles and generation | 7 | — | 5 | T115, pulled forward to P2b, gates capture |
 | P8 optimizer | 10 | — | 3 | — |
-| P9 what the first run exposed | 7 | 2 | 1 | T131 blocks T132–T134; T133 blocks T137 |
+| P9 what the first run exposed | 7 | 2 | 1 | T131 blocks T132–T134; T133 blocks T137; T136 lands before T134's rerun |
 | final | 1 | — | — | — |
 
 **Parallel opportunities.** P0's documentation edits (T001–T005, T008) touch six

@@ -79,6 +79,9 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
     ) -> dict[str, Any]:
         """Fetch daily weather (past and/or forecast) for the research facility.
 
+        This text is the declaration of ``get_weather_forecast_tool``, one of the
+        tools the assistant may call.
+
         Returns the daily mean/max/min temperature, relative humidity, precipitation,
         wind speed, and global radiation for each day. The location is the facility
         itself and is fixed, so only the date window has to be given. Use it on its

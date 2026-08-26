@@ -499,6 +499,9 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
     ) -> dict[str, Any]:
         """Predict a green roof's daily water balance (moisture, runoff, ET) over a period.
 
+        This text is the declaration of ``predict_green_roof_water_balance_tool``,
+        one of the tools the assistant may call.
+
         **Fetches its own weather and its own starting soil moisture** for the given
         date window — do not call the weather tool first, do not query the database
         for the roof's current moisture, and do not pass either in. It then runs the

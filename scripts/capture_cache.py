@@ -38,10 +38,12 @@ consistency rather than harness health. T107's pilot found this, and
 ``scripts/prewarm_pilot_cache.py`` was the pilot-sized answer to it — retired
 here, because this pass does the same job over the whole suite. So each
 day-count case is also answered at
-d ± 1. The neighbours are warmed **through the oracle itself**, by moving the
-parameter and letting the oracle resolve the window, rather than by restating
+d ± 1, 2, 3. The neighbours are warmed **through the oracle itself**, by moving
+the parameter and letting the oracle resolve the window, rather than by restating
 each family's horizon rule in a second place where it could come to mean
-something else.
+something else. The width was ±1 until T134: P8c lost more than half the holdout
+to misses outside it, so the widening is registered with that run rather than
+tuned quietly (:data:`NEIGHBOURHOOD`).
 
 Run::
 
@@ -99,14 +101,23 @@ in the suite either selects a roof, names a completed period, or states a
 quantity that does not move the window.
 """
 
-NEIGHBOURHOOD: tuple[int, ...] = (-1, 1)
+NEIGHBOURHOOD: tuple[int, ...] = (-3, -2, -1, 1, 2, 3)
 """How far either side of the case's own horizon to warm, beyond the case itself.
 
-±1 day is what the pilot actually observed a candidate do — reading "the next d
-days" as reaching d days *past* today rather than d days *including* it. It is
-not a claim that no candidate asks for anything else; a miss is still possible
-and still excludes, which is why §7 publishes the exclusion count per arm rather
-than assuming this pass drove it to zero.
+**±1 was sized on the pilot and the measurement run said it was too narrow.**
+The pilot observed one candidate read "the next d days" as reaching d days *past*
+today rather than d days *including* it, which is a ±1 error, and ±1 is what T116
+warmed. P8c then lost **30 of 56 test_unseen cases in one arm and 28 in the
+other** to replay misses, almost all ``upstream``, and two of that split's seven
+templates were measured in neither arm — the holdout's population, not a rounding
+error. ±3 is the widening T134 registers: still the same mechanism, still warmed
+through each family's own horizon rule, and it costs recording time rather than
+model spend.
+
+It is still not a claim that no candidate asks for anything else. A miss remains
+possible and still excludes, which is why §7 publishes the exclusion count per
+arm rather than assuming this pass drove it to zero — and why the count is read
+against the *other* arm's rather than against zero.
 """
 
 

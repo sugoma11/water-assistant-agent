@@ -32,7 +32,14 @@ from harness.run_case import (
     run_case,
     scan_for_exclusions,
 )
-from tests.harness.conftest import Call, Say, results_seen, scripted, text_seen
+from tests.harness.conftest import (
+    Call,
+    Say,
+    Think,
+    results_seen,
+    scripted,
+    text_seen,
+)
 
 AS_OF = "2025-08-14T08:00:00+02:00"
 
@@ -213,6 +220,30 @@ def test_spending_the_step_cap_is_scored_not_excluded(tmp_path: Path) -> None:
     assert result.harness_error is False
     assert result.final_text == ""
     assert 0 < result.diagnostics["steps"] <= 7
+
+
+def test_a_reasoning_models_scratchpad_is_not_its_final_message(tmp_path: Path) -> None:
+    """The thought part is dropped; the reply beside it is the whole final text (T134).
+
+    Not cosmetic. ``parse_contract`` would mostly survive a prepended trace — it
+    scans backwards for the last embedded object — so the failure this guards
+    against is quiet: the scored ``explanation`` and the recorded final message
+    would be a chain of thought that is not stable at temperature 0, and the
+    numbers would be read as if a candidate had written it.
+    """
+    thought = 'The user wants the retention target. I should answer {"status": "guess"}.'
+    model = scripted(
+        Call("lookup_reference", {"topic": "retention_target"}),
+        Think(thought, CONTRACT),
+    )
+
+    result = run(model, tmp_path)
+
+    assert result.final_text == CONTRACT
+    assert thought not in result.final_text
+    assert result.diagnostics["parse_failure"] is False
+    assert result.status == "answered"
+    assert result.answer == 50.0
 
 
 def _response_event(name: str, payload: object) -> Event:

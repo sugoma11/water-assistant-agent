@@ -434,6 +434,20 @@ def _final_text(root_events: Iterable[Event]) -> str:
     ``""`` is what a step-cap exhaustion leaves behind, and
     :func:`~harness.contract.parse_contract` reads it as a parse failure — which
     is the honest classification: the candidate delivered no contract.
+
+    **A reasoning model's scratchpad is not its answer** (T134). ADK marks a
+    reasoning part ``thought=True`` and leaves the reply beside it as an ordinary
+    text part, so joining every part prepends the chain of thought to the message
+    the contract is read from. The parser survives that — it scans backwards for
+    the last embedded object — but what it survives is a message no candidate
+    wrote, and the scored ``explanation`` would be a trace that is not stable at
+    temperature 0. Thought parts are dropped for the same reason
+    ``harness/reflection.py`` keeps them out of the reflection canary.
+
+    It is a no-op on a model that emits none, which is every model measured
+    before T134: gemma-4-31b-it produced no thought part, so this changes nothing
+    about the P8c run's numbers and only decides what a reasoning model's final
+    message is.
     """
     for event in reversed(list(root_events)):
         if event.partial or event.get_function_calls() or event.get_function_responses():
@@ -441,7 +455,7 @@ def _final_text(root_events: Iterable[Event]) -> str:
         content = event.content
         if content is None or not content.parts:
             continue
-        text = "".join(part.text or "" for part in content.parts)
+        text = "".join(part.text or "" for part in content.parts if not part.thought)
         if text.strip():
             return text
     return ""

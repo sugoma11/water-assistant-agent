@@ -286,9 +286,9 @@ def test_a_search_records_its_own_deviations(
     from harness.candidates import baseline_texts, register_candidates
     from harness.ledger import EXPERIMENT
 
-    register_candidates(baseline_texts())
+    versions = register_candidates(baseline_texts())
 
-    run_search(limit=2, max_metric_calls=4, cases_dir=cases_dir)
+    run_search(limit=2, max_metric_calls=4, versions=versions, cases_dir=cases_dir)
 
     experiment = mlflow.get_experiment_by_name(EXPERIMENT)
     (run,) = mlflow.search_runs(

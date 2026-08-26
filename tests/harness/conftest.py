@@ -57,6 +57,15 @@ def registry(tmp_path: Path) -> Iterator[str]:
     root for a SQLite tracking uri is ``./mlruns`` in the working directory — so
     the testbed's experiment is created here with an artifact location inside
     ``tmp_path``, and a test run leaves nothing in the repository.
+
+    **A test that stands up this registry passes its versions in** (T134). A
+    ``run_search`` without ``versions=`` resolves ``eval/pins.json``'s
+    ``candidate_prompt_versions``, which is a fact about the *repository's*
+    registry — v6 and v7 once a search has minted candidates against it — and
+    nothing here has ever registered that many. The pin is not wrong and neither
+    is the fallback; they simply belong to different registries, and a test that
+    registered its own seed should search at the versions it got back. That is
+    also the more honest assertion: it says which text the rollout read.
     """
     previous_registry = mlflow.get_registry_uri()
     previous_tracking = mlflow.get_tracking_uri()
@@ -90,11 +99,26 @@ class Say:
     text: str
 
 
+@dataclass(frozen=True)
+class Think:
+    """A reasoning model's answering turn: a thought part, then the reply beside it.
+
+    The shape ADK returns for a model that reasons — one ``Content`` whose first
+    part carries ``thought=True`` and whose second is the reply
+    (observed on ``deepseek-v4-flash-0731`` through OpenRouter, T134). Scripted
+    rather than probed live, because what is under test is which parts the
+    harness reads, not that a provider sets the flag.
+    """
+
+    thought: str
+    text: str
+
+
 class ScriptedLlm(BaseLlm):
     """Plays a fixed list of turns, recording the requests it was given."""
 
     model: str = "scripted"
-    script: Sequence[Call | Say] = ()
+    script: Sequence[Call | Say | Think] = ()
     requests: list[LlmRequest] = []
     turn: int = 0
 
@@ -109,16 +133,23 @@ class ScriptedLlm(BaseLlm):
             )
         turn = self.script[self.turn]
         self.turn += 1
-        if isinstance(turn, Say):
-            part = types.Part(text=turn.text)
+        if isinstance(turn, Think):
+            parts = [
+                types.Part(text=turn.thought, thought=True),
+                types.Part(text=turn.text),
+            ]
+        elif isinstance(turn, Say):
+            parts = [types.Part(text=turn.text)]
         else:
-            part = types.Part(
-                function_call=types.FunctionCall(name=turn.name, args=dict(turn.args))
-            )
-        yield LlmResponse(content=types.Content(role="model", parts=[part]))
+            parts = [
+                types.Part(
+                    function_call=types.FunctionCall(name=turn.name, args=dict(turn.args))
+                )
+            ]
+        yield LlmResponse(content=types.Content(role="model", parts=parts))
 
 
-def scripted(*turns: Call | Say) -> ScriptedLlm:
+def scripted(*turns: Call | Say | Think) -> ScriptedLlm:
     """A fresh :class:`ScriptedLlm` over *turns* — never shared between rollouts."""
     return ScriptedLlm(script=list(turns), requests=[], turn=0)
 

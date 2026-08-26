@@ -311,9 +311,9 @@ def test_every_rollout_of_a_search_is_ledgered(
     the claim is that a *search* keeps this ledger — an argument dropped in the
     wiring would leave both the seam and its test looking right.
     """
-    register_candidates(baseline_texts())
+    versions = register_candidates(baseline_texts())
 
-    search = run_search(limit=3, max_metric_calls=4, cases_dir=cases_dir)
+    search = run_search(limit=3, max_metric_calls=4, versions=versions, cases_dir=cases_dir)
 
     rows = search.ledger.rows
     assert len(rows) == 3

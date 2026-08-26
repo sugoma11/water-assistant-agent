@@ -85,9 +85,9 @@ def test_the_entry_point_is_handed_this_repos_aggregation(
     source, because "we pass it" is the claim and an argument dropped in a
     refactor would leave the source looking right.
     """
-    register_candidates(baseline_texts())
+    versions = register_candidates(baseline_texts())
 
-    run_search(limit=2, max_metric_calls=4, cases_dir=cases_dir)
+    run_search(limit=2, max_metric_calls=4, versions=versions, cases_dir=cases_dir)
 
     assert entry_point.kwargs["aggregation"] is aggregate_scores
     assert [scorer.name for scorer in entry_point.kwargs["scorers"]] == list(METRICS)
@@ -160,9 +160,9 @@ def test_the_search_runs_in_record_mode(
     what lets the pre-filter answer only for the oracle's windows. The
     measurement run's default is the opposite and must stay so.
     """
-    register_candidates(baseline_texts())
+    versions = register_candidates(baseline_texts())
 
-    run_search(limit=1, max_metric_calls=4, cases_dir=cases_dir)
+    run_search(limit=1, max_metric_calls=4, versions=versions, cases_dir=cases_dir)
 
     (rollout,) = scripted_rollouts
     assert rollout["allow_live"] is True
@@ -208,9 +208,9 @@ def test_the_records_are_the_pre_filtered_ones(
     cases_dir: Path,
 ) -> None:
     """``train_data`` is what replayed, in §6.1's envelope, and never the raw file."""
-    register_candidates(baseline_texts())
+    versions = register_candidates(baseline_texts())
 
-    search = run_search(limit=3, max_metric_calls=4, cases_dir=cases_dir)
+    search = run_search(limit=3, max_metric_calls=4, versions=versions, cases_dir=cases_dir)
 
     records = entry_point.kwargs["train_data"]
     assert len(records) == search.records == 3
@@ -224,10 +224,10 @@ def test_the_reflection_model_is_bound_for_the_duration(
     cases_dir: Path,
 ) -> None:
     """GEPA is handed the pinned uri, and the binding is gone once the search ends."""
-    register_candidates(baseline_texts())
+    versions = register_candidates(baseline_texts())
     original = litellm.completion
 
-    search = run_search(limit=1, max_metric_calls=4, cases_dir=cases_dir)
+    search = run_search(limit=1, max_metric_calls=4, versions=versions, cases_dir=cases_dir)
 
     assert search.reflection_model == (
         get_settings().reflection_model.replace("/", ":/", 1)
@@ -245,9 +245,9 @@ def test_the_optimizer_is_gepa_with_the_budget_it_was_given(
     """No adapter is written; the budget is pre-registered and passed straight through."""
     from mlflow.genai.optimize.optimizers import GepaPromptOptimizer
 
-    register_candidates(baseline_texts())
+    versions = register_candidates(baseline_texts())
 
-    run_search(limit=1, max_metric_calls=7, cases_dir=cases_dir)
+    run_search(limit=1, max_metric_calls=7, versions=versions, cases_dir=cases_dir)
 
     optimizer = entry_point.kwargs["optimizer"]
     assert isinstance(optimizer, GepaPromptOptimizer)
@@ -277,9 +277,9 @@ def test_the_proposer_is_told_which_kind_of_component_it_is_rewriting(
     """
     from harness.metaprompt import reflection_prompt_templates
 
-    register_candidates(baseline_texts())
+    versions = register_candidates(baseline_texts())
 
-    run_search(limit=1, max_metric_calls=4, cases_dir=cases_dir)
+    run_search(limit=1, max_metric_calls=4, versions=versions, cases_dir=cases_dir)
 
     templates = entry_point.kwargs["optimizer"].gepa_kwargs[
         "reflection_prompt_template"
@@ -300,9 +300,11 @@ def test_a_clean_search_reports_zero_residuals_and_zero_new_entries(
     cases_dir: Path,
 ) -> None:
     """Zero is reported rather than omitted — that is what counting is for."""
-    register_candidates(baseline_texts())
+    versions = register_candidates(baseline_texts())
 
-    search = run_search(limit=2, max_metric_calls=4, arm="smoke", cases_dir=cases_dir)
+    search = run_search(
+        limit=2, max_metric_calls=4, arm="smoke", versions=versions, cases_dir=cases_dir
+    )
 
     assert search.residuals.arm == "smoke"
     assert search.residuals.residual_cases == 0

@@ -1,0 +1,46 @@
+{
+  "request": {
+    "params": {
+      "daily": "temperature_2m_mean,temperature_2m_max,temperature_2m_min,relative_humidity_2m_mean,precipitation_sum,wind_speed_10m_mean,shortwave_radiation_sum",
+      "end_date": "2025-08-10",
+      "latitude": 51.353484,
+      "longitude": 12.432152,
+      "start_date": "2025-08-09",
+      "timezone": "auto",
+      "wind_speed_unit": "kmh"
+    },
+    "url": "https://archive-api.open-meteo.com/v1/archive"
+  },
+  "response": {
+    "data": [
+      {
+        "Date": "2025-08-09",
+        "gs": 2123.0,
+        "precip": 0.0,
+        "rf": 62.0,
+        "tm": 22.6,
+        "tn": 15.8,
+        "tx": 29.4,
+        "w": 5.9
+      },
+      {
+        "Date": "2025-08-10",
+        "gs": 2427.0,
+        "precip": 0.0,
+        "rf": 56.0,
+        "tm": 20.8,
+        "tn": 17.4,
+        "tx": 25.1,
+        "w": 11.5
+      }
+    ],
+    "latitude": 51.35325,
+    "longitude": 12.509026,
+    "source": "archive",
+    "status": "success",
+    "summary": null,
+    "timezone": "Europe/Berlin",
+    "truncated": false,
+    "weekly": null
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "request": {
+    "params": {
+      "daily": "temperature_2m_mean,temperature_2m_max,temperature_2m_min,relative_humidity_2m_mean,precipitation_sum,wind_speed_10m_mean,shortwave_radiation_sum",
+      "end_date": "2025-07-28",
+      "latitude": 51.353484,
+      "longitude": 12.432152,
+      "start_date": "2025-07-23",
+      "timezone": "auto",
+      "wind_speed_unit": "kmh"
+    },
+    "url": "https://archive-api.open-meteo.com/v1/archive"
+  },
+  "response": {
+    "data": [
+      {
+        "Date": "2025-07-23",
+        "gs": 2269.0,
+        "precip": 0.6,
+        "rf": 70.0,
+        "tm": 19.8,
+        "tn": 16.6,
+        "tx": 23.6,
+        "w": 16.9
+      },
+      {
+        "Date": "2025-07-24",
+        "gs": 2023.9999999999998,
+        "precip": 0.9,
+        "rf": 75.0,
+        "tm": 19.5,
+        "tn": 15.6,
+        "tx": 23.7,
+        "w": 6.2
+      },
+      {
+        "Date": "2025-07-25",
+        "gs": 2362.0,
+        "precip": 0.5,
+        "rf": 77.0,
+        "tm": 20.6,
+        "tn": 16.6,
+        "tx": 24.4,
+        "w": 7.5
+      },
+      {
+        "Date": "2025-07-26",
+        "gs": 1355.0,
+        "precip": 0.6,
+        "rf": 80.0,
+        "tm": 18.7,
+        "tn": 16.8,
+        "tx": 20.6,
+        "w": 8.0
+      },
+      {
+        "Date": "2025-07-27",
+        "gs": 2220.0,
+        "precip": 0.6,
+        "rf": 75.0,
+        "tm": 19.4,
+        "tn": 15.5,
+        "tx": 24.1,
+        "w": 6.4
+      },
+      {
+        "Date": "2025-07-28",
+        "gs": 1149.0,
+        "precip": 9.2,
+        "rf": 84.0,
+        "tm": 17.3,
+        "tn": 15.5,
+        "tx": 21.4,
+        "w": 15.2
+      }
+    ],
+    "latitude": 51.35325,
+    "longitude": 12.509026,
+    "source": "archive",
+    "status": "success",
+    "summary": null,
+    "timezone": "Europe/Berlin",
+    "truncated": false,
+    "weekly": null
+  }
+}

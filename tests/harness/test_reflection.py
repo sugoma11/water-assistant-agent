@@ -96,16 +96,44 @@ def gepa_would_send(uri: str) -> str:
 # ── Two models, and the pin file says so ─────────────────────────────────────
 
 
-def test_the_reflection_model_is_a_second_distinct_model() -> None:
-    """The pin records two model ids and they are not the same one.
+def test_the_reflection_model_is_pinned_as_its_own_slot() -> None:
+    """Two pins, filled from two settings — whatever ids they happen to hold.
 
-    The whole content of "a second, distinct model": a reflection model equal to
-    the task model would make the search a model reflecting on itself, and the
-    thesis could not say which of the two a result belonged to.
+    **This asserted the two ids differ until T134 and no longer does.** That run
+    registers one served model in both roles, so the assertion would now fail
+    against a configuration that was chosen deliberately and written down in
+    ``eval/preregistration.json``. Deleting it outright would give up the part
+    that is still structural, so what is left is the part a run cannot make
+    false: reflection and task are **separate pinned slots**, filled from
+    separate settings, so a search that swaps one records the swap rather than
+    inheriting the other's record. Whether the two ids are equal is a decision
+    per run, and the registration is where that decision belongs.
+
+    The design claim §5 makes — a reflection model distinct from the model under
+    test, so the thesis can say which of the two a result belongs to — is
+    unchanged and is now a registered *deviation* rather than an invariant.
+    :func:`test_the_two_pins_are_filled_from_two_settings` is the half that
+    still holds mechanically.
     """
-    assert PINS["reflection_model"]["model_id"] != PINS["task_model"]["model_id"]
+    assert set(PINS["reflection_model"]) == set(PINS["task_model"])
     assert reflection_model_pin(settings())["model_id"] == REFLECTION
     assert task_model_pin(settings())["model_id"] == TASK
+
+
+def test_the_two_pins_are_filled_from_two_settings() -> None:
+    """Moving the reflection model moves its pin alone, and the task pin alone.
+
+    What "a second, distinct model" reduces to once the ids are allowed to be
+    equal: the two slots cannot be wired to one setting, so a run that does point
+    them at one model is recording a choice rather than losing a record.
+    """
+    both = settings(reflection_model=TASK)
+    assert reflection_model_pin(both)["model_id"] == TASK
+    assert task_model_pin(both)["model_id"] == TASK
+
+    moved = settings(reflection_model="openai/a-third-model")
+    assert reflection_model_pin(moved)["model_id"] == "openai/a-third-model"
+    assert task_model_pin(moved)["model_id"] == TASK
 
 
 def test_the_pin_records_the_endpoint_and_the_decoding_it_binds() -> None:

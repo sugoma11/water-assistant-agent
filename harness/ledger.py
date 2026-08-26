@@ -468,13 +468,33 @@ def probe_task_canary(settings: AssistantSettings | None = None) -> tuple[str, s
     the two pins answer different questions for no gain, and this one asks for
     exact compliance, which is the first thing a swap disturbs.
 
+    **Thought parts are excluded, or the pin flaps** (T134). Against a reasoning
+    model ADK returns the chain of thought as a part marked ``thought=True``
+    beside the reply; two probes of deepseek-v4-flash-0731 at temperature 0
+    returned the same three words behind two different traces. A canary hashing
+    the join would therefore report MOVED on every capture — and a pin that
+    always fires is a pin that detects nothing, which matters here more than
+    anywhere because ``just pins-task`` runs immediately before a measurement
+    for the sole purpose of catching a swap between the arms. This is the same
+    exclusion ``harness/reflection.py`` already makes and for the same stated
+    reason, arriving late only because no model measured before T134 emitted a
+    thought part. It is what a rollout reads, too
+    (``harness/run_case.py``'s ``_final_text``).
+
+    **What it costs.** A swap that changed only the reasoning and left the reply
+    identical goes undetected. That is accepted: the reply is what a rollout is
+    scored on, and a canary sensitive to an unstable trace cannot be told apart
+    from one detecting a swap.
+
     Returns:
         ``(content, served_model_id, sha256)`` — the reply, what the endpoint said
         it served, and the pin value.
 
     Raises:
         RuntimeError: the reply carried no text at all. Not a canary that moved: a
-            canary that cannot be taken.
+            canary that cannot be taken — including a reasoning model whose whole
+            reply lands in its thought parts, which would leave a rollout with an
+            empty final message and a parse failure per case.
     """
     import asyncio
 
@@ -499,7 +519,11 @@ def probe_task_canary(settings: AssistantSettings | None = None) -> tuple[str, s
         async for response in model.generate_content_async(request):
             if response.partial or response.content is None:
                 continue
-            parts.extend(part.text or "" for part in response.content.parts or ())
+            parts.extend(
+                part.text or ""
+                for part in response.content.parts or ()
+                if not part.thought
+            )
         return "".join(parts)
 
     content = asyncio.run(ask())

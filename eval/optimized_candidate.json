@@ -1,19 +1,19 @@
 {
-  "max_metric_calls": 32,
-  "records": 30,
+  "max_metric_calls": 500,
+  "records": 100,
   "reflection_model": "openrouter:/deepseek/deepseek-v4-flash-0731",
   "selection_score": [
-    0.6474074074074074,
-    0.8274074074074075
+    0.6924444444444445,
+    0.7733333333333333
   ],
   "split": "train",
   "versions": {
-    "calc_irrigation": 13,
-    "get_weather_forecast_tool": 13,
-    "lookup_reference": 13,
-    "plot_timeseries": 13,
-    "predict_green_roof_water_balance_tool": 14,
-    "root_instruction": 13,
-    "text_to_sql_agent": 13
+    "calc_irrigation": 14,
+    "get_weather_forecast_tool": 14,
+    "lookup_reference": 14,
+    "plot_timeseries": 14,
+    "predict_green_roof_water_balance_tool": 15,
+    "root_instruction": 14,
+    "text_to_sql_agent": 14
   }
 }

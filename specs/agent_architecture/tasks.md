@@ -67,7 +67,7 @@ Three rules make a packet fit:
 | **P8a** candidate surface, `predict_fn` | T120, T121, T125 | arch §6, §2's optimizable-text bullet; `decisions.md § The optimizer entry point and the candidate surface`; `findings.md § Optimizer internals` | two records with different `as_of` evaluated concurrently *through* `predict_fn`; the unread-prompt assertion fires when a component is unread |
 | **P8b** scorers, search wiring | T122–T124, T126 | arch §7; `decisions.md § Candidate selection and the scorers' aggregation` | a short search over a handful of train cases completes; the skip semantics run through this repo's own aggregation callable, asserted to be passed — omitting it silently makes the objective the mean of the numeric scorer values |
 | **P8c** measurement run, statistics | T127–T129 | arch §7's reporting rules; `decisions.md § Replication and the LLM cache`; `specs/prompt-tuning-stats/plan.md` §5–§7 | three repeats × two arms; the bootstrap resamples `template_id`; both gaps separate; test_unseen as a win/loss table |
-| **P9** what the first run exposed | T131–T139 | `findings.md § The measurement run (P8c)` and the three entries above it | the spike says what reaches the reflection model, measured rather than read; every tool's own text says it is a tool, and the proposer is told so too; the rerun starts from a seed no candidate can mistake for a system prompt, and — T134 having found nothing on top of a hand-written one — a second run starts from a seed with room in it |
+| **P9** what the first run exposed | T131–T140 | `findings.md § The measurement run (P8c)` and the three entries above it | the spike says what reaches the reflection model, measured rather than read; every tool's own text says it is a tool, and the proposer is told so too; the rerun starts from a seed no candidate can mistake for a system prompt, and — T134 having found nothing on top of a hand-written one — a second run starts from a seed with room in it |
 
 **Sequencing that the table does not show.**
 
@@ -4711,6 +4711,34 @@ rather than replace and catches it when it does not.
   with each model's provider set is a singleton, so `check_pins` verifies that
   live and fails on a whitelist it cannot verify — "unverifiable" and "pinned"
   must not print the same way. Registered as registration 4. → T138
+- [x] T140 **A candidate must not carry a gold answer.** T139's winner states
+  *"The irrigation threshold for the extensive roofs is 10.0 %θ"* in the root
+  instruction, and `10.0` is the gold answer of every T06 instance in train
+  **and** test_seen — the template asks for one documented constant, so only its
+  phrasing varies. T06 went 0.000 → 1.000 on answer while its trajectory moved
+  `+0.000`: the agent still called `lookup_reference` and merely read the number
+  off its own prompt. Removing that one template drops the test_seen answer
+  difference from +0.135 [+0.012, +0.287] to +0.087 [−0.010, +0.204], so the
+  entire statistical significance rested on it.
+  **§7's train → test_seen gap cannot catch this**, though it claims to. The
+  splits share their templates by construction, so an invariant memorized answer
+  is *correct* on test_seen and reads as a gain rather than as overfit. Only
+  test_unseen sees through it, and §7 restricts that split to description. The
+  blind spot is structural, which is why the check is mechanical rather than a
+  reviewer's job.
+  **A leak is what the candidate ADDED.** The seed names constants legitimately
+  — the contract's unit vocabulary, the site's coordinates — so a literal counts
+  only where it appears in the candidate and not in that component's seed text.
+  That one filter is what keeps the check quiet enough to gate a run on: it
+  reports two flags on T139's winner and zero on the seed.
+  **Reported for a search, refused for a measurement**, the asymmetry §6 already
+  runs on for the pre-registration and for the same reason: refusing inside
+  `optimize_prompts` discards a search that has been paid for, while a leaked
+  answer reaching the measurement path becomes a number in the thesis.
+  `--exploratory` is the declared way past it. Booleans and bare `0`/`1` are
+  excluded as literals — `true` is ordinary English — and numeric boundaries are
+  matched on decimal continuation rather than `\b`, so `10.0` is found at the
+  end of a sentence and not inside `110.05`. `harness/leakage.py`. → T139
 
 - [x] T138 **The stripe was still not a property of the value, and `{d}` is where
   it showed.** T113 found this defect on `{month}`, repaired that one parameter,
@@ -4809,7 +4837,7 @@ rather than replace and catches it when it does not.
 
 ## Summary
 
-**110 tasks** across ten phases, 17 of them parallelizable, executed as **24
+**111 tasks** across ten phases, 17 of them parallelizable, executed as **24
 packets** — one session each, mapped above.
 
 | Phase | Tasks | Parallelizable | Packets | Gates |
@@ -4823,7 +4851,7 @@ packets** — one session each, mapped above.
 | P6 harness and pilot | 8 | — | 4 | **T107 freezes the testbed** |
 | P7 oracles and generation | 7 | — | 5 | T115, pulled forward to P2b, gates capture |
 | P8 optimizer | 10 | — | 3 | — |
-| P9 what the first run exposed | 9 | 2 | 1 | T131 blocks T132–T134; T133 blocks T137; T136 lands before T134's rerun; T138 follows T134's null; T139 follows T138's |
+| P9 what the first run exposed | 10 | 2 | 1 | T131 blocks T132–T134; T133 blocks T137; T136 lands before T134's rerun; T138 follows T134's null; T139 follows T138's; T140 follows T139's leak |
 | final | 1 | — | — | — |
 
 **Parallel opportunities.** P0's documentation edits (T001–T005, T008) touch six

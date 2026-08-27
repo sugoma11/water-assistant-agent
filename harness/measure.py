@@ -52,8 +52,9 @@ from typing import Any
 import mlflow
 import structlog
 
-from harness.candidates import evaluation_pass, seed_versions
+from harness.candidates import evaluation_pass, read_candidates, seed_versions
 from harness.ledger import RunLedger, experiment_run, ledgered
+from harness.leakage import enforce as enforce_leakage
 from harness.predict import case_result
 from harness.preregistration import MEASUREMENT
 from harness.preregistration import enforce as enforce_prereg
@@ -490,6 +491,21 @@ def measure(
         },
         exploratory=exploratory,
     )
+    # The second refusal, and the same asymmetry: a search reports its leaks and
+    # a measurement refuses them (T140). A candidate carrying a gold answer
+    # scores on knowing it rather than on finding it, and §7's train → test_seen
+    # gap cannot catch that where the answer is invariant across a template's
+    # instances — test_seen shares its templates with train, so the memorized
+    # value is *correct* there and reads as a gain.
+    # Both arms or nothing: the check differences the optimized candidate
+    # against the baseline seed, so a run measuring one arm has no pair to
+    # compare and the baseline alone *is* the seed it would be compared to.
+    if OPTIMIZED_ARM in arms and BASELINE_ARM in arms:
+        enforce_leakage(
+            read_candidates(arms[OPTIMIZED_ARM]),
+            read_candidates(arms[BASELINE_ARM]),
+            exploratory=exploratory,
+        )
     # Off is the default and the registered value; installed explicitly all the
     # same, because a process that ran a search earlier has turned it on.
     configure_llm_cache(False, settings)

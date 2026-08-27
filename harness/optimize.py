@@ -81,7 +81,15 @@ import structlog
 from mlflow.genai.optimize.optimizers import GepaPromptOptimizer
 from mlflow.genai.optimize.types import PromptOptimizationResult
 
-from harness.candidates import candidate_uris, evaluation_pass, seed_versions
+from harness.candidates import (
+    PROMPT_NAMES,
+    candidate_uris,
+    evaluation_pass,
+    read_candidates,
+    seed_versions,
+)
+from harness.leakage import Leak, find_leaks
+from harness.leakage import report as leakage_report
 from harness.ledger import RunLedger, experiment_run, ledgered
 from harness.metaprompt import reflection_prompt_templates, templates_digest
 from harness.predict import as_keyword_fn
@@ -150,12 +158,14 @@ class SearchResult:
     records: int
     reflection_model: str
     ledger: RunLedger
+    leaks: tuple[Leak, ...] = ()
 
     def summary(self) -> str:
         return (
             f"{self.records} record(s), "
             f"{self.result.initial_eval_score} → {self.result.final_eval_score}; "
-            f"{self.residuals.summary()}; {self.ledger.summary()}"
+            f"{self.residuals.summary()}; {self.ledger.summary()}; "
+            f"{leakage_report(self.leaks)}"
         )
 
 
@@ -411,6 +421,17 @@ def run_search(
         # with the per-iteration tables rather than in a run of its own (T127).
         run_ledger.log()
 
+    # Reported, never refused — the asymmetry §6 runs on for the
+    # pre-registration, for the same reason: refusing here would discard a
+    # search that has already been paid for, and the candidate is still the
+    # thing the search selected. The measurement driver is where a leak becomes
+    # a number in the thesis, and that is where it is refused (T140).
+    leaks = find_leaks(
+        {name: prompt.template for name, prompt in _selected_texts(result).items()},
+        read_candidates(pinned),
+    )
+    logger.info("Answer leakage", arm=arm, summary=leakage_report(leaks))
+
     search = SearchResult(
         result=result,
         residuals=residual_report(
@@ -423,9 +444,25 @@ def run_search(
         records=len(records),
         reflection_model=reflection_uri,
         ledger=run_ledger,
+        leaks=tuple(leaks),
     )
     logger.info("Search complete", arm=arm, summary=search.summary())
     return search
+
+
+def _selected_texts(result: PromptOptimizationResult) -> dict[str, Any]:
+    """The winner's text per component key, from the prompts the search registered.
+
+    ``optimized_prompts`` carries registry *names* (``agent_tool_…``) while every
+    other surface here is keyed by component, so the mapping is undone once and
+    here rather than at each reader.
+    """
+    by_name = {prompt.name: prompt for prompt in result.optimized_prompts}
+    return {
+        component: by_name[name]
+        for component, name in PROMPT_NAMES.items()
+        if name in by_name
+    }
 
 
 _PREFLIGHT_INPUTS: Mapping[str, Any] = {

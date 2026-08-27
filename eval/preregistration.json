@@ -9,53 +9,54 @@
     "'amendments' with their reason, never applied by rewriting a value in place."
   ],
   "registered_on": "2026-08-27",
-  "registration": 3,
+  "registration": 4,
 
   "supersedes": {
-    "registration": 2,
-    "registered_on": "2026-08-26",
-    "sha256": "09f7985293487ae6ede6369fabe0d6a048c314fca4e5849e23331bf6a2fbd7e9",
-    "what_it_produced": "eval/measurements/20260826T164850Z.json — the T134 run, two arms × three splits × three repeats, complete",
-    "why_a_third_one": [
-      "T134 answered its own question and the answer was null. On test_seen, the",
-      "primary estimand moved +0.011 [+0.000, +0.032] on the answer metric against a",
-      "baseline of 0.818; trajectory +0.037 [-0.032, +0.128]; card recall +0.047",
-      "[+0.000, +0.140]; the aggregated selection score +0.017 [-0.008, +0.046]. On",
-      "test_unseen both arms scored 1.000 on every metric, 6 templates tied and 1 had",
-      "no data. §8 states the suite detects differences on the order of 20 percentage",
-      "points; every one of those is an order of magnitude below it.",
-      "The run itself was sound, which is what makes the null worth acting on. §7's",
-      "repeat condition did NOT fire this time — residual exclusions converged between",
-      "the arms (test_seen 43 vs 39 of 375, test_unseen 66 vs 65 of 168, train 1 vs 0",
-      "of 300) where P8c's diverged 14 vs 25 — so the comparison is established rather",
-      "than merely recorded, and 'the optimizer found nothing' is a result and not an",
-      "artifact of the measurement.",
-      "What that result CANNOT distinguish is the thesis question from a ceiling. The",
-      "seed is the handwritten baseline: 30,296 characters of routing rules, a",
-      "tool-result taxonomy, a caveat list and six fully documented tool declarations,",
-      "written by hand against this exact catalog. It enters at 0.818 answer accuracy",
-      "on test_seen and 1.000 on test_unseen. An optimizer that finds nothing on top of",
-      "that has either failed, or has been handed a prompt with nothing left in it —",
-      "and T134 cannot tell a reader which.",
-      "This registration separates the two by moving the seed, not the optimizer.",
-      "Everything about the search, the budget, the models, the suite and the analysis",
-      "is held at registration 2's values; the seed's ROUTING content is cut back to a",
-      "bare inventory of names, and the run is read for whether the same optimizer at",
-      "the same budget recovers it. A gain here says the search works and T134 measured",
-      "a ceiling. A second null says the search does not work on this testbed, and says",
-      "it against a seed that demonstrably had room."
+    "registration": 3,
+    "registered_on": "2026-08-27",
+    "sha256": "28c94ca470edce7a855b98967565706fcaeddfaeb6352807f2bdd4fc21e9a132",
+    "what_it_produced": [
+      "One registered search over train: selection score 0.8285555 → 0.9023333 across",
+      "540 rollouts and 6 candidates at €0.7571, all 540 served by gmicloud. Per",
+      "scorer, seed → winner: answer 0.786 → 0.869, trajectory 0.800 → 0.900,",
+      "abstention 0.920 → 0.950, card_recall 0.950 → 0.900. Its winner is registered",
+      "at versions 11/12 and the run is MLflow 546f3dfad8304722b65b9c5d6320a299.",
+      "NO MEASUREMENT. The measurement run was stopped by operator decision roughly",
+      "fifteen minutes in, before ANY of the eighteen conditions completed and before",
+      "any file was written to eval/measurements/. Registration 3 therefore has a",
+      "train selection score and no test number, and its optimized arm was never",
+      "measured. Nothing about that partial run informs anything below: it produced",
+      "no score, no candidate and no comparison."
+    ],
+    "why_a_fourth_one": [
+      "Registration 3 weakened the SEED to open headroom and got less than it aimed",
+      "for. Cutting the candidate surface 84% — 30,296 to 4,964 characters, every",
+      "routing rule and argument description deleted — moved the blended train",
+      "selection score only 0.844 → 0.829. The per-scorer split showed why the",
+      "aggregate barely moved: abstention fell 0.070 and answer fell about 0.03, while",
+      "card_recall ROSE 0.075, because that metric scores the union of every",
+      "lookup_reference call in a run and an unguided agent calls it more often. Half",
+      "the real degradation was cancelled inside the 0.4/0.3/0.2/0.1 blend.",
+      "The deeper obstacle is the one T134 named and registration 3 could not fix by",
+      "editing text: deepseek-v4-flash answers this suite at ~0.82 whatever the prompt",
+      "says. §8 puts the suite's sensitivity at 20 percentage points, and a model that",
+      "starts 18 points from the ceiling cannot show one.",
+      "So this registration moves the STUDENT rather than the seed. On a 30-record",
+      "train probe, ministral-8b-2512 on the same weakened seed answers 0.467 against",
+      "deepseek's 0.786 — a 32-point drop on the metric the thesis reports, which is",
+      "headroom of the size §8 says the suite can actually resolve.",
+      "It also resolves, for the first time in four registrations, the deviation §5",
+      "cares most about: the proposer is no longer the model under test."
     ]
   },
 
   "registered_against": {
-    "commit": "f402f1f466d70afe97e4259384b0061f805db8d5",
+    "commit": "aa0f70d",
     "commit_note": [
-      "T134's tip, and the branch point of `headroom-weakened-seed`. It carries the",
-      "two thought-part fixes, the request timeout, the hard provider pin and T135's",
-      "per-condition incremental writes.",
-      "The weakened seed and this registration land in the ONE commit after it, and",
-      "no rollout of this registration exists against either. Naming the branch point",
-      "rather than that commit is what registration 2 did and for the same reason: a",
+      "Registration 3's commit — the weakened seed, its pins and registration 3",
+      "itself. This registration and the model swap land in the ONE commit after it,",
+      "and no rollout of this registration exists against either. Naming the preceding",
+      "commit is what registrations 2 and 3 did and for the same reason: a",
       "registration cannot carry the hash of the commit it is inside."
     ],
     "case_files": {
@@ -63,7 +64,7 @@
       "test_seen.json": "a0d0a016121b595ffe3a740978588ca85300da24f9d2f1230a78c01c42409a11",
       "test_unseen.json": "a4c67c89df11c96a1465128016177f3dc367e8cc4a775823eef9ab364bc3ce4c"
     },
-    "case_files_note": "Byte-identical to registrations 1 and 2. The suite is NOT re-drawn: the whole design of this run is that one thing moved, and a redrawn suite would be a second thing.",
+    "case_files_note": "Byte-identical to registrations 1, 2 and 3. Four registrations, one suite.",
     "splits": {
       "train": {"cases": 100, "templates": 25},
       "test_seen": {"cases": 125, "templates": 25},
@@ -71,183 +72,215 @@
     }
   },
 
+  "what_moved_from_registration_3": {
+    "the_student": [
+      "root_agent_model: deepseek-v4-flash-0731 → mistralai/ministral-8b-2512. THE",
+      "ONE INTENDED CHANGE. A dated snapshot, so §5's pin still names something the",
+      "provider cannot silently replace."
+    ],
+    "the_proposer": [
+      "reflection_model: UNCHANGED at deepseek-v4-flash-0731 — which, because the",
+      "student moved, now makes teacher and student DIFFERENT MODELS. This is not a",
+      "second intervention; it is the first registration in which §5's requirement is",
+      "met rather than deviated from. See `models.two_models_at_last`."
+    ],
+    "the_provider_pin": [
+      "served_by: 'gmicloud' → 'gmicloud,mistral'. Forced, not chosen: the pin is",
+      "process-wide and the run now spans two models that share no provider. See",
+      "`models.why_a_whitelist_is_still_a_pin`."
+    ],
+    "what_did_not_move": [
+      "THE SEED. The weakened candidate surface stays exactly as registration 3 left",
+      "it, at versions 9/10, 4,964 characters, with the answer contract byte-identical",
+      "and T136's callable-naming sentence in all six tool texts. Reverting it would",
+      "have made this a different experiment.",
+      "The frozen text-to-SQL chain — sub-agent, builder and fixer all stay on",
+      "deepseek. Deliberate: that sub-agent's prompt is FROZEN (§3.1) and outside the",
+      "candidate surface, so a weak model there would add `upstream` exclusions no",
+      "prompt candidate could repair, and per-arm exclusion divergence is what §7's",
+      "repeat condition voids a run on. The cost of the choice is stated in",
+      "`known_gaps` as the mixed-capability asymmetry.",
+      "The suite, the splits, the repeats, the pairing, the bootstrap and its seed,",
+      "the two gaps, the win/loss table, the exclusion rule, the diagnostics, the",
+      "capture neighbourhood, the selection weights, the search budget, the budget",
+      "limit and the whole protocol section."
+    ]
+  },
+
   "seed_weakening": {
-    "what_this_registration_is": [
-      "THE ONE THING THAT MOVED. Registration 2 measured an optimizer against a strong",
-      "seed and found nothing. This one measures the same optimizer, at the same",
-      "budget, against a deliberately weak seed, so that 'nothing to find' and 'cannot",
-      "find it' stop being the same number.",
-      "It is a HEADROOM experiment and it is labelled one. The baseline arm here is not",
-      "the assistant anyone would deploy and its numbers are not a claim about the",
-      "assistant; they are the floor the gain is measured from."
-    ],
-    "candidate_surface_chars": {
-      "note": "Registered prompt template lengths, version 6/7 (registration 2's seed) → version 9/10 (this one's).",
-      "root_instruction": [5484, 2057],
-      "text_to_sql_agent": [217, 217],
-      "predict_green_roof_water_balance_tool": [6921, 691],
-      "get_weather_forecast_tool": [3197, 374],
-      "calc_irrigation": [4156, 504],
-      "lookup_reference": [4571, 490],
-      "plot_timeseries": [5750, 631],
-      "total": [30296, 4964]
-    },
-    "what_was_cut": [
-      "From the root instruction: the 'Which tool answers what' routing section, the",
-      "'What a tool result means' taxonomy of the three tool outcomes, and the",
-      "'Caveats you must carry into explanation' list. 3,751 characters replaced by a",
-      "324-character section naming the six callables and saying that each one's own",
-      "declaration describes it.",
-      "From each of the five function-tool docstrings: the self-containment rule, the",
-      "per-argument guidance, the scope limits, the returned-field glossary and the",
-      "disclosure instructions. What remains is a signature paraphrase — argument",
-      "names, types and the shape of the return.",
-      "The result is a seed that still says WHAT exists and no longer says WHEN to",
-      "reach for it, which is the routing knowledge §7's trajectory metric scores and",
-      "the knowledge a prompt optimizer is supposed to be able to rediscover."
-    ],
-    "what_was_deliberately_not_cut": [
-      "THE ANSWER CONTRACT, byte-for-byte. Everything from '### How you answer' down to",
-      "the `explanation` bullet — 1,553 characters — is identical to the text every",
-      "earlier run used, as is the site preamble above it. It is what parse_contract",
-      "reads and what makes a status scorable, so it is measurement apparatus and not",
-      "the thing under test. Weakening it would turn every rollout into a",
-      "`parse_failure` and the run would measure the harness.",
-      "THE NO-CLARIFICATION CLAUSE, which sits inside that block. §8's ambiguity",
-      "residual rests on the candidate never asking a question back, and the abstention",
-      "metric rests on a two-valued status.",
-      "T136's callable-naming sentence, in all six tool texts: each says it is the",
-      "declaration of the tool it declares and names the callable. T134 showed the",
-      "proposer using it to repair the `agent_tool_` confusion that broke P8c's winner,",
-      "and T137 — the missing check on a candidate naming a callable no toolset",
-      "resolves — is still not landed, so this sentence is the only thing standing",
-      "between the search and that failure mode.",
-      "`lookup_reference`'s topic enum, which lives in the function signature and not",
-      "in the docstring (§3.2), so ADK renders it into the declaration regardless. The",
-      "weakened text names no topics; the model still receives the eleven card keys.",
-      "The sub-agent's outward description, unchanged at 217 characters. It was already",
-      "a name and a subject line — there was nothing in it to cut, and its sha256 is",
-      "the one candidate pin this registration does not move."
-    ],
-    "what_this_cannot_show": [
-      "A gain here is a gain FROM A WEAK SEED and does not transfer to the strong one.",
-      "The two runs bracket the question rather than answering it jointly: T134 bounds",
-      "what the optimizer adds to a hand-written prompt, this one bounds what it",
-      "recovers from a stripped one, and the true value of the technique on an",
-      "arbitrary prompt lies somewhere between and is not measured by either.",
-      "The weakening is one draft by one author, not a sampled degradation. How much",
-      "headroom it actually opened is not known until the baseline arm is measured, and",
-      "if the baseline lands near 0.818 anyway then this run has produced a second null",
-      "with a smaller excuse rather than a contrast.",
-      "Cutting the docstrings changes the token count as well as the content: the",
-      "candidate surface fell 84%, so the baseline arm's rollouts are cheaper and",
-      "shorter. Any diagnostics comparison with T134 reads against that and not only",
-      "against the prompt's quality."
+    "unchanged_from_registration_3": true,
+    "note": [
+      "Registration 3's section applies verbatim and is not restated. The surface is",
+      "4,964 characters against the hand-written 30,296; the answer contract and its",
+      "no-clarification clause are byte-identical to every earlier run; T136's",
+      "sentence is in all six tool texts; lookup_reference's topic enum reaches the",
+      "model through the signature regardless of the docstring.",
+      "It matters MORE here. A weakened seed on a capable model cost 1.5 blended",
+      "points; on an 8B model the same seed costs 18. The interaction is the finding,",
+      "and it is why this run is not comparable with registration 3's and is not",
+      "differenced against it."
     ]
   },
 
   "models": {
-    "task": "openrouter/deepseek/deepseek-v4-flash-0731",
+    "task": "openrouter/mistralai/ministral-8b-2512",
     "sub_agent": "openrouter/deepseek/deepseek-v4-flash-0731",
     "sql_builder": "openrouter/deepseek/deepseek-v4-flash-0731",
     "sql_fixer": "openrouter/deepseek/deepseek-v4-flash-0731",
     "reflection": "openrouter/deepseek/deepseek-v4-flash-0731",
     "endpoint": "https://openrouter.ai/api/v1",
-    "served_by": "gmicloud",
+    "served_by": "gmicloud,mistral",
+    "resolved_served_by": {
+      "openrouter/mistralai/ministral-8b-2512": "mistral",
+      "openrouter/deepseek/deepseek-v4-flash-0731": "gmicloud"
+    },
     "decoding": {"temperature": 0.0, "seed": 42},
-    "unchanged_from_registration_2": [
-      "The model id, the endpoint, the decoding parameters and the one-model-in-both-",
-      "roles deviation below. Holding them fixed is what makes the seed the only thing",
-      "that moved."
+    "two_models_at_last": [
+      "§5 asks for a reflection model DISTINCT from the model under test, so that a",
+      "result can be attributed to one of the two. Registrations 2 and 3 both had to",
+      "declare a deviation from it: one served model in both roles, a search of a",
+      "model reflecting on its own rollouts, and a null that could never be pinned on",
+      "the proposer rather than the student.",
+      "That deviation is GONE here, as a side effect of moving the student rather than",
+      "as a separate intervention. The proposer is a capable model and the student is",
+      "an 8B one — strong teacher, weak student, which is the configuration prompt",
+      "optimization is usually claimed for.",
+      "The attribution this buys is narrow and worth stating exactly: a gain can no",
+      "longer be explained as the proposer scoring its own work, and a null can no",
+      "longer be explained as the proposer being as weak as the student. Neither",
+      "statement was available in any earlier run."
     ],
-    "why_gmicloud_and_not_deepinfra": [
-      "The provider is pinned with allow_fallbacks=false on all three paths (the ADK",
-      "rollout, the text-to-SQL chain's bare litellm calls, GEPA's reflection call) —",
-      "registration 2's amendment 1, unchanged in mechanism. What moved is WHICH",
-      "provider, and it moved because registration 2's amendment 2 recorded deepinfra's",
-      "pool answering `engine_overloaded` in bursts, which a hard pin cannot reroute",
-      "around and which cost that run a stopped-and-restarted search.",
-      "gmicloud answered cleanly at 4.2 s mean in the screen, against deepinfra's 4.4 s",
-      "— the same order, with no observed overload burst.",
-      "This is a SECOND thing that differs from registration 2, and it is registered",
-      "as such rather than folded into the seed change. It is not chosen on any test",
-      "number: the screen below ran on throwaway prompts and no split was touched."
+    "why_a_whitelist_is_still_a_pin": [
+      "The provider pin is process-wide; the model is not. `mistral` serves no",
+      "deepseek and `gmicloud` serves no Ministral, so no single slug can carry a run",
+      "that spans both, and the pin is a two-member whitelist with",
+      "allow_fallbacks=False.",
+      "It remains HARD because the intersection of the whitelist with each model's",
+      "provider set is a SINGLETON — verified live against OpenRouter's endpoint",
+      "listing, not assumed: ministral-8b-2512 → mistral, deepseek-v4-flash-0731 →",
+      "gmicloud. `scripts/check_pins.py` performs that verification on every run and",
+      "FAILS on a whitelist it cannot verify or one whose intersection has two",
+      "members, because 'unverifiable' and 'pinned' must not print the same way. A",
+      "second member would restore the call-by-call mixing T134 introduced the field",
+      "to close, and the committed pin records the list rather than the resolution, so",
+      "nothing else would show it.",
+      "The `served_by` string in the four model pins therefore names the WHITELIST and",
+      "not the server. `resolved_served_by` above names the servers, and the check is",
+      "what keeps the two in agreement."
     ],
     "provider_screen": {
-      "note": "Carried forward so no later session re-runs it. Screened on the three failure modes registration 2's amendment 1 named: reasoning leaked into `content`, rate limits, and latency.",
-      "gmicloud": "clean, 4.2 s mean — SELECTED",
-      "deepinfra": "clean, 4.4 s mean — registration 2's pin; dropped for `engine_overloaded` bursts under a hard pin (registration 2, amendment 2)",
-      "relace": "cheapest, therefore the router's default preference, and unusable: inlines the chain of thought into `content`, which is where the SQL builder reads its query",
-      "parasail": "rate-limits",
-      "baseten": "rate-limits",
-      "fireworks": "rate-limits",
-      "open-inference": "clean but 40–55 s mean — turns this run into days",
-      "morph": "clean but 40–55 s mean — same"
+      "note": "Carried forward from registration 3 for deepseek; Ministral needed none.",
+      "gmicloud": "deepseek: clean, 4.2 s mean — SELECTED for the SQL chain and the proposer",
+      "deepinfra": "deepseek: clean at 4.4 s but `engine_overloaded` in bursts under a hard pin (registration 2, amendment 2)",
+      "relace": "deepseek: cheapest and unusable — inlines the chain of thought into `content`, where the SQL builder reads its query",
+      "parasail/baseten/fireworks": "deepseek: rate-limit",
+      "open-inference/morph": "deepseek: clean but 40–55 s mean",
+      "mistral": "ministral-8b-2512: the ONLY provider, across three tags (mistral, mistral/zdr, mistral/eu). There is no routing choice to screen and no swap hazard to close — which is the one respect in which this model is easier to pin than deepseek."
+    }
+  },
+
+  "pilot_evidence": {
+    "note": [
+      "Measured on train before this registration was written, because two properties",
+      "of an 8B student decide whether the run measures anything at all, and guessing",
+      "at them would have made the registration a wish. 30 train records, base program",
+      "only, 67 rollouts, €0.0911. No test split was touched."
+    ],
+    "parse_failure_rate": [
+      "2 of 67 rollouts = 3.0%. This is the number that decided the run was worth",
+      "doing. The contract block is preserved byte-for-byte, but an 8B model does not",
+      "always obey it — one observed failure was the model echoing the instruction",
+      "'Your final message is one JSON object and nothing else' as its answer.",
+      "3% is small enough that the baseline arm measures the prompt rather than the",
+      "harness. Had it been large, the run would not have been registered."
+    ],
+    "seed_scores_30_records": {
+      "selection": 0.6474,
+      "answer": 0.4667,
+      "trajectory": 0.7667,
+      "abstention": 0.8000,
+      "card_recall": 1.0
     },
-    "one_model_in_both_roles": [
-      "REGISTERED DEVIATION from §5, carried forward unchanged from registration 2. §5",
-      "asks for a reflection model distinct from the model under test so a result can",
-      "be attributed to one of the two; here they are the same served model on the same",
-      "endpoint, so the search is a model reflecting on its own rollouts and this run",
-      "cannot separate 'the proposer is weak' from 'the task model is weak'.",
-      "It matters MORE to this registration than it did to the last one. T134's null",
-      "was already ambiguous between a weak proposer and an exhausted seed; this run",
-      "removes the second ambiguity and leaves the first. A null here still admits 'the",
-      "proposer is this model, reflecting on itself'. That is the stated limit of what",
-      "a second null would establish, and it is registered before the number exists.",
-      "The pins stay two separate slots, so the choice is recorded rather than lost."
+    "comparison_note": [
+      "Against registration 3's seed scores over 100 records: answer 0.786,",
+      "trajectory 0.800, abstention 0.920, card_recall 0.950, selection 0.8286. The",
+      "two are 30 records and 100 records of the same split and are NOT paired, so the",
+      "differences describe rather than estimate. Answer is the one that matters and",
+      "the gap is 32 points.",
+      "The probe also moved 0.6474 → 0.8274 within a 32-call budget. That is a",
+      "selection score on the instances it selected over, at a budget one fifteenth of",
+      "the registered one, and it is NOT a preview of the result. It is recorded",
+      "because it was seen before registration and concealing it would be the thing",
+      "pre-registration exists to prevent."
     ]
   },
 
   "budget": {
     "currency": "USD",
     "limit": 6.0,
-    "available_at_registration": 19.1,
-    "available_note": "Derived: registration 2's 23.25 less this repository's own ledger for that run (4.11). It is the repository's arithmetic, not a balance read from the provider.",
+    "available_at_registration": 18.0,
+    "available_note": "Derived: registration 3's 19.1 less its own ledger (≈1.1 for the search, the smokes and the aborted measurement). The repository's arithmetic, not a balance read from the provider.",
     "estimate": {
-      "search": 1.0,
-      "measurement": 3.1,
-      "total": 4.1,
+      "search": 0.75,
+      "measurement": 2.3,
+      "total": 3.1,
       "basis": [
-        "Registration 2's MEASURED spend at this model's rates rather than an estimate:",
-        "its registered search cost $1.006 over 567 rollouts, its smoke search $0.015",
-        "over 10, and its eighteen measurement conditions $3.086 — $4.11 against a",
-        "limit of 6.0, so registration 2's own estimate of 4.4 was a good one.",
-        "The seed is 84% shorter, and prompt tokens dominate a rollout at ~21k mean, so",
-        "the baseline arm should come in UNDER this. The optimized arm will not: a",
-        "proposer rewriting a stripped docstring writes a longer one, and a model with",
-        "less routing guidance takes more steps. The limit is unchanged at 6.0 because",
-        "the estimate is a floor in both runs and the headroom is what absorbs it.",
-        "The ledger's metric is labelled `cost_eur` and the prices are USD. That is the",
-        "repository's label, noted rather than fixed inside a registered run."
+        "Measured on the 30-record probe: 67 rollouts, 799,644 tokens, $0.0911 —",
+        "$0.00136 per rollout at ~11,900 tokens per rollout. Registration 3's search",
+        "took 540 rollouts and its measurement 1,686, so 540 × $0.00136 ≈ $0.73 and",
+        "1,686 × $0.00136 ≈ $2.29.",
+        "Ministral costs MORE per token than deepseek ($0.15/$0.15 against $0.08/$0.18",
+        "per Mtok) and LESS per rollout, because it emits no reasoning trace: ~11,900",
+        "tokens against deepseek's ~21,000. The ledger blends both models, the SQL",
+        "chain still being deepseek.",
+        "The limit stays 6.0, unchanged across registrations 2, 3 and 4. The estimate",
+        "is a floor: a weaker student may take more steps per rollout, and the",
+        "optimized arm's candidate will be longer than the seed."
       ]
     },
-    "if_exhausted": "The split order in `measurement.splits` decides what is lost, exactly as registration 1's amendment 3 decided it and registration 2 kept it. Registered before any test rollout and on no test number.",
-    "ledger_prices_usd_per_mtok": {"input": 0.08, "output": 0.18}
+    "if_exhausted": "The split order in `measurement.splits` decides what is lost, as it has since registration 1's amendment 3.",
+    "ledger_prices_usd_per_mtok": {"input": 0.08, "output": 0.18},
+    "ledger_price_caveat": [
+      "These are DEEPSEEK's rates and the ledger applies them to every rollout,",
+      "Ministral's included, whose true rate is $0.15/$0.15. The ledger therefore",
+      "under-prices the root agent's input and over-prices its output. The figures",
+      "above are the ledger's own, so they are internally consistent and are not the",
+      "invoice. Left unchanged rather than patched mid-experiment: the price table is",
+      "a registered value and correcting it would move a registered number for a",
+      "reason unrelated to the run."
+    ]
   },
 
   "arms": {
     "baseline": [
-      "THE WEAKENED SEED at the pinned candidate_prompt_versions — root instruction v9,",
-      "the five tool docstrings at v9/v10, the sub-agent description at v9 — registered",
-      "once and read twice, so the reference arm and the search's seed cannot drift",
-      "apart. `seed_weakening` above is the whole of what makes it different from",
-      "registration 2's baseline.",
-      "It is NOT comparable with registration 2's baseline arm and no difference",
-      "between the two is reported as an effect. Reported side by side, as two seeds,",
-      "which is the entire point of running it.",
-      "It is expected to score WORSE than registration 2's baseline on the routing-",
-      "bearing metrics, and it is registered before that is known. If it does not, that",
-      "is the finding — it would mean the tool declarations were never load-bearing and",
-      "the model was routing off the callable names and the ADK schema all along, which",
-      "is a result about the testbed and is to be reported as one rather than repaired."
+      "The weakened seed at the pinned candidate_prompt_versions — root instruction",
+      "v9, the five tool docstrings at v9/v10, the sub-agent description at v9 —",
+      "answered by ministral-8b-2512. Registered once and read twice, so the reference",
+      "arm and the search's seed cannot drift apart.",
+      "It is a deliberately degraded prompt on a deliberately small model and its",
+      "absolute scores are NEVER quoted as the assistant's performance. It is the",
+      "floor the gain is measured from and nothing else.",
+      "It carries T107's known defect UNCHANGED and registered in advance, as every",
+      "registration since the first has had to: T17a enters at 0.50 abstention",
+      "accuracy, failing 3/3 with correct reasoning and a wrong contract encoding,",
+      "and T107 left it for the search because the encoding lives in the optimizable",
+      "text. The contract block is byte-identical to T107's here, so the defect is",
+      "neither repaired nor deepened by the weakening; a candidate that fixes it is",
+      "measuring what the thesis claims to measure, and this sentence exists so that",
+      "the improvement cannot later be read as a baseline quietly weakened to make",
+      "room for it. On this student it compounds with the 3.0% parse-failure rate,",
+      "which is a different failure of the same contract and is counted separately.",
+      "It is not comparable with any earlier registration's baseline. Registration 3",
+      "moved the text; this one moves the model."
     ],
     "optimized": [
-      "Whatever candidate the one registered search selects. Not the best of several",
-      "searches, not the best iteration by test score, not a hand-picked candidate:",
-      "the search's own selection, on the aggregated scalar, over train alone.",
-      "The search starts FROM the weakened seed, which is what makes the pair a",
-      "measurement of recovery rather than of addition."
+      "Whatever candidate the one registered search selects, starting from that same",
+      "seed and proposed by deepseek-v4-flash. Not the best of several searches, not",
+      "the best iteration by test score, not a hand-picked candidate.",
+      "Registration 3's winner (versions 11/12) is NOT this arm and is not carried",
+      "over. It was selected against a different student and a candidate optimized for",
+      "one model is not the candidate for another; a fresh search is the only thing",
+      "that makes the pair a measurement."
     ]
   },
 
@@ -261,7 +294,6 @@
     "gepa_kwargs": {
       "reflection_prompt_template": "sha256:667be72b24c0df3e9afaad0fb6a43a85a9327e37800737eb60513827b27e7212"
     },
-    "gepa_kwargs_note": "Registration 2 registered `{}` here and its search duly reported a deviation naming the digest it actually ran. The digest is registered outright this time, so a deviation line means the metaprompt moved rather than that the registration was incomplete. T136's proposer-side change is inside this digest and is unchanged from T134.",
     "llm_cache": "on",
     "response_cache_mode": "record",
     "runs": 1,
@@ -272,17 +304,18 @@
       "card_recall": 0.1
     },
     "budget_held_fixed": [
-      "500 metric calls, the same number registration 2 ran. A weaker seed is a reason",
-      "to WANT a larger budget and precisely the reason not to take one: a gain bought",
-      "with more rollouts would not be comparable with T134's null, and comparability",
-      "with T134 is what this run is for."
+      "500 metric calls, the same number registrations 2 and 3 ran. A weaker student",
+      "is a reason to want a larger budget and the reason not to take one: comparing",
+      "gains across the three runs requires the budget to be the thing that did not",
+      "move."
     ],
     "llm_cache_hygiene": [
-      "`.cache/llm` is CLEARED before the registered search. The response cache is",
-      "keyed on the request and not on the serving provider, so a smoke run against a",
-      "different provider replays its answers into the registered run under a matching",
-      "key. Registration 2's provider pin is what made this reachable and nothing in",
-      "the cache's key records it."
+      "`.cache/llm` is CLEARED before the registered search, and clearing means",
+      "REMOVING THE DIRECTORY'S CONTENTS, not deleting `cache.db`: the store is",
+      "sharded into subdirectories and a file delete leaves entries behind. The cache",
+      "is keyed on the request, which includes the model id, so a Ministral call",
+      "cannot collide with a deepseek one — but the pilot runs above were the same",
+      "model on the same prompts, and those would replay."
     ]
   },
 
@@ -296,31 +329,24 @@
     "response_cache_mode": "replay",
     "pairing": "the identical committed cases, in file order, for every arm and every repeat",
     "repeats_note": [
-      "Three, unchanged. The three repeats ARE the replication and are what makes the",
-      "LLM response cache's being off matter: a prompt-keyed hit would hand the first",
-      "repeat's bytes to the other two. T134 measured 0.135 of test_seen cases",
-      "disagreeing across their repeats in BOTH arms, which is the noise floor this",
-      "run's differences are read against."
+      "Three, unchanged since registration 2. The repeats ARE the replication and are",
+      "what makes the LLM cache's being off matter. Registration 2 measured 0.135 of",
+      "test_seen cases disagreeing across repeats on a capable model; an 8B student",
+      "may be noisier, and this run measures that rather than assuming it."
     ]
   },
 
   "capture": {
     "neighbourhood": [-3, -2, -1, 1, 2, 3],
-    "unchanged_from_registration_2": true,
-    "why_it_is_not_widened_again": [
-      "T134 lost 43 and 39 of 375 test_seen rollouts and 66 and 65 of 168 test_unseen",
-      "rollouts to `upstream`, nearly all of it cache misses on windows a candidate",
-      "chose. That test_unseen rate — around 39% of rollouts in both arms — is high",
-      "and is the largest standing threat to what this run can say about the holdout.",
-      "It is NOT widened here. The counts converged between the arms, which is the",
-      "property §7 actually reads, and widening the neighbourhood would move a second",
-      "thing between the two registrations while the whole design is that one moved.",
-      "It is registered as a known cost instead, and §7 still publishes the per-arm",
-      "count and reads each arm's against the other's rather than against zero.",
-      "A weakened seed may well choose WIDER windows than a guided one, so the miss",
-      "rate is expected to rise in the baseline arm and possibly to diverge between the",
-      "arms. If the counts diverge, §7's repeat condition fires and this run is",
-      "repeated rather than reported — registered here, before the counts exist."
+    "unchanged_from_registrations_2_and_3": true,
+    "why_it_is_not_widened": [
+      "Registration 2 lost 43 and 39 of 375 test_seen rollouts and 66 and 65 of 168",
+      "test_unseen rollouts to `upstream`, nearly all cache misses on windows a",
+      "candidate chose. The counts CONVERGED between the arms, which is the property",
+      "§7 reads, so the neighbourhood is left alone.",
+      "A weaker student may choose stranger windows and miss more often. If the",
+      "per-arm counts diverge, §7's repeat condition fires and this run is repeated",
+      "rather than reported — registered here, before the counts exist."
     ]
   },
 
@@ -350,91 +376,110 @@
       "parse_failures"
     ],
     "parse_failure": [
-      "Reported apart from answer accuracy, and it carries more weight in this run than",
-      "in any before it. The contract block was preserved precisely so that a weakened",
-      "seed degrades ROUTING and not FORMAT; a non-zero parse_failure count in the",
-      "baseline arm would mean the weakening reached the contract after all and that",
-      "the arms differ in the apparatus rather than in the thing measured. T134 ran",
-      "0.000 in every condition. Any non-zero count here is reported before any other",
-      "number and bounds what the rest of the run means."
+      "FIRST-ORDER IN THIS RUN, and read before any other number. The pilot measured",
+      "3.0% on the seed. §7 keeps it apart from answer accuracy so that an optimizer",
+      "degrading the output format stays distinguishable from one degrading",
+      "reasoning — and here the interesting direction is the opposite one: a candidate",
+      "that makes an 8B model hold the JSON contract is a real improvement, and it",
+      "would show up as answer accuracy unless this number is read beside it.",
+      "Reported per arm. If the baseline's rate is far above 3% the run is reported as",
+      "measuring the contract's legibility to a small model as much as the routing."
     ],
-    "residual_nondeterminism": "MEASURED, from the three repeats per condition. Every arm difference is read against it, and a difference smaller than it is reported as within the noise floor rather than as a small effect.",
-    "multiplicity": "no correction across the four metrics. They are four declared quantities, not a family searched over for a winner; the interval and the noise floor carry the uncertainty and the suite is stated to detect large effects only",
-    "comparison_with_registration_2": [
-      "REPORTED SIDE BY SIDE, NEVER POOLED AND NEVER DIFFERENCED, on the same terms",
-      "registration 2 set for P8c. Two things moved between the runs — the seed and the",
-      "serving provider — so no single difference between them is attributable to one.",
-      "The comparison is between two GAINS, not between two baselines and not between",
-      "two optimized arms. T134's gain on test_seen answer was +0.011 [+0.000, +0.032]",
-      "from a seed of 0.818. This run reports its own gain from its own seed, with both",
-      "seeds' absolute scores stated so a reader can see the headroom each had.",
-      "The qualitative questions carried across are: whether the exclusion counts stay",
-      "converged between the arms, whether parse_failures stay at zero, and whether the",
-      "direction of the answer metric's movement reproduces. None is given an interval."
+    "residual_nondeterminism": "MEASURED, from the three repeats per condition. Every arm difference is read against it, and a difference smaller than it is within the noise floor rather than a small effect.",
+    "multiplicity": "no correction across the four metrics. They are four declared quantities, not a family searched over for a winner.",
+    "card_recall_caveat": [
+      "Registration 3's search found card_recall moving OPPOSITE to every other",
+      "metric — the weakened seed scored 0.950 and the optimized candidate 0.900. The",
+      "metric scores the union of every lookup_reference call in a run, so an",
+      "unselective agent scores higher, and a candidate that routes more deliberately",
+      "can lose recall while improving. It carries 0.1 of the selection weight and is",
+      "reported with this caveat attached wherever it moves down."
+    ],
+    "comparison_with_earlier_registrations": [
+      "REPORTED SIDE BY SIDE, NEVER POOLED AND NEVER DIFFERENCED. Three runs now exist",
+      "with three different configurations: registration 2 (strong model, strong",
+      "seed, measured, gain +0.011 on test_seen answer), registration 3 (strong model,",
+      "weak seed, search only, train gain +0.074) and this one (weak model, weak seed).",
+      "Between any two of them more than one thing moved.",
+      "What the three carry jointly is a BRACKET, not an estimate: how much prompt",
+      "optimization adds depends on how much room the seed and the model leave, and",
+      "these are three points on that surface. The thesis reports them as three",
+      "measurements of a dependence, never as one effect size with an interval.",
+      "Registration 3 has no test number at all and is reported as a train selection",
+      "score with that stated, never alongside a test figure as though comparable."
     ],
     "what_a_null_would_mean": [
-      "Registered before the number exists, because a null is the outcome this design",
-      "is most likely to be accused of explaining away afterwards.",
-      "If the baseline arm scores materially below registration 2's 0.818 and the",
-      "optimized arm does not recover it, that is evidence the search does not work on",
-      "this testbed — bounded by the two declared gaps (T132's missing span half, the",
-      "one-model-in-both-roles deviation) and by the suite's own 20-point sensitivity.",
-      "If the baseline arm scores at or near 0.818 despite an 84% cut to the candidate",
-      "surface, the finding is about the TESTBED and not about the optimizer: it would",
-      "mean the optimizable text was never carrying the routing, and that §7's",
-      "trajectory metric is scoring something the callable names and the ADK-rendered",
-      "schema already determine. That is a publishable negative result about the",
-      "instrument and is to be reported as one.",
-      "Neither outcome licenses a fourth registration that weakens the seed further",
-      "until a gain appears. One weakening, registered, reported whatever it gives."
+      "Registered before the number exists.",
+      "A null here is the strongest negative result available from this testbed. The",
+      "seed has 18 points of headroom on the blended score and 32 on answer accuracy,",
+      "the proposer is a capable model distinct from the student, and the budget is",
+      "the one that produced a +0.074 train gain in registration 3. If the optimizer",
+      "cannot move a weak student on a stripped prompt under those conditions, the",
+      "remaining explanations are T132's missing span half and the suite's own",
+      "sensitivity, both declared below.",
+      "A LARGE gain is the outcome the design expects and is therefore the one to",
+      "state most carefully: it would be a gain from a degraded seed on a small model,",
+      "and it does not transfer to either the hand-written seed or the capable model.",
+      "Registration 2 already measured that combination and found +0.011.",
+      "Neither outcome licenses a fifth registration that weakens something further",
+      "until a number appears."
     ]
   },
 
   "protocol": {
     "method_debugging": [
-      "train only. The two test splits have been run under registrations 1 and 2 and",
-      "their numbers are in findings.md, so — as with registration 2 — this is not",
-      "written by someone who has never seen a test number.",
-      "Nothing in it is chosen on one. The seed weakening is driven by an ambiguity in",
-      "T134's null that §7's own reporting made visible; the provider change is driven",
-      "by an error class registration 2's amendment 2 recorded; the budget, the suite,",
-      "the splits, the repeats, the bootstrap and the analysis are copied unchanged",
-      "precisely so that neither can be tuned against a number."
+      "train only. The pilot above is train. The two test splits have been run once,",
+      "under registrations 1 and 2, and their numbers are in findings.md.",
+      "Nothing in this registration is chosen on a test number. The model was chosen",
+      "on a train probe of its answer accuracy and its parse-failure rate; the",
+      "provider follows from which providers serve the model; the budget, the suite,",
+      "the splits, the repeats, the bootstrap and the analysis are copied unchanged."
     ],
     "reporting": [
-      "Both arms on all three splits, whatever the numbers are, and labelled a headroom",
-      "experiment wherever they appear. The baseline arm is a deliberately degraded",
-      "prompt and its absolute scores are never quoted as the assistant's performance.",
-      "§7's repeat condition applies unchanged: residual failure counts diverging",
-      "between arms mean the arms were not measured under the same conditions and the",
-      "run is repeated. Diverging newly-recorded cache entry counts are reported and",
-      "never repaired."
+      "Both arms on all three splits, whatever the numbers are, and labelled a",
+      "weak-student headroom experiment wherever they appear. Neither arm's absolute",
+      "score is quoted as the assistant's performance: one is a degraded prompt on an",
+      "8B model and the other is a machine-written prompt on an 8B model.",
+      "§7's repeat condition applies unchanged. Diverging newly-recorded cache entry",
+      "counts are reported and never repaired."
     ],
     "stopping": [
       "The measurement is complete when both arms have three repeats on all three",
-      "splits. It is not stopped early on a favourable interval, and it is not extended",
-      "on an unfavourable one. One search, one measurement, one report."
+      "splits. It is not stopped early on a favourable interval and not extended on an",
+      "unfavourable one. One search, one measurement, one report."
     ]
   },
 
   "known_gaps": [
     {
       "id": "T132",
-      "what": "The reflective dataset reaches GEPA without its span half: MLflow stands down from tracing when ADK is already tracing, so the search reflects on `Feedback.rationale` and the inputs, and not on the ADK tool spans.",
-      "status": "NOT FIXED in this run. tasks.md orders it before a rerun and it is not landed; the run proceeds with it declared rather than waiting.",
-      "effect": "The proposer sees less about a rollout than the design intends. It weakened registrations 1 and 2 equally and weakens this one the same way, so it does not confound the comparison — but it bounds a null harder here than it did there, because this run's whole claim rests on the proposer being able to rediscover routing it can only infer from rationales."
+      "what": "The reflective dataset reaches GEPA without its span half: MLflow stands down from tracing when ADK is already tracing, so the search reflects on `Feedback.rationale` and the inputs, not on the ADK tool spans.",
+      "status": "NOT FIXED. Declared rather than waited for, as in registrations 2 and 3.",
+      "effect": "The proposer sees less about a rollout than the design intends. It bounds a null here harder than in either earlier run, because this run's claim rests on a capable proposer being able to rediscover routing — and it can only infer it from rationales."
     },
     {
       "id": "T137",
-      "what": "The proposer is asked to rewrite, not to revise, and nothing checks a candidate that names a callable no toolset resolves. P8c's winner is what that produces: one tool description rewritten into a root-agent system prompt naming `agent_tool_predict_green_roof_water_balance_tool`, which does not exist.",
-      "status": "NOT FIXED in this run. tasks.md orders it before a rerun and it is not landed.",
-      "effect": "A candidate of this run may be broken the same way and nothing will refuse it. The risk is HIGHER than in T134: a stripped docstring invites wholesale rewriting where a full one invites editing. T136's sentence inside each tool text is the seed-side half that IS landed and T134 showed the proposer using it to self-correct. Any candidate naming a callable outside TOOL_NAMES is reported in findings.md by hand for this run."
+      "what": "The proposer is asked to rewrite, not to revise, and nothing checks a candidate naming a callable no toolset resolves.",
+      "status": "NOT FIXED. Checked by hand instead, per registration 3.",
+      "effect": "Registration 3's winner was checked and was CLEAN: its one mention of `agent_tool_text_to_sql_agent` was a sentence forbidding its use — 'a registry label, not a callable, and must never be used as a tool name' — which is T136's seed-side sentence working. The same by-hand check is run on this run's winner and reported in findings.md."
+    },
+    {
+      "id": "T139-mixed-capability",
+      "what": "The root agent is an 8B model while the frozen text-to-SQL chain it delegates to is a capable one.",
+      "status": "DELIBERATE — see `what_moved_from_registration_3.what_did_not_move`.",
+      "effect": "The system under test is not uniformly weak, so family A's answers stay as good as their SQL, and this run understates how badly a fully-8B assistant would do. It measures what an 8B ROUTER does with capable tools, which is the quantity the optimizable surface actually addresses. Stated so no reader takes the baseline for a small-model assistant."
+    },
+    {
+      "id": "T139-parse-failure",
+      "what": "The seed's parse-failure rate on this student is 3.0% rather than registration 2's 0.0%.",
+      "status": "MEASURED and accepted, not repaired.",
+      "effect": "Up to 3% of baseline rollouts contribute a `parse_failure` rather than an answer. It is reported per arm and never folded into answer accuracy, and a candidate that reduces it is credited as improving format rather than reasoning."
     },
     {
       "id": "T134-holdout-exclusion",
-      "what": "test_unseen lost about 39% of its rollouts in both arms of registration 2 to `upstream` cache misses, on a split of only seven templates.",
-      "status": "NOT REPAIRED here, by choice — see `capture.why_it_is_not_widened_again`.",
-      "effect": "test_unseen supports description and not inference in this run either, which §7 already required of it for a different reason. Its win/loss table is read as such."
+      "what": "test_unseen lost about 39% of its rollouts in both arms of registration 2 to `upstream` cache misses, on a split of seven templates.",
+      "status": "NOT REPAIRED, by choice.",
+      "effect": "test_unseen supports description and not inference, which §7 already required of it."
     }
   ],
 

@@ -67,7 +67,7 @@ Three rules make a packet fit:
 | **P8a** candidate surface, `predict_fn` | T120, T121, T125 | arch §6, §2's optimizable-text bullet; `decisions.md § The optimizer entry point and the candidate surface`; `findings.md § Optimizer internals` | two records with different `as_of` evaluated concurrently *through* `predict_fn`; the unread-prompt assertion fires when a component is unread |
 | **P8b** scorers, search wiring | T122–T124, T126 | arch §7; `decisions.md § Candidate selection and the scorers' aggregation` | a short search over a handful of train cases completes; the skip semantics run through this repo's own aggregation callable, asserted to be passed — omitting it silently makes the objective the mean of the numeric scorer values |
 | **P8c** measurement run, statistics | T127–T129 | arch §7's reporting rules; `decisions.md § Replication and the LLM cache`; `specs/prompt-tuning-stats/plan.md` §5–§7 | three repeats × two arms; the bootstrap resamples `template_id`; both gaps separate; test_unseen as a win/loss table |
-| **P9** what the first run exposed | T131–T138 | `findings.md § The measurement run (P8c)` and the three entries above it | the spike says what reaches the reflection model, measured rather than read; every tool's own text says it is a tool, and the proposer is told so too; the rerun starts from a seed no candidate can mistake for a system prompt, and — T134 having found nothing on top of a hand-written one — a second run starts from a seed with room in it |
+| **P9** what the first run exposed | T131–T139 | `findings.md § The measurement run (P8c)` and the three entries above it | the spike says what reaches the reflection model, measured rather than read; every tool's own text says it is a tool, and the proposer is told so too; the rerun starts from a seed no candidate can mistake for a system prompt, and — T134 having found nothing on top of a hand-written one — a second run starts from a seed with room in it |
 
 **Sequencing that the table does not show.**
 
@@ -4681,6 +4681,36 @@ rather than replace and catches it when it does not.
   rather than answering it jointly, and no difference between T134's baseline
   and this one's is reported as an effect. Registered as registration 3 of
   `eval/preregistration.json` before any rollout. → T134
+- [ ] T139 **Move the student, not the text.** T138's search closed at
+  0.8286 → 0.9023 on train, but its seed had fallen only 1.5 blended points
+  despite an 84% cut, because abstention's 7-point drop was half-cancelled by
+  card_recall RISING 7.5 — that metric scores the union of every
+  `lookup_reference` call, so an unguided agent scores higher for being
+  unselective. The real obstacle is the one text cannot move: deepseek-v4-flash
+  answers this suite at ~0.82 whatever the prompt says, and §8 puts the suite's
+  sensitivity at 20 points.
+  **So change the model under test.** `root_agent_model` →
+  `mistralai/ministral-8b-2512`, a dated snapshot, on the same weakened seed. A
+  30-record train probe puts its answer accuracy at 0.467 against deepseek's
+  0.786 — a 32-point drop on the metric the thesis reports, which is headroom
+  the size §8 says the suite can resolve. Its parse-failure rate is 3.0%, small
+  enough that the baseline measures the prompt rather than the harness, and that
+  number is what licensed the run.
+  **The frozen text-to-SQL chain stays capable.** Sub-agent, builder and fixer
+  keep deepseek: that prompt is frozen (§3.1) and outside the candidate surface,
+  so a weak model there adds `upstream` exclusions no candidate can repair, and
+  per-arm exclusion divergence is what §7 voids a run on. The cost is that the
+  system under test is not uniformly weak — it measures what an 8B *router* does
+  with capable tools, which is what the optimizable surface addresses.
+  **It resolves §5's oldest deviation as a side effect.** The proposer stays
+  deepseek, so teacher and student are different models for the first time in
+  four registrations: a gain can no longer be the proposer scoring its own work,
+  and a null can no longer be the proposer being as weak as the student.
+  **The provider pin becomes a two-slug whitelist**, because the run spans two
+  models and no provider serves both. It stays hard only while the intersection
+  with each model's provider set is a singleton, so `check_pins` verifies that
+  live and fails on a whitelist it cannot verify — "unverifiable" and "pinned"
+  must not print the same way. Registered as registration 4. → T138
 
 - [x] T138 **The stripe was still not a property of the value, and `{d}` is where
   it showed.** T113 found this defect on `{month}`, repaired that one parameter,
@@ -4779,7 +4809,7 @@ rather than replace and catches it when it does not.
 
 ## Summary
 
-**109 tasks** across ten phases, 17 of them parallelizable, executed as **24
+**110 tasks** across ten phases, 17 of them parallelizable, executed as **24
 packets** — one session each, mapped above.
 
 | Phase | Tasks | Parallelizable | Packets | Gates |
@@ -4793,7 +4823,7 @@ packets** — one session each, mapped above.
 | P6 harness and pilot | 8 | — | 4 | **T107 freezes the testbed** |
 | P7 oracles and generation | 7 | — | 5 | T115, pulled forward to P2b, gates capture |
 | P8 optimizer | 10 | — | 3 | — |
-| P9 what the first run exposed | 8 | 2 | 1 | T131 blocks T132–T134; T133 blocks T137; T136 lands before T134's rerun; T138 follows T134's null |
+| P9 what the first run exposed | 9 | 2 | 1 | T131 blocks T132–T134; T133 blocks T137; T136 lands before T134's rerun; T138 follows T134's null; T139 follows T138's |
 | final | 1 | — | — | — |
 
 **Parallel opportunities.** P0's documentation edits (T001–T005, T008) touch six

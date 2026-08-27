@@ -71,6 +71,19 @@ class AssistantSettings(BaseSettings):
     # same env var name as `experiments.text2sql.harness`, which reached this
     # conclusion first; not imported from there because the product package must
     # not depend on the experiments package.
+    #
+    # **A COMMA-SEPARATED LIST is a whitelist, not a loosening** (T139). The pin
+    # is process-wide while the model is not: a run that puts the root agent on
+    # one model and the frozen text-to-SQL chain on another needs a server for
+    # each, and no single slug serves both — `mistral` serves no deepseek and
+    # `gmicloud` serves no Ministral. Listing both keeps `allow_fallbacks: False`
+    # and leaves each model exactly one reachable server, so the pin stays hard
+    # per call even though it names two providers. It is only that when the
+    # intersection of the list with each pinned model's provider set is a
+    # SINGLETON; a list whose intersection has two members would restore the
+    # per-call mixing this field exists to prevent, so `check_pins` verifies the
+    # singleton property against the live endpoint listing rather than trusting
+    # the list.
     llm_openrouter_provider: str | None = Field(
         default=None,
         validation_alias=AliasChoices(
@@ -205,10 +218,11 @@ class AssistantSettings(BaseSettings):
         mid-measurement — the drift being the whole thing this prevents, and the
         one failure mode a loud error is strictly better than.
         """
-        slug = (self.llm_openrouter_provider or "").strip()
-        if not slug or not api_base or "openrouter.ai" not in api_base:
+        slugs = [s.strip() for s in (self.llm_openrouter_provider or "").split(",")]
+        slugs = [s for s in slugs if s]
+        if not slugs or not api_base or "openrouter.ai" not in api_base:
             return {}
-        return {"extra_body": {"provider": {"only": [slug], "allow_fallbacks": False}}}
+        return {"extra_body": {"provider": {"only": slugs, "allow_fallbacks": False}}}
 
     def reflection_extra(self) -> dict[str, Any]:
         """The same, for the reflection model's own endpoint and key.

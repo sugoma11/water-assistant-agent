@@ -158,80 +158,11 @@ def make_lookup_reference_tool() -> LookupReferenceTool:
         This text is the declaration of ``lookup_reference``, one of the tools the
         assistant may call.
 
-        This is the authority for **documented rules, thresholds, definitions and
-        reference values** — what the operations manual says, as opposed to what
-        the sensors recorded or a model predicts. It reads a fixed set of
-        reference cards held in the deployment itself. There is no search and no
-        ranking, so naming the right ``topic`` is the whole of the call, and the
-        call is free: nothing is fetched and nothing is computed.
-
-        Use it whenever the question is what a value *is* rather than what it
-        *was* or what it *would be*: "what is the soil-moisture threshold for
-        irrigating the extensive roofs", "when does the controller decide to
-        water", "what counts as a heatwave here", "what does a reading of 12 %θ
-        mean on that roof", "how far does the soil-moisture record run". Never
-        answer a documented constant from your own knowledge, and never go to the
-        database for one — the database holds measurements, not policy. For what
-        a sensor actually recorded use **text_to_sql_agent**; for what a roof
-        would do under some weather use the water-balance or irrigation tool.
-
-        **Read the whole card, including the part naming what it does not
-        cover.** ``not_applicable`` lists the roof segments the card's rule does
-        not reach, each with the reason. A segment listed there has no such value
-        *at all*: it is not to be estimated from the segments that do have one,
-        and the card's rule does not apply to it however confidently that rule is
-        worded beside it. Say so plainly when that is the answer — that is a real
-        answer, not a failure. The same holds for a condition a card does not
-        mention: a card states its rule in full, so a condition absent from it is
-        a condition the site does not have.
-
-        Args:
-            topic: Which card to read. One of:
-
-                - ``irrigation_rule`` — the order the irrigation decision is made
-                  in, rung by rung, and the full list of conditions it tests.
-                - ``irrigation_threshold`` — the soil-moisture trigger levels per
-                  roof segment, in both % water content and millimetres.
-                - ``substrate_hydraulics`` — each segment's substrate depth and
-                  the two ends of its water content.
-                - ``irrigation_dose`` — how much water an "irrigate" answer means
-                  on each segment.
-                - ``heatwave_definition`` — the temperature and duration that
-                  make a heatwave here.
-                - ``retention_target`` — the stormwater retention an event is
-                  judged against, and the segments it can be judged on.
-                - ``roof_reference_ranges`` — what a soil-moisture reading means
-                  on a segment: the low, normal and high bands in %θ.
-                - ``data_freshness`` — how far each measurement table's record
-                  runs.
-                - ``roof_directory`` — the five roof segments, their canonical
-                  names and what tells them apart.
-                - ``sensor_reference`` — what the instruments record and how to
-                  read their values.
-                - ``et0_method`` — how reference evapotranspiration is computed.
-            roof: Optional roof segment to scope the answer to — the canonical
-                name, the German name, the site's own id or a column name all
-                resolve. It narrows the numbers to that segment where the card
-                keeps them per segment, and it **never** hides what the card does
-                not cover: ask about a segment the card excludes and the exclusion
-                comes back with the rest of the card, which is the answer. Omit
-                it for a question about the site as a whole.
-
-        Returns:
-            dict: on success ``status='success'`` with ``topic`` (the card read),
-            ``title``, ``text`` (the card's own prose — the substance of the
-            answer), ``values`` (the numbers it states), ``applies_to`` (the
-            segments it holds for), ``not_applicable`` (segment → why the card
-            does not cover it — read this before answering about a segment),
-            ``provenance`` (``'rendered'`` means the numbers are held equal to the
-            deployed controller's own constants by a test; ``'static'`` means they
-            are pinned elsewhere), ``roof`` (the segment the call was scoped to)
-            and ``values_scoped_to_roof`` (whether ``values`` was narrowed to it —
-            false with a ``roof`` given means the card keeps no separate numbers
-            for that segment, so check ``not_applicable``). On failure
-            ``status='error'`` with ``error_type='invalid_argument'`` and
-            ``error_details`` naming what would have been valid; correct the
-            argument and call again.
+        It reads one of the site's reference cards, named by ``topic`` — a string
+        out of the enumerated card names in this declaration's signature. ``roof``
+        (str) is optional and scopes the answer to one roof segment. Returns a
+        dict with a ``status`` and the card's ``title``, ``text``, ``values``,
+        ``applies_to`` and ``not_applicable``.
         """
         if topic not in CARD_TOPICS:
             return ErrorResult(

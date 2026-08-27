@@ -67,7 +67,7 @@ Three rules make a packet fit:
 | **P8a** candidate surface, `predict_fn` | T120, T121, T125 | arch §6, §2's optimizable-text bullet; `decisions.md § The optimizer entry point and the candidate surface`; `findings.md § Optimizer internals` | two records with different `as_of` evaluated concurrently *through* `predict_fn`; the unread-prompt assertion fires when a component is unread |
 | **P8b** scorers, search wiring | T122–T124, T126 | arch §7; `decisions.md § Candidate selection and the scorers' aggregation` | a short search over a handful of train cases completes; the skip semantics run through this repo's own aggregation callable, asserted to be passed — omitting it silently makes the objective the mean of the numeric scorer values |
 | **P8c** measurement run, statistics | T127–T129 | arch §7's reporting rules; `decisions.md § Replication and the LLM cache`; `specs/prompt-tuning-stats/plan.md` §5–§7 | three repeats × two arms; the bootstrap resamples `template_id`; both gaps separate; test_unseen as a win/loss table |
-| **P9** what the first run exposed | T131–T137 | `findings.md § The measurement run (P8c)` and the three entries above it | the spike says what reaches the reflection model, measured rather than read; every tool's own text says it is a tool, and the proposer is told so too; the rerun starts from a seed no candidate can mistake for a system prompt |
+| **P9** what the first run exposed | T131–T138 | `findings.md § The measurement run (P8c)` and the three entries above it | the spike says what reaches the reflection model, measured rather than read; every tool's own text says it is a tool, and the proposer is told so too; the rerun starts from a seed no candidate can mistake for a system prompt, and — T134 having found nothing on top of a hand-written one — a second run starts from a seed with room in it |
 
 **Sequencing that the table does not show.**
 
@@ -4651,6 +4651,36 @@ rather than replace and catches it when it does not.
   candidate naming a tool that does not exist becomes a number in the thesis.
   Report the growth ratio beside it — 38× on the sub-agent description in
   candidate 2 — as a signal and never as a threshold. → T133
+- [ ] T138 **Measure the gain from a seed that has room.** T134 closed cleanly
+  and found nothing: +0.011 [+0.000, +0.032] on test_seen answer accuracy
+  against a baseline of 0.818, and 1.000 in both arms on every test_unseen
+  metric, where §8 states the suite detects differences of 20 points. The
+  exclusion counts converged between the arms (43 vs 39 of 375 on test_seen), so
+  §7's repeat condition did not fire and the null is a result rather than an
+  artifact — but it is a null that **cannot separate the thesis question from a
+  ceiling**. The seed is 30,296 characters of hand-written routing against this
+  exact catalog; an optimizer that adds nothing to it has either failed or has
+  been handed a prompt with nothing left in it.
+  **So move the seed, not the optimizer.** Cut each tool text back to a
+  signature paraphrase and the root instruction's routing half to a bare
+  inventory of the six callables — 30,296 → 4,964 characters — and re-run the
+  identical search at the identical budget over the identical suite. A gain says
+  the search works and T134 measured a ceiling; a second null says the search
+  does not work here, and says it against a seed that demonstrably had room.
+  **Three things the weakening must not touch**, because they are apparatus
+  rather than the thing under test: the answer contract and its no-clarification
+  clause, byte-for-byte, or every rollout becomes a `parse_failure` and the run
+  measures the harness; T136's callable-naming sentence in each of the six tool
+  texts, which is the only landed guard against T137's failure mode and which
+  T134 showed the proposer using to self-correct; and `lookup_reference`'s
+  `topic` enum, which lives in the signature and reaches the model whatever the
+  docstring says (§3.2).
+  **It is a headroom experiment and is labelled one wherever it is reported.**
+  The baseline arm is a deliberately degraded prompt and its absolute scores are
+  never quoted as the assistant's performance. The two runs bracket the question
+  rather than answering it jointly, and no difference between T134's baseline
+  and this one's is reported as an effect. Registered as registration 3 of
+  `eval/preregistration.json` before any rollout. → T134
 
 - [x] T138 **The stripe was still not a property of the value, and `{d}` is where
   it showed.** T113 found this defect on `{month}`, repaired that one parameter,
@@ -4749,7 +4779,7 @@ rather than replace and catches it when it does not.
 
 ## Summary
 
-**108 tasks** across ten phases, 17 of them parallelizable, executed as **24
+**109 tasks** across ten phases, 17 of them parallelizable, executed as **24
 packets** — one session each, mapped above.
 
 | Phase | Tasks | Parallelizable | Packets | Gates |
@@ -4763,7 +4793,7 @@ packets** — one session each, mapped above.
 | P6 harness and pilot | 8 | — | 4 | **T107 freezes the testbed** |
 | P7 oracles and generation | 7 | — | 5 | T115, pulled forward to P2b, gates capture |
 | P8 optimizer | 10 | — | 3 | — |
-| P9 what the first run exposed | 7 | 2 | 1 | T131 blocks T132–T134; T133 blocks T137; T136 lands before T134's rerun |
+| P9 what the first run exposed | 8 | 2 | 1 | T131 blocks T132–T134; T133 blocks T137; T136 lands before T134's rerun; T138 follows T134's null |
 | final | 1 | — | — | — |
 
 **Parallel opportunities.** P0's documentation edits (T001–T005, T008) touch six

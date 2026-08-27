@@ -502,109 +502,13 @@ def make_green_roof_balance_tool(ctx: "ScenarioContext") -> GreenRoofBalanceTool
         This text is the declaration of ``predict_green_roof_water_balance_tool``,
         one of the tools the assistant may call.
 
-        **Fetches its own weather and its own starting soil moisture** for the given
-        date window — do not call the weather tool first, do not query the database
-        for the roof's current moisture, and do not pass either in. It then runs the
-        GR2L two-layer water-balance model to produce, for each day, the substrate
-        water content, roof runoff, and evapotranspiration. Use it for
-        stormwater-retention, roof-runoff, soil-moisture / drought-risk, or
-        evapotranspiration-cooling questions over a sequence of days.
-
-        Soil moisture is in **% volumetric water content (%θ)**, the same unit the
-        sensors and the ops manual use, both in and out; millimetres of stored water
-        appear alongside for the water balance.
-
-        Three roofs can be modelled: ``non_irrigated_extensive``,
-        ``irrigated_extensive``, ``semi_intensive``. The **gravel roof and the
-        wetland cannot be** — the gravel roof has no substrate to simulate, and the
-        wetland ponds water above a mat its sensor cannot measure through — and the
-        tool reports either as ``status='not_available'``. Their measured sensor
-        data is still available through the database, so a question about what
-        those two roofs *did* is a normal database question.
-
-        All roofs are segments of the same building, so no location is needed. Past
-        and future windows are both supported and resolved automatically; just name
-        the dates the question is about (up to 16 days ahead).
-
-        Args:
-            roof_type: One of ``non_irrigated_extensive``, ``irrigated_extensive``,
-                ``semi_intensive`` — selects the roof's physical parameters. Name
-                the roof the user actually asked about even when it is the gravel
-                roof or the wetland: the tool answers that it cannot model those,
-                which is the honest answer to give.
-            start_date: Window start, ``YYYY-MM-DD`` (give ``end_date`` with it).
-            end_date: Window end, ``YYYY-MM-DD``. Required whenever ``start_date`` is
-                given.
-            past_days: Number of **complete past days**, ending yesterday. It adds no
-                forecast days, so a retention question about last week runs on last
-                week's observations only.
-            forecast_days: Number of days from **today** forward (0-16). Combine it
-                with ``past_days`` to simulate across today; with neither given, the
-                window is the coming 7 days.
-            initial_soil_moisture_pct: Optional day-1 soil moisture, in **% water
-                content** (e.g. ``18.5``). **Omit it in normal use** — the tool reads
-                the roof's own sensor for the day the window opens. Pass it only for
-                a what-if ("if the roof started out dry, at 5 %") or when the user
-                states a starting value. The first day only seeds the model, so
-                starting the window a few days early also lets the state settle.
-            albedo: Optional override of the roof's surface albedo (0.0-1.0), the
-                fraction of sunlight reflected. **Omit it in normal use** — each roof
-                type has a calibrated default (0.2 for these vegetated roofs). Pass
-                it only when the user explicitly
-                describes a different surface or asks a what-if: e.g. ~0.25-0.3 dry
-                or sparse vegetation, ~0.4-0.6 a light gravel or reflective "cool
-                roof" coating, ~0.8 fresh snow. A higher albedo reflects more energy
-                away, which lowers evapotranspiration and leaves the roof wetter. One
-                value applies to the whole window. Never set it to make a result
-                match an expectation, and when it is set, say so in the answer.
-            forcings: Optional **what-if weather**, replacing the fetched value for
-                the days named and leaving every other day and field as measured or
-                forecast: ``{"precip": {"2026-07-22": 50.0}}`` runs the window with
-                50 mm of rain on 22 July. Use it when the user asks what *would*
-                happen under different weather ("what if we got a 50 mm downpour
-                tomorrow?", "what if next week were 5 °C warmer?"); omit it
-                otherwise, and never use it to nudge a result toward an expectation.
-                The fields are the same ones the day rows carry — ``precip`` (mm),
-                ``tm`` / ``tx`` / ``tn`` (°C), ``rf`` (%), ``w`` (km/h), ``gs``
-                (J/cm²/day) — and every day named must fall inside the window.
-                Say in the answer which values were assumed rather than measured.
-            evaluate_against_measured: Set it to ``True`` when the user asks how
-                well the model matches reality — "how close was the simulation to
-                the sensor?", "did the model get last month right?" — and the
-                result gains an ``evaluation``: the mean and largest daily gap
-                between predicted and measured soil moisture, in the same %θ, over
-                the days both cover. Only past windows have anything to compare
-                against; on a forecast the comparison comes back with ``days: 0``
-                and a reason, which is not a failure. Leave it off otherwise: it
-                costs an extra database read and answers a question about the
-                model rather than about the roof.
-
-        Returns:
-            dict: on success ``status='success'`` with the resolved ``roof_type``,
-            the ``weather_source`` the run was forced by (``'station'`` means the
-            site's own instruments — say so in the answer), the ``forcings``
-            actually applied (null when none were, and otherwise the what-if
-            values the answer must attribute), the effective ``parameters``
-            (including the albedo actually used), the
-            ``seed`` that day 1 started from (its %θ, where it came from, and whether
-            the reading was stale — say so in the answer if it was), a ``data`` list
-            (one day per row, with ``swc_pct`` and ``Ssub``), and a ``summary``
-            (retention mm/%, driest day, drought flag). A window longer than 31
-            days comes back with ``truncated: true`` and an empty ``data``,
-            replaced by ``weekly`` aggregates — the summary still covers the whole
-            run, so answer from those rather than re-running the window in pieces.
-            With ``evaluate_against_measured`` it also carries ``evaluation``: the
-            compared days, the overlap window, and the mean and largest
-            |predicted − measured| soil moisture in %θ. When the request is outside
-            what can be modelled — the gravel roof or the wetland, a window with no
-            soil-moisture record to start from, or a window ending more than 16
-            days ahead, since no weather exists to drive the model that far out —
-            ``status='not_available'`` with a ``reason`` to
-            pass on to the user; that is a scope limit, not a malfunction. On failure
-            ``status='error'`` with ``error_details`` and an ``error_type``:
-            ``'invalid_argument'`` means the call itself was wrong and can be
-            corrected and retried, ``'upstream'`` means something the tool depends
-            on failed — report the system-side problem rather than retrying.
+        It runs the GR2L two-layer model over a roof named by ``roof_type`` (str)
+        and a window given either as ``start_date`` and ``end_date``
+        (``YYYY-MM-DD`` strings) or as ``past_days`` and ``forecast_days`` (ints,
+        counted from today). Optionally takes ``initial_soil_moisture_pct``
+        (float, % water content), ``albedo`` (float, 0.0-1.0), ``forcings``
+        (dict of weather field → date → value) and ``evaluate_against_measured``
+        (bool). Returns a dict with a ``status``, a row per day and a ``summary``.
         """
         # Normalized once, here, and every lookup below uses the result — the
         # scope table, the presets, the soil-moisture column and the echoed

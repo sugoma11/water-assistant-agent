@@ -4482,7 +4482,7 @@ rather than replace and catches it when it does not.
   the prompt the reflection model would receive. `uv run ruff check .` clean on
   the touched packages (same 22 pre-existing findings, none in the testbed),
   1351 passed.
-- [ ] T134 **The repeat §7 asks for.** Exclusions diverged between arms on
+- [x] T134 **The repeat §7 asks for.** Exclusions diverged between arms on
   test_seen (14/125 baseline, 25/125 optimized), which is the architecture's own
   stated condition for repeating a run — so the P8c comparison is recorded and
   not established. A second run under a fresh registration is what would settle
@@ -4491,11 +4491,66 @@ rather than replace and catches it when it does not.
   worth closing first — test_unseen lost 30 of 56 cases in one arm and 28 in the
   other to replay misses, and two of its seven templates were measured in neither
   arm. → T131, T132, T116
-- [ ] T135 **`Measurement.write` runs once, at the end.** A run killed part-way
+  **The condition does not fire again**, which is what the run was opened to
+  find out: 43/375 baseline against 39/375 optimized on test_seen over three
+  repeats, the sign flipping between them (14 vs 11, 14 vs 15, 15 vs 13). The
+  arms were measured under the same conditions, so this run's comparison is
+  established rather than recorded. Reported in
+  `findings.md § The repeat §7 asked for (T134)` off
+  `eval/measurements/20260826T164850Z.json`.
+  **What the registration bought back.** Registration 2 restores `repeats: 3`,
+  which registration 1's amendment 1 sold for budget, so residual
+  nondeterminism is **measured**: 13.5 % of test_seen cases disagree with
+  themselves across their own three repeats, identically in both arms, at
+  temperature 0 with a seed sent on every call. The primary estimand moves
+  +0.011 [+0.000, +0.032] on answer against that floor — direction positive on
+  every test_seen metric, magnitude not separable from zero. The suite cannot
+  resolve effects of this size, and now that is a measured statement.
+  **The capture widening worked and was not enough.** ±1 → ±3 recovered about a
+  third of the holdout (30/28 of 56 lost, now ~22), but test_unseen still
+  excludes 39 % and every metric ties at 1.000 in both arms — 0 win, 0 loss, 6
+  tie, 1 no data. A ceiling, and the excluded remainder is why.
+  **Four defects found by standing a reasoning model up**, each invisible under
+  gemma, which emits no thought part: `_final_text` folded the chain of thought
+  into the message the contract is parsed from; `probe_task_canary` hashed that
+  same unstable trace, so `just pins-task` would have reported MOVED on every
+  capture and detected nothing; nothing anywhere set a request timeout, so
+  `llm_num_retries` could not fire against a hung socket; and OpenRouter was
+  load-balancing one model id across 29 providers mid-run — §5's provider-swap
+  hazard *inside* a run — with the cheapest one returning reasoning inside
+  `content`, where the SQL builder reads its query. All four are fixed and
+  covered; the first two are no-ops on a model without thought parts, so P8c's
+  numbers are untouched.
+  **Two things recorded rather than repaired.** The canary hash for
+  deepseek-v4-flash-0731 is byte-identical to gemma-4-31b-it's — both answer the
+  compliance probe with exactly `green roof canary` — so that canary cannot
+  distinguish two very different models, and the dated `-0731` alias is what
+  actually pins this run. And T137's decidable check needs refining: all three
+  edited components of the winner name an `agent_tool_` callable, and all three
+  name it to **forbid** it ("that is not a real tool"), so the naive "names a
+  callable outside `TOOL_NAMES`" rule fires on every one as a false positive.
+  **Never pooled with P8c.** Four things differ — the task model, T136's 605
+  characters in the six tool texts (which moved the reference arm too), the
+  capture width, and the provider regime, P8c's mixture being unrecoverable.
+  Only the two qualitative questions carry across.
+  *Verified:* €4.09 of the registered \$6 (search €1.01, eighteen conditions
+  €3.09); 1686 rollouts at workers = 1, 2 rate-limit raises survived; parse
+  failures and step-cap exhaustions 0.000 in all six conditions; `just pins`,
+  `just candidates-check` and `just cases-check` clean; `uv run ruff check`
+  clean on the touched packages, full suite passing.
+- [x] T135 **`Measurement.write` runs once, at the end.** A run killed part-way
   leaves nothing on disk even though every completed condition has been scored
   and logged; the P8c run survived only because the budget lasted to the last
   condition. Write incrementally, or write per condition. Independent of the
   other four. → T128
+  Done as `measure(out=...)`, which writes the whole document after every
+  completed condition — rewritten rather than appended, because it is one JSON
+  document and a partial one has to stay loadable by `outcomes_from`. Opt-in, so
+  every test caller still writes nothing. Landed *during* T134 rather than
+  before it: that run is 1686 rollouts against P8c's 562, so a single write at
+  the end was the one step that could throw away fourteen hours of scored and
+  logged conditions. Covered by a kill injected into the third condition, which
+  leaves the first two on disk and re-analysable.
 - [x] T136 **Say in each tool's own text that it is a tool.** The registered
   search's winner (candidate 4 of run `0fea85d0`) is candidate 1 plus **one**
   rewritten tool description: GR2L's, turned into a root-agent system prompt

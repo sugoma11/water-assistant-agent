@@ -755,6 +755,100 @@ nondeterminism is reported as unmeasured rather than as zero, and every
 difference above is read without knowing what "small" means on this endpoint.
 That is amendment 1's stated cost, arriving exactly where it was said it would.
 
+## The repeat §7 asked for (T134)
+
+Two arms, three splits, **three repeats**, under **registration 2**
+(`09f7985293487ae6ede6369fabe0d6a048c314fca4e5849e23331bf6a2fbd7e9`, with its two
+amendments), on `openrouter/deepseek/deepseek-v4-flash-0731` pinned to the
+provider `deepinfra`, LLM response cache off, response cache replaying. 1686
+rollouts, written to `eval/measurements/20260826T164850Z.json`; the report
+re-renders from that file with no model in reach.
+
+**§7's repeat condition does not fire, which is the whole point of the run.**
+Exclusion counts on the split carrying the primary estimand, summed over three
+repeats:
+
+| split | baseline | optimized |
+|---|---|---|
+| test_seen | 43/375 (11.5 %) | 39/375 (10.4 %) |
+| test_unseen | 66/168 (39.3 %) | 65/168 (38.7 %) |
+| train | 1/300 | 0/300 |
+
+P8c's were **14/125 against 25/125** on test_seen — a nine-point divergence, and
+the architecture's stated condition for repeating a run. Here the arms differ by
+one point, and the sign flips repeat to repeat (14 vs 11, 14 vs 15, 15 vs 13). The
+arms were measured under the same conditions, so **this run's comparison is
+established rather than recorded**, which is the thing P8c could not claim about
+its own.
+
+**The primary estimand.** Paired bootstrap over `template_id`, 10 000 resamples,
+`default_rng(42)`, percentile 95 %: on test_seen the **answer** metric moves
+**+0.011 [+0.000, +0.032]** over 19 templates, `card_recall` +0.047 [+0.000,
++0.140] over 5, `abstention` +0.003 [+0.000, +0.009], trajectory +0.037 [−0.032,
++0.128] and the blended selection score +0.017 [−0.008, +0.046]. Three intervals
+have a lower bound **at** zero rather than above it, and two span it. The
+direction is consistently positive on every test_seen metric; the magnitude is
+small enough that none of it is separable from zero with confidence.
+
+**The noise floor exists this time, and it is not small.** Three repeats are what
+registration 1 gave up under its amendment 1 and reported as unmeasured. Measured:
+on test_seen **13.5 % of cases disagree with themselves across their own three
+repeats** — 0.135 of 111 in *both* arms, identically — and 9–11 % on train.
+Temperature is 0 and the seed is 42 and sent on every call; that buys nothing here.
+So a +0.011 shift in a template-averaged mean sits against a population where one
+case in seven is not reproducible against itself, and the honest reading of every
+interval above is that this suite, at this size, cannot resolve effects of this
+size. That is a fact about the apparatus, and it is the fact P8c's report had to
+leave blank.
+
+**test_unseen is a ceiling and tells us nothing.** Every metric is 1.000 in both
+arms; the win/loss table is **0 win, 0 loss, 6 tie, 1 no data**, T22 having no data
+in the optimized arm. A split where both arms are perfect on everything measured
+cannot discriminate between them, and the reason is visible one line up: **39 % of
+its cases are excluded**, almost all `upstream`, so what survives to be scored is
+the easy remainder. The d±3 capture widening (registration 2) did work — P8c lost
+30 and 28 of 56, this run loses ~22 of 56 per repeat — but recovering a third of
+the population was not enough to make the holdout informative.
+
+**Both generalization gaps are small and neither excludes zero.** train →
+test_seen is −0.007 [−0.030, +0.012] for the baseline and −0.011 [−0.031, +0.005]
+for the optimized arm. test_seen → test_unseen is −0.139 and −0.118 as point
+estimates over disjoint template sets, and both are artefacts of the ceiling above
+rather than evidence of anything. No sign of the memorized constants or the
+per-template routing table the two gaps exist to catch — on a suite this size,
+still a weak statement rather than a clean bill.
+
+**The abstention trade P8c found did not recur.** On test_seen, abstention
+accuracy over the unanswerable cases moves **0.872 → 0.891** while false
+abstention stays at 0.000 over ~290 answerable cases in both arms. P8c's optimized
+arm bought 0.18 of answer with 0.24 of abstention accuracy; this one buys neither,
+and gives nothing up. On train it does fall, 0.923 → 0.846 over 39 unanswerable
+cases, which is the split the search selected on and therefore the one place the
+weighting could express itself.
+
+**Parse failures are gone.** `parse_failures` and `step_cap_exceeded` are **0.000
+in all six conditions**. In P8c the two tracked each other exactly and neither was
+zero. Mean steps fall to 1.23–1.28 from 1.78–1.89, mean extra calls to 0.15–0.35
+from 0.87–2.68. Some of that is a stronger model; some of it is
+`_final_text` no longer folding a reasoning model's thought parts into the message
+the contract is parsed from (T134's first fix), without which every one of these
+rollouts would have been scored on text no candidate wrote.
+
+**Four things differ from P8c, so the two runs are never pooled and never
+differenced.** The task model (`gemma-4-31b-it` → `deepseek-v4-flash-0731`); the
+six tool texts (T136 added 605 characters that reach the task model on every
+rollout of *both* arms, so the reference arm moved too); the capture neighbourhood
+(±1 → ±3, which changes the exclusion rate, which is what the arms are read
+against); and the provider regime — P8c was unpinned across OpenRouter's 29
+providers for that id and **which mixture it drew is not recoverable**. Only the
+qualitative questions carry across, and both are answered above: the exclusion
+divergence did not recur, and the direction of the answer metric's movement did.
+
+**Cost: €4.09 of the registered $6** — the search €1.01 and the eighteen measured
+conditions €3.09, against a registered estimate of $4.4. 1686 rollouts at
+workers = 1 took ~14 hours, and 2 rate-limit raises survived amendment 2's retry
+budget out of 1686.
+
 ## External endpoints and what they can carry
 
 Measured while sizing P8c's measurement run, and the reason the run is routed the

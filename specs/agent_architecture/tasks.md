@@ -4700,22 +4700,41 @@ rather than replace and catches it when it does not.
   `Pools.of` did. That regeneration re-bases the two committed measurement runs
   and is T139's, not this one's. → T113
 
-- [ ] T139 **Regenerate the suite onto the repaired stripe, and re-capture what it
+- [x] T139 **Regenerate the suite onto the repaired stripe, and re-capture what it
   asks for.** T138 fixed the generator; this is what makes the *files* hold the
-  property. `uv run python scripts/generate_cases.py` with the live GR2L and the
-  Archive, then `scripts/capture_cache.py` over the new windows, then the pins.
-  **It re-bases two measured runs, which is the whole cost.** `train.json` and
-  `test_seen.json` change — the rng stream shifts the moment one draw does, so it
-  is every case in both, not the 48 that carry a shared `{d}` — and every
-  `eval/cache/` entry keyed to a window those cases no longer ask for goes stale.
-  `eval/measurements/20260825T174410Z.json` (P8c) and
-  `20260826T164850Z.json` (T134) then describe a suite that no longer exists:
-  they are not *wrong*, and neither is repaired or re-run here, but nothing after
-  this may be differenced against them. `test_unseen.json` is expected to come
-  back byte-identical, and a diff there is a defect in this task rather than in
-  T138.
-  **So it lands with a fresh measurement run and not between two arms of one**,
-  on the same reasoning T136 landed before the T134 repeat rather than inside it.
+  property. `just cases` against the live GR2L and the Archive, then
+  `just capture`, then `just capture-verify`.
+  **The ledger is whole and both overlap reports are empty.** 100 / 125 / 56,
+  **zero shortfalls**, abstentions 13 / 16 / 16 and languages 50/50, 63/62, 28/28
+  — §1.6's stated shares, unmoved. `parameter_overlaps` and `value_overlaps` are
+  both `{}`, which is the first time the second one has been true of a committed
+  suite. 429 attempts against 281 instances; the 166 rejections split 90 balance,
+  55 coverage, 21 oracle.
+  **Less moved than the rng made it look like it would.** `_pick` calls
+  `rng.choice` once whatever the pool holds, so a changed pool changes the value
+  drawn and not the stream position, and a template whose ladder left its pool
+  alone re-draws identically. **36 of 100 train cases and 64 of 125 test_seen**
+  differ; the case ids are the same set in both, so nothing is renamed or lost.
+  Ten train templates are touched (T09, T10, T11, T15b, T16a, T17a, T18a, T19,
+  T21, T24a) and fourteen in test_seen — the `{d}`/`{thr}`/`{x}` drawers, plus
+  the ones that follow them through a rejection retry.
+  **`test_unseen.json` came back byte-identical**, as T138 said it had to: the
+  holdout takes every pool whole, `_striped` hands a holdout the same order
+  `Pools.of` did, and its rng is seeded per split.
+  **The capture pass reproduced every answer.** 281 answered, **0 refused, 0
+  failed**, 594 neighbours warmed, 336 new entries (954 → 1290: 671 archive, 619
+  gr2l), and every case's recomputed answer equalled its committed one — so the
+  suite's ground truth still holds against the live services rather than being
+  assumed to. `just capture-verify` then replays all 281 with **0 live calls and
+  0 entries recorded**. The pass adds and never prunes, so entries keyed to
+  windows the old draws asked for are still committed; they are dead weight and
+  not a defect.
+  **It re-bases two measured runs, which is the whole cost.**
+  `eval/measurements/20260825T174410Z.json` (P8c) and `20260826T164850Z.json`
+  (T134) describe a suite 100 of whose cases have moved. Neither is repaired or
+  re-run here and neither is *wrong*; nothing after this may be differenced
+  against them. The next measurement run starts from here, which is the same
+  reasoning that landed T136 before the T134 repeat rather than inside it.
   → T138
 
 ---

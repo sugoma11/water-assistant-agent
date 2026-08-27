@@ -22,7 +22,13 @@ from mlflow.genai.optimize.util import validate_train_data
 
 from eval.generation import emit
 from eval.generation.instantiate import case_envelope, gold_conflicts, validate
-from eval.generation.splits import SPLITS, day_pools, overlaps, stripe_report
+from eval.generation.splits import (
+    SPLITS,
+    day_pools,
+    overlaps,
+    stripe_report,
+    value_overlaps,
+)
 from eval.generation.templates import TEMPLATES, as_of_at, band_days
 from eval.oracles.pins import stamp
 from water_assistant_agent.assistant.toolset import LOOKUP_TOOL, TEXT_TO_SQL_TOOL
@@ -279,6 +285,20 @@ def test_the_committed_splits_share_no_sampled_parameter():
     generation run, only `inputs.params`, which §6.1 carries for exactly this.
     """
     assert overlaps(COMMITTED["train"], COMMITTED["test_seen"]) == {}
+
+
+def test_no_committed_value_reaches_both_splits_through_different_templates():
+    """The same criterion at §1.7's own key, which is the coarser one (T138).
+
+    `overlaps` above keys on (template_id, parameter) — the unit memorization
+    works in — and cannot see a value that is disjoint inside every template and
+    shared across them. That is what `{d}` was: five horizon pools, each striped
+    over itself, `d = 3` train's through T15b and test_seen's through T09, T13,
+    T14 and T21, and `train ∩ test_seen = {3, 4, 5, 6}` in a suite this file
+    passed. Both keys are asserted here because only the pair of them says the
+    stripe is a property of the value.
+    """
+    assert value_overlaps(COMMITTED["train"], COMMITTED["test_seen"]) == {}
 
 
 def test_the_committed_as_of_is_striped_and_not_cut():

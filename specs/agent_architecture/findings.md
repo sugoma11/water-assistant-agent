@@ -2058,9 +2058,28 @@ train's through T09's `MOISTURE_THRESHOLDS` and test_seen's through T02's
 `HOT_DAY_THRESHOLDS`, and no train draw took it. `{x}` is placed twice as well
 and is inert only because T23 is holdout. Every check the repo had passed,
 because all four key on `(template_id, parameter)` while §1.7 states the rule on
-the parameter alone. The generator is repaired (T138: one ladder per parameter);
-the three files predate the repair and `test_unseen` is unaffected by
-construction.
+the parameter alone. The generator is repaired (T138: one ladder per parameter)
+and the suite regenerated onto it (T139).
 *Verified:* `splits.value_overlaps` over the committed `train.json` and
 `test_seen.json`, and by striping each pool directly through
 `splits.pools()["train"|"test_seen"]`. *Date:* 2026-08-27.
+
+**What the regeneration moved, and what it did not.** Re-emitting the suite on
+the repaired stripe changes **36 of 100 train cases and 64 of 125 test_seen**,
+not all 225: `_pick` calls `rng.choice` once whatever the pool holds, so a
+changed pool changes the value drawn and not the stream position, and a template
+whose ladder left its pool alone re-draws identically. The case ids are the same
+set on both sides. **`test_unseen.json` is byte-identical**, the holdout taking
+every pool whole and its rng being seeded per split. The ledger is unmoved —
+100 / 125 / 56, zero shortfalls, abstentions 13 / 16 / 16, languages 50/50,
+63/62, 28/28 — and both overlap reports are `{}`. The capture pass over the new
+windows answered **281 of 281, 0 refused and 0 failed**, added 336 entries
+(954 → 1290) and found **every case's recomputed answer equal to its committed
+one**, so the ground truth reproduces against the live GR2L and Archive rather
+than being assumed to. It adds and never prunes, so entries keyed to the old
+draws' windows remain committed and unused. `eval/measurements/`'s two runs
+(P8c, T134) describe the pre-T139 suite and may not be differenced against
+anything measured after it.
+*Verified:* `just cases`, `just cases-check` ("byte-identical to a fresh
+generation pass"), `just capture`, `just capture-verify` (0 live calls, 0
+entries recorded). *Date:* 2026-08-28.

@@ -1503,12 +1503,12 @@
       "case_id": "T09-0008",
       "template_id": "T09",
       "language": "de",
-      "as_of": "2026-02-09T23:00:00+01:00",
-      "question": "Unbewässertes Extensivdach: Bodenfeuchte unter 12 %θ in den nächsten 3 Tagen?",
+      "as_of": "2026-02-27T23:00:00+01:00",
+      "question": "Intensivdach: Bodenfeuchte unter 15 %θ in den nächsten 7 Tagen?",
       "params": {
-        "roof": "non_irrigated_extensive",
-        "thr": 12,
-        "d": 3
+        "roof": "semi_intensive",
+        "thr": 15,
+        "d": 7
       }
     },
     "expectations": {
@@ -1541,12 +1541,12 @@
       "case_id": "T09-0009",
       "template_id": "T09",
       "language": "en",
-      "as_of": "2026-01-16T23:00:00+01:00",
-      "question": "Could you check whether the non-irrigated extensive green roof's soil moisture drops below 12 %θ in the next 5 days?",
+      "as_of": "2025-11-29T23:00:00+01:00",
+      "question": "Could you check whether the irrigated extensive green roof's soil moisture drops below 12 %θ in the next 7 days?",
       "params": {
-        "roof": "non_irrigated_extensive",
+        "roof": "irrigated_extensive",
         "thr": 12,
-        "d": 5
+        "d": 7
       }
     },
     "expectations": {
@@ -1579,16 +1579,16 @@
       "case_id": "T10-0005",
       "template_id": "T10",
       "language": "de",
-      "as_of": "2025-07-17T23:00:00+02:00",
-      "question": "Könnten Sie mir die niedrigste für das Intensivdach in den nächsten 3 Tagen vorhergesagte Bodenfeuchte nennen?",
+      "as_of": "2025-08-25T23:00:00+02:00",
+      "question": "Könnten Sie mir die niedrigste für das unbewässerte Extensivdach in den nächsten 7 Tagen vorhergesagte Bodenfeuchte nennen?",
       "params": {
-        "roof": "semi_intensive",
-        "d": 3
+        "roof": "non_irrigated_extensive",
+        "d": 7
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 21.2,
+      "answer": 1.29,
       "unit": "%θ",
       "tolerance": {
         "kind": "abs",
@@ -1617,16 +1617,16 @@
       "case_id": "T10-0006",
       "template_id": "T10",
       "language": "en",
-      "as_of": "2025-08-16T23:00:00+02:00",
-      "question": "Could you tell me the lowest soil moisture predicted for the semi-intensive green roof over the next 5 days?",
+      "as_of": "2025-12-05T23:00:00+01:00",
+      "question": "Could you tell me the lowest soil moisture predicted for the non-irrigated extensive green roof over the next 7 days?",
       "params": {
-        "roof": "semi_intensive",
-        "d": 5
+        "roof": "non_irrigated_extensive",
+        "d": 7
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 5.26,
+      "answer": 16.38,
       "unit": "%θ",
       "tolerance": {
         "kind": "abs",
@@ -1655,7 +1655,7 @@
       "case_id": "T10-0007",
       "template_id": "T10",
       "language": "de",
-      "as_of": "2026-03-17T23:00:00+01:00",
+      "as_of": "2025-07-29T23:00:00+02:00",
       "question": "Minimale Bodenfeuchte unbewässertes Extensivdach, nächste 7 Tage?",
       "params": {
         "roof": "non_irrigated_extensive",
@@ -1664,7 +1664,7 @@
     },
     "expectations": {
       "status": "answered",
-      "answer": 3.85,
+      "answer": 4.78,
       "unit": "%θ",
       "tolerance": {
         "kind": "abs",
@@ -1693,16 +1693,16 @@
       "case_id": "T10-0008",
       "template_id": "T10",
       "language": "en",
-      "as_of": "2025-08-10T23:00:00+02:00",
-      "question": "Before we set the irrigation plan: what is the lowest soil moisture the irrigated extensive green roof is predicted to reach over the next 7 days?",
+      "as_of": "2025-07-14T23:00:00+02:00",
+      "question": "Before we set the irrigation plan: what is the lowest soil moisture the semi-intensive green roof is predicted to reach over the next 7 days?",
       "params": {
-        "roof": "irrigated_extensive",
+        "roof": "semi_intensive",
         "d": 7
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 4.71,
+      "answer": 13.08,
       "unit": "%θ",
       "tolerance": {
         "kind": "abs",
@@ -1731,16 +1731,16 @@
       "case_id": "T10-0009",
       "template_id": "T10",
       "language": "de",
-      "as_of": "2025-09-18T23:00:00+02:00",
-      "question": "Könnten Sie mir die niedrigste für das bewässerte Extensivdach in den nächsten 5 Tagen vorhergesagte Bodenfeuchte nennen?",
+      "as_of": "2025-12-02T23:00:00+01:00",
+      "question": "Könnten Sie mir die niedrigste für das Intensivdach in den nächsten 5 Tagen vorhergesagte Bodenfeuchte nennen?",
       "params": {
-        "roof": "irrigated_extensive",
+        "roof": "semi_intensive",
         "d": 5
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 8.07,
+      "answer": 24.85,
       "unit": "%θ",
       "tolerance": {
         "kind": "abs",
@@ -1769,7 +1769,7 @@
       "case_id": "T11-0005",
       "template_id": "T11",
       "language": "en",
-      "as_of": "2025-06-08T23:00:00+02:00",
+      "as_of": "2026-04-10T23:00:00+02:00",
       "question": "Could you check whether the irrigated extensive green roof will need irrigating tomorrow?",
       "params": {
         "roof": "irrigated_extensive"
@@ -1804,10 +1804,10 @@
       "case_id": "T11-0006",
       "template_id": "T11",
       "language": "de",
-      "as_of": "2025-12-26T23:00:00+01:00",
-      "question": "Könnten Sie prüfen, ob das Intensivdach morgen bewässert werden muss?",
+      "as_of": "2025-09-21T23:00:00+02:00",
+      "question": "Könnten Sie prüfen, ob das bewässerte Extensivdach morgen bewässert werden muss?",
       "params": {
-        "roof": "semi_intensive"
+        "roof": "irrigated_extensive"
       }
     },
     "expectations": {
@@ -1839,15 +1839,15 @@
       "case_id": "T11-0007",
       "template_id": "T11",
       "language": "en",
-      "as_of": "2025-08-28T23:00:00+02:00",
-      "question": "I am planning tomorrow's round. Does the non-irrigated extensive green roof need irrigation then?",
+      "as_of": "2025-12-26T23:00:00+01:00",
+      "question": "I am planning tomorrow's round. Does the irrigated extensive green roof need irrigation then?",
       "params": {
-        "roof": "non_irrigated_extensive"
+        "roof": "irrigated_extensive"
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": false,
+      "answer": true,
       "unit": null,
       "tolerance": {
         "kind": "exact"
@@ -1874,7 +1874,7 @@
       "case_id": "T11-0008",
       "template_id": "T11",
       "language": "de",
-      "as_of": "2025-07-05T23:00:00+02:00",
+      "as_of": "2025-08-28T23:00:00+02:00",
       "question": "Bewässertes Extensivdach: morgen bewässern?",
       "params": {
         "roof": "irrigated_extensive"
@@ -1882,7 +1882,7 @@
     },
     "expectations": {
       "status": "answered",
-      "answer": true,
+      "answer": false,
       "unit": null,
       "tolerance": {
         "kind": "exact"
@@ -1944,7 +1944,7 @@
       "case_id": "T12-0005",
       "template_id": "T12",
       "language": "de",
-      "as_of": "2026-04-04T23:00:00+02:00",
+      "as_of": "2026-01-22T23:00:00+01:00",
       "question": "Könnten Sie prüfen, ob der Rückhalt des Kiesdachs vom 2025-09-14 bis 2025-09-17 über dem Zielwert des Betriebshandbuchs lag?",
       "params": {
         "roof": "gravel",
@@ -1985,11 +1985,11 @@
       "case_id": "T12-0006",
       "template_id": "T12",
       "language": "en",
-      "as_of": "2026-02-21T23:00:00+01:00",
-      "question": "Could you check whether the wetland green roof's retention during 2026-02-17 to 2026-02-19 stayed above the manual's target?",
+      "as_of": "2025-10-12T23:00:00+02:00",
+      "question": "Could you check whether the gravel roof's retention during 2025-09-14 to 2025-09-17 stayed above the manual's target?",
       "params": {
-        "roof": "wetland",
-        "event": "2026-02-17..2026-02-19"
+        "roof": "gravel",
+        "event": "2025-09-14..2025-09-17"
       }
     },
     "expectations": {
@@ -2026,10 +2026,10 @@
       "case_id": "T12-0007",
       "template_id": "T12",
       "language": "de",
-      "as_of": "2026-03-08T23:00:00+01:00",
-      "question": "Rückhalt Kiesdach, 17.02.2026 bis 19.02.2026: über dem Zielwert des Betriebshandbuchs?",
+      "as_of": "2026-02-21T23:00:00+01:00",
+      "question": "Rückhalt Sumpfdach, 17.02.2026 bis 19.02.2026: über dem Zielwert des Betriebshandbuchs?",
       "params": {
-        "roof": "gravel",
+        "roof": "wetland",
         "event": "2026-02-17..2026-02-19"
       }
     },
@@ -2675,14 +2675,14 @@
       "template_id": "T15b",
       "language": "de",
       "as_of": "2025-09-09T23:00:00+02:00",
-      "question": "Könnten Sie mir sagen, wie viel Niederschlag in den nächsten 6 Tagen erwartet wird?",
+      "question": "Könnten Sie mir sagen, wie viel Niederschlag in den nächsten 7 Tagen erwartet wird?",
       "params": {
-        "d": 6
+        "d": 7
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 8.5,
+      "answer": 16.9,
       "unit": "mm",
       "tolerance": {
         "kind": "rel",
@@ -2713,9 +2713,9 @@
       "template_id": "T15b",
       "language": "en",
       "as_of": "2025-11-29T23:00:00+01:00",
-      "question": "Could you tell me how much rain is expected to fall over the next 8 days?",
+      "question": "Could you tell me how much rain is expected to fall over the next 7 days?",
       "params": {
-        "d": 8
+        "d": 7
       }
     },
     "expectations": {
@@ -2750,15 +2750,15 @@
       "case_id": "T15b-0007",
       "template_id": "T15b",
       "language": "de",
-      "as_of": "2026-04-13T23:00:00+02:00",
-      "question": "Regenmenge nächste 8 Tage?",
+      "as_of": "2025-07-23T23:00:00+02:00",
+      "question": "Regenmenge nächste 5 Tage?",
       "params": {
-        "d": 8
+        "d": 5
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 31.6,
+      "answer": 3.2,
       "unit": "mm",
       "tolerance": {
         "kind": "rel",
@@ -2788,15 +2788,15 @@
       "case_id": "T15b-0008",
       "template_id": "T15b",
       "language": "en",
-      "as_of": "2026-03-08T23:00:00+01:00",
-      "question": "We are scheduling the next irrigation. How much rain will fall over the next 6 days?",
+      "as_of": "2025-10-18T23:00:00+02:00",
+      "question": "We are scheduling the next irrigation. How much rain will fall over the next 3 days?",
       "params": {
-        "d": 6
+        "d": 3
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 1.6,
+      "answer": 1.4,
       "unit": "mm",
       "tolerance": {
         "kind": "rel",
@@ -2826,15 +2826,15 @@
       "case_id": "T15b-0009",
       "template_id": "T15b",
       "language": "de",
-      "as_of": "2025-07-23T23:00:00+02:00",
-      "question": "Könnten Sie mir sagen, wie viel Niederschlag in den nächsten 4 Tagen erwartet wird?",
+      "as_of": "2026-03-02T23:00:00+01:00",
+      "question": "Könnten Sie mir sagen, wie viel Niederschlag in den nächsten 10 Tagen erwartet wird?",
       "params": {
-        "d": 4
+        "d": 10
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 2.6,
+      "answer": 0.6,
       "unit": "mm",
       "tolerance": {
         "kind": "rel",
@@ -2864,13 +2864,13 @@
       "case_id": "T16a-0005",
       "template_id": "T16a",
       "language": "en",
-      "as_of": "2025-10-18T23:00:00+02:00",
-      "question": "The irrigated extensive green roof is at 15.0 %θ, with 31 °C expected over the next 48 h and 4.0 mm of rain over the coming week. Could you tell me what the operations manual says — should we irrigate?",
+      "as_of": "2026-02-03T23:00:00+01:00",
+      "question": "The non-irrigated extensive green roof is at 16.0 %θ, with 25 °C expected over the next 48 h and 1.0 mm of rain over the coming week. Could you tell me what the operations manual says — should we irrigate?",
       "params": {
-        "roof": "irrigated_extensive",
-        "x": 15.0,
-        "tmax": 31,
-        "y": 4.0
+        "roof": "non_irrigated_extensive",
+        "x": 16.0,
+        "tmax": 25,
+        "y": 1.0
       }
     },
     "expectations": {
@@ -2909,18 +2909,18 @@
       "case_id": "T16a-0006",
       "template_id": "T16a",
       "language": "de",
-      "as_of": "2025-12-20T23:00:00+01:00",
-      "question": "Das unbewässerte Extensivdach liegt bei 9.5 %θ, für die nächsten 48 h werden 25 °C erwartet und für die kommende Woche 1.0 mm Niederschlag. Könnten Sie mir sagen, was das Betriebshandbuch dazu vorsieht — bewässern?",
+      "as_of": "2025-11-29T23:00:00+01:00",
+      "question": "Das bewässerte Extensivdach liegt bei 12.0 %θ, für die nächsten 48 h werden 31 °C erwartet und für die kommende Woche 4.0 mm Niederschlag. Könnten Sie mir sagen, was das Betriebshandbuch dazu vorsieht — bewässern?",
       "params": {
-        "roof": "non_irrigated_extensive",
-        "x": 9.5,
-        "tmax": 25,
-        "y": 1.0
+        "roof": "irrigated_extensive",
+        "x": 12.0,
+        "tmax": 31,
+        "y": 4.0
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": true,
+      "answer": false,
       "unit": null,
       "tolerance": {
         "kind": "exact"
@@ -2954,13 +2954,13 @@
       "case_id": "T16a-0007",
       "template_id": "T16a",
       "language": "en",
-      "as_of": "2026-04-19T23:00:00+02:00",
-      "question": "Readings in front of me: the non-irrigated extensive green roof at 12.0 %θ, 31 °C over the next 48 h, 1.0 mm of rain over the coming week. What does the operations manual say about irrigating?",
+      "as_of": "2026-03-02T23:00:00+01:00",
+      "question": "Readings in front of me: the irrigated extensive green roof at 12.0 %θ, 31 °C over the next 48 h, 10.0 mm of rain over the coming week. What does the operations manual say about irrigating?",
       "params": {
-        "roof": "non_irrigated_extensive",
+        "roof": "irrigated_extensive",
         "x": 12.0,
         "tmax": 31,
-        "y": 1.0
+        "y": 10.0
       }
     },
     "expectations": {
@@ -2999,18 +2999,18 @@
       "case_id": "T16a-0008",
       "template_id": "T16a",
       "language": "de",
-      "as_of": "2025-09-18T23:00:00+02:00",
-      "question": "Intensivdach: 15.0 %θ, 48 h 19 °C, kommende Woche 10.0 mm — laut Betriebshandbuch bewässern?",
+      "as_of": "2025-08-31T23:00:00+02:00",
+      "question": "Intensivdach: 8.0 %θ, 48 h 19 °C, kommende Woche 1.0 mm — laut Betriebshandbuch bewässern?",
       "params": {
         "roof": "semi_intensive",
-        "x": 15.0,
+        "x": 8.0,
         "tmax": 19,
-        "y": 10.0
+        "y": 1.0
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": false,
+      "answer": true,
       "unit": null,
       "tolerance": {
         "kind": "exact"
@@ -3044,13 +3044,13 @@
       "case_id": "T16a-0009",
       "template_id": "T16a",
       "language": "en",
-      "as_of": "2025-11-17T23:00:00+01:00",
-      "question": "The irrigated extensive green roof is at 9.5 %θ, with 25 °C expected over the next 48 h and 1.0 mm of rain over the coming week. Could you tell me what the operations manual says — should we irrigate?",
+      "as_of": "2025-08-28T23:00:00+02:00",
+      "question": "The non-irrigated extensive green roof is at 8.0 %θ, with 31 °C expected over the next 48 h and 4.0 mm of rain over the coming week. Could you tell me what the operations manual says — should we irrigate?",
       "params": {
-        "roof": "irrigated_extensive",
-        "x": 9.5,
-        "tmax": 25,
-        "y": 1.0
+        "roof": "non_irrigated_extensive",
+        "x": 8.0,
+        "tmax": 31,
+        "y": 4.0
       }
     },
     "expectations": {
@@ -3089,7 +3089,7 @@
       "case_id": "T17a-0005",
       "template_id": "T17a",
       "language": "de",
-      "as_of": "2025-09-03T23:00:00+02:00",
+      "as_of": "2025-08-19T23:00:00+02:00",
       "question": "Könnten Sie mir sagen, ab welcher Windgeschwindigkeit die Bewässerung abzuschalten ist?",
       "params": {}
     },
@@ -3121,7 +3121,7 @@
       "case_id": "T17a-0006",
       "template_id": "T17a",
       "language": "en",
-      "as_of": "2025-08-01T23:00:00+02:00",
+      "as_of": "2025-10-09T23:00:00+02:00",
       "question": "Could you tell me above which wind speed irrigation has to be switched off?",
       "params": {}
     },
@@ -3153,7 +3153,7 @@
       "case_id": "T17a-0007",
       "template_id": "T17a",
       "language": "de",
-      "as_of": "2025-06-26T23:00:00+02:00",
+      "as_of": "2025-08-01T23:00:00+02:00",
       "question": "Windgrenze für die Bewässerungsabschaltung?",
       "params": {}
     },
@@ -3185,7 +3185,7 @@
       "case_id": "T17a-0008",
       "template_id": "T17a",
       "language": "en",
-      "as_of": "2025-09-21T23:00:00+02:00",
+      "as_of": "2026-02-18T23:00:00+01:00",
       "question": "We had gusts up on the roof yesterday. Above what wind speed must irrigation be shut off?",
       "params": {}
     },
@@ -3217,7 +3217,7 @@
       "case_id": "T17a-0009",
       "template_id": "T17a",
       "language": "de",
-      "as_of": "2025-08-25T23:00:00+02:00",
+      "as_of": "2025-06-14T23:00:00+02:00",
       "question": "Könnten Sie mir sagen, ab welcher Windgeschwindigkeit die Bewässerung abzuschalten ist?",
       "params": {}
     },
@@ -3249,10 +3249,10 @@
       "case_id": "T18a-0005",
       "template_id": "T18a",
       "language": "en",
-      "as_of": "2026-03-26T23:00:00+01:00",
-      "question": "Could you tell me what the temperature will be in 25 days?",
+      "as_of": "2025-10-18T23:00:00+02:00",
+      "question": "Could you tell me what the temperature will be in 56 days?",
       "params": {
-        "ahead_days": 25
+        "ahead_days": 56
       }
     },
     "expectations": {
@@ -3278,10 +3278,10 @@
       "case_id": "T18a-0006",
       "template_id": "T18a",
       "language": "de",
-      "as_of": "2025-10-18T23:00:00+02:00",
-      "question": "Könnten Sie mir sagen, welche Temperatur in 25 Tagen zu erwarten ist?",
+      "as_of": "2025-09-30T23:00:00+02:00",
+      "question": "Könnten Sie mir sagen, welche Temperatur in 35 Tagen zu erwarten ist?",
       "params": {
-        "ahead_days": 25
+        "ahead_days": 35
       }
     },
     "expectations": {
@@ -3307,7 +3307,7 @@
       "case_id": "T18a-0007",
       "template_id": "T18a",
       "language": "en",
-      "as_of": "2026-03-26T23:00:00+01:00",
+      "as_of": "2026-04-22T23:00:00+02:00",
       "question": "We are booking a maintenance slot 35 days out. What will the temperature be then?",
       "params": {
         "ahead_days": 35
@@ -3336,10 +3336,10 @@
       "case_id": "T18a-0008",
       "template_id": "T18a",
       "language": "de",
-      "as_of": "2025-07-26T23:00:00+02:00",
-      "question": "Temperatur in 35 Tagen?",
+      "as_of": "2025-09-12T23:00:00+02:00",
+      "question": "Temperatur in 56 Tagen?",
       "params": {
-        "ahead_days": 35
+        "ahead_days": 56
       }
     },
     "expectations": {
@@ -3365,10 +3365,10 @@
       "case_id": "T18a-0009",
       "template_id": "T18a",
       "language": "en",
-      "as_of": "2026-01-07T23:00:00+01:00",
-      "question": "Could you tell me what the temperature will be in 25 days?",
+      "as_of": "2025-12-08T23:00:00+01:00",
+      "question": "Could you tell me what the temperature will be in 35 days?",
       "params": {
-        "ahead_days": 25
+        "ahead_days": 35
       }
     },
     "expectations": {
@@ -3394,16 +3394,16 @@
       "case_id": "T19-0005",
       "template_id": "T19",
       "language": "de",
-      "as_of": "2026-03-05T23:00:00+01:00",
-      "question": "Könnten Sie mir die mittlere Abweichung des Bodenfeuchtemodells des bewässerten Extensivdachs über die letzten 5 Tage nennen?",
+      "as_of": "2025-06-29T23:00:00+02:00",
+      "question": "Könnten Sie mir die mittlere Abweichung des Bodenfeuchtemodells des unbewässerten Extensivdachs über die letzten 5 Tage nennen?",
       "params": {
-        "roof": "irrigated_extensive",
+        "roof": "non_irrigated_extensive",
         "d": 5
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 3.42,
+      "answer": 0.48,
       "unit": "pp",
       "tolerance": {
         "kind": "abs",
@@ -3439,16 +3439,16 @@
       "case_id": "T19-0006",
       "template_id": "T19",
       "language": "en",
-      "as_of": "2026-04-10T23:00:00+02:00",
-      "question": "Could you tell me how far the soil-moisture model was off for the irrigated extensive green roof over the last 5 days, on average?",
+      "as_of": "2025-07-02T23:00:00+02:00",
+      "question": "Could you tell me how far the soil-moisture model was off for the semi-intensive green roof over the last 5 days, on average?",
       "params": {
-        "roof": "irrigated_extensive",
+        "roof": "semi_intensive",
         "d": 5
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 5.56,
+      "answer": 0.15,
       "unit": "pp",
       "tolerance": {
         "kind": "abs",
@@ -3484,7 +3484,7 @@
       "case_id": "T19-0007",
       "template_id": "T19",
       "language": "de",
-      "as_of": "2025-07-29T23:00:00+02:00",
+      "as_of": "2025-07-05T23:00:00+02:00",
       "question": "Mittlere Modellabweichung Bodenfeuchte unbewässertes Extensivdach, letzte 5 Tage?",
       "params": {
         "roof": "non_irrigated_extensive",
@@ -3493,7 +3493,7 @@
     },
     "expectations": {
       "status": "answered",
-      "answer": 2.62,
+      "answer": 0.15,
       "unit": "pp",
       "tolerance": {
         "kind": "abs",
@@ -3529,16 +3529,16 @@
       "case_id": "T19-0008",
       "template_id": "T19",
       "language": "en",
-      "as_of": "2026-03-14T23:00:00+01:00",
-      "question": "We are validating the model. On average, how far off was its soil moisture for the irrigated extensive green roof over the last 5 days?",
+      "as_of": "2026-04-07T23:00:00+02:00",
+      "question": "We are validating the model. On average, how far off was its soil moisture for the semi-intensive green roof over the last 10 days?",
       "params": {
-        "roof": "irrigated_extensive",
-        "d": 5
+        "roof": "semi_intensive",
+        "d": 10
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 2.14,
+      "answer": 1.75,
       "unit": "pp",
       "tolerance": {
         "kind": "abs",
@@ -3550,7 +3550,7 @@
           "name": "predict_green_roof_water_balance_tool",
           "args": {
             "evaluate_against_measured": true,
-            "past_days": 5
+            "past_days": 10
           }
         }
       ],
@@ -3562,9 +3562,8 @@
       "pins": {
         "duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7",
         "gr2l_canary": "c8f51c82fe5f8602577831c84cc8ad7aa31ca5143cc57bcf5014c44491a0edf7",
-        "station_derivation": "da6c872647ed04026a92d0127323cda5ce65002bc4fd077bb300463041109ae3",
         "weather_source": [
-          "station"
+          "archive"
         ]
       }
     }
@@ -3574,16 +3573,16 @@
       "case_id": "T19-0009",
       "template_id": "T19",
       "language": "de",
-      "as_of": "2026-03-08T23:00:00+01:00",
-      "question": "Könnten Sie mir die mittlere Abweichung des Bodenfeuchtemodells des bewässerten Extensivdachs über die letzten 5 Tage nennen?",
+      "as_of": "2026-02-12T23:00:00+01:00",
+      "question": "Könnten Sie mir die mittlere Abweichung des Bodenfeuchtemodells des unbewässerten Extensivdachs über die letzten 7 Tage nennen?",
       "params": {
-        "roof": "irrigated_extensive",
-        "d": 5
+        "roof": "non_irrigated_extensive",
+        "d": 7
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 3.17,
+      "answer": 6.75,
       "unit": "pp",
       "tolerance": {
         "kind": "abs",
@@ -3595,7 +3594,7 @@
           "name": "predict_green_roof_water_balance_tool",
           "args": {
             "evaluate_against_measured": true,
-            "past_days": 5
+            "past_days": 7
           }
         }
       ],
@@ -3619,18 +3618,18 @@
       "case_id": "T21-0005",
       "template_id": "T21",
       "language": "en",
-      "as_of": "2026-04-19T23:00:00+02:00",
-      "question": "Could you work out the minimum soil moisture of the irrigated extensive green roof over the next 5 days, assuming 20 mm of rain falls on day 1?",
+      "as_of": "2025-06-23T23:00:00+02:00",
+      "question": "Could you work out the minimum soil moisture of the non-irrigated extensive green roof over the next 7 days, assuming 40 mm of rain falls on day 3?",
       "params": {
-        "roof": "irrigated_extensive",
-        "d": 5,
-        "mm": 20,
-        "offset": 1
+        "roof": "non_irrigated_extensive",
+        "d": 7,
+        "mm": 40,
+        "offset": 3
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 17.43,
+      "answer": 1.29,
       "unit": "%θ",
       "tolerance": {
         "kind": "abs",
@@ -3665,18 +3664,18 @@
       "case_id": "T21-0006",
       "template_id": "T21",
       "language": "de",
-      "as_of": "2026-01-07T23:00:00+01:00",
-      "question": "Könnten Sie berechnen, welche minimale Bodenfeuchte das bewässerte Extensivdach in den nächsten 7 Tagen erreicht, wenn am Tag 1 40 mm Regen fallen?",
+      "as_of": "2025-06-17T23:00:00+02:00",
+      "question": "Könnten Sie berechnen, welche minimale Bodenfeuchte das unbewässerte Extensivdach in den nächsten 3 Tagen erreicht, wenn am Tag 1 20 mm Regen fallen?",
       "params": {
-        "roof": "irrigated_extensive",
-        "d": 7,
-        "mm": 40,
+        "roof": "non_irrigated_extensive",
+        "d": 3,
+        "mm": 20,
         "offset": 1
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 5.59,
+      "answer": 3.24,
       "unit": "%θ",
       "tolerance": {
         "kind": "abs",
@@ -3712,17 +3711,17 @@
       "template_id": "T21",
       "language": "en",
       "as_of": "2025-12-26T23:00:00+01:00",
-      "question": "A shower is possible on day 5 of the next 7 days. If it brings 40 mm, what is the lowest soil moisture the semi-intensive green roof reaches over that window?",
+      "question": "A shower is possible on day 1 of the next 5 days. If it brings 40 mm, what is the lowest soil moisture the semi-intensive green roof reaches over that window?",
       "params": {
         "roof": "semi_intensive",
-        "d": 7,
+        "d": 5,
         "mm": 40,
-        "offset": 5
+        "offset": 1
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 10.75,
+      "answer": 10.96,
       "unit": "%θ",
       "tolerance": {
         "kind": "abs",
@@ -3757,18 +3756,18 @@
       "case_id": "T21-0008",
       "template_id": "T21",
       "language": "de",
-      "as_of": "2025-08-28T23:00:00+02:00",
-      "question": "Bewässertes Extensivdach, 40 mm an Tag 1 von 5: minimale Bodenfeuchte im Zeitraum?",
+      "as_of": "2026-02-21T23:00:00+01:00",
+      "question": "Unbewässertes Extensivdach, 20 mm an Tag 1 von 3: minimale Bodenfeuchte im Zeitraum?",
       "params": {
-        "roof": "irrigated_extensive",
-        "d": 5,
-        "mm": 40,
+        "roof": "non_irrigated_extensive",
+        "d": 3,
+        "mm": 20,
         "offset": 1
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 15.22,
+      "answer": 20.16,
       "unit": "%θ",
       "tolerance": {
         "kind": "abs",
@@ -3803,18 +3802,18 @@
       "case_id": "T21-0009",
       "template_id": "T21",
       "language": "en",
-      "as_of": "2025-10-09T23:00:00+02:00",
-      "question": "Could you work out the minimum soil moisture of the semi-intensive green roof over the next 3 days, assuming 20 mm of rain falls on day 1?",
+      "as_of": "2025-06-20T23:00:00+02:00",
+      "question": "Could you work out the minimum soil moisture of the irrigated extensive green roof over the next 7 days, assuming 40 mm of rain falls on day 5?",
       "params": {
-        "roof": "semi_intensive",
-        "d": 3,
-        "mm": 20,
-        "offset": 1
+        "roof": "irrigated_extensive",
+        "d": 7,
+        "mm": 40,
+        "offset": 5
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 24.08,
+      "answer": 4.71,
       "unit": "%θ",
       "tolerance": {
         "kind": "abs",
@@ -3849,14 +3848,14 @@
       "case_id": "T24a-0005",
       "template_id": "T24a",
       "language": "de",
-      "as_of": "2026-03-26T23:00:00+01:00",
-      "question": "Könnten Sie mir den Verlauf der Bodenfeuchte des Sumpfdachs und des unbewässerten Extensivdachs im Juli 2025 zeigen?",
+      "as_of": "2026-04-19T23:00:00+02:00",
+      "question": "Könnten Sie mir den Verlauf der Bodenfeuchte des bewässerten Extensivdachs und des Kiesdachs im März 2025 zeigen?",
       "params": {
         "variant": "measured_pair",
         "table": "swc",
-        "month": "2025-07",
-        "roof_a": "wetland",
-        "roof_b": "non_irrigated_extensive"
+        "month": "2025-03",
+        "roof_a": "irrigated_extensive",
+        "roof_b": "gravel"
       }
     },
     "expectations": {
@@ -3895,22 +3894,22 @@
           "path": "series.*.roof",
           "op": "set_eq",
           "value": [
-            "non_irrigated_extensive",
-            "wetland"
+            "gravel",
+            "irrigated_extensive"
           ]
         },
         {
           "tool": "plot_timeseries",
           "path": "start_date",
           "op": "eq",
-          "value": "2025-07-01",
+          "value": "2025-03-01",
           "resolve": "window"
         },
         {
           "tool": "plot_timeseries",
           "path": "end_date",
           "op": "eq",
-          "value": "2025-07-31",
+          "value": "2025-03-31",
           "resolve": "window"
         }
       ],
@@ -3924,14 +3923,14 @@
       "case_id": "T24a-0006",
       "template_id": "T24a",
       "language": "en",
-      "as_of": "2025-12-11T23:00:00+01:00",
-      "question": "Could you show me how much water ran off the gravel roof and the non-irrigated extensive green roof over September 2025?",
+      "as_of": "2026-04-13T23:00:00+02:00",
+      "question": "Could you show me how much water ran off the gravel roof and the wetland green roof over March 2026?",
       "params": {
         "variant": "measured_pair",
         "table": "outflow",
-        "month": "2025-09",
+        "month": "2026-03",
         "roof_a": "gravel",
-        "roof_b": "non_irrigated_extensive"
+        "roof_b": "wetland"
       }
     },
     "expectations": {
@@ -3971,21 +3970,21 @@
           "op": "set_eq",
           "value": [
             "gravel",
-            "non_irrigated_extensive"
+            "wetland"
           ]
         },
         {
           "tool": "plot_timeseries",
           "path": "start_date",
           "op": "eq",
-          "value": "2025-09-01",
+          "value": "2026-03-01",
           "resolve": "window"
         },
         {
           "tool": "plot_timeseries",
           "path": "end_date",
           "op": "eq",
-          "value": "2025-09-30",
+          "value": "2026-03-31",
           "resolve": "window"
         }
       ],
@@ -3999,11 +3998,11 @@
       "case_id": "T24a-0007",
       "template_id": "T24a",
       "language": "de",
-      "as_of": "2025-09-06T23:00:00+02:00",
-      "question": "Grafik bewässertes Extensivdach, November 2024: gemessene Bodenfeuchte gegen Modell.",
+      "as_of": "2026-03-20T23:00:00+01:00",
+      "question": "Grafik bewässertes Extensivdach, Januar 2026: gemessene Bodenfeuchte gegen Modell.",
       "params": {
         "variant": "model_overlay",
-        "month": "2024-11",
+        "month": "2026-01",
         "roof": "irrigated_extensive"
       }
     },
@@ -4057,14 +4056,14 @@
           "tool": "plot_timeseries",
           "path": "start_date",
           "op": "eq",
-          "value": "2024-11-01",
+          "value": "2026-01-01",
           "resolve": "window"
         },
         {
           "tool": "plot_timeseries",
           "path": "end_date",
           "op": "eq",
-          "value": "2024-11-30",
+          "value": "2026-01-31",
           "resolve": "window"
         }
       ],
@@ -4078,11 +4077,11 @@
       "case_id": "T24a-0008",
       "template_id": "T24a",
       "language": "en",
-      "as_of": "2026-01-04T23:00:00+01:00",
-      "question": "We are checking the model against the sensors. Plot the semi-intensive green roof's measured soil moisture and the model's prediction for September 2025.",
+      "as_of": "2025-09-24T23:00:00+02:00",
+      "question": "We are checking the model against the sensors. Plot the semi-intensive green roof's measured soil moisture and the model's prediction for July 2025.",
       "params": {
         "variant": "model_overlay",
-        "month": "2025-09",
+        "month": "2025-07",
         "roof": "semi_intensive"
       }
     },
@@ -4136,14 +4135,14 @@
           "tool": "plot_timeseries",
           "path": "start_date",
           "op": "eq",
-          "value": "2025-09-01",
+          "value": "2025-07-01",
           "resolve": "window"
         },
         {
           "tool": "plot_timeseries",
           "path": "end_date",
           "op": "eq",
-          "value": "2025-09-30",
+          "value": "2025-07-31",
           "resolve": "window"
         }
       ],
@@ -4157,12 +4156,12 @@
       "case_id": "T24a-0009",
       "template_id": "T24a",
       "language": "de",
-      "as_of": "2026-04-10T23:00:00+02:00",
-      "question": "Könnten Sie die gemessene Bodenfeuchte des Kiesdachs und die Modellvorhersage für September 2025 zusammen darstellen?",
+      "as_of": "2026-02-15T23:00:00+01:00",
+      "question": "Könnten Sie die gemessene Bodenfeuchte des Kiesdachs und die Modellvorhersage für Januar 2026 zusammen darstellen?",
       "params": {
         "variant": "non_modellable_overlay",
-        "month": "2025-09",
-        "alias": "gravel_roof"
+        "month": "2026-01",
+        "alias": "kies"
       }
     },
     "expectations": {
@@ -4207,14 +4206,14 @@
           "tool": "plot_timeseries",
           "path": "start_date",
           "op": "eq",
-          "value": "2025-09-01",
+          "value": "2026-01-01",
           "resolve": "window"
         },
         {
           "tool": "plot_timeseries",
           "path": "end_date",
           "op": "eq",
-          "value": "2025-09-30",
+          "value": "2026-01-31",
           "resolve": "window"
         }
       ],
@@ -4228,7 +4227,7 @@
       "case_id": "T24b-0005",
       "template_id": "T24b",
       "language": "en",
-      "as_of": "2026-02-09T23:00:00+01:00",
+      "as_of": "2026-01-13T23:00:00+01:00",
       "question": "Could you tell me the mean soil-moisture difference between the two extensive roofs in September 2025?",
       "params": {
         "month": "2025-09"
@@ -4263,15 +4262,15 @@
       "case_id": "T24b-0006",
       "template_id": "T24b",
       "language": "de",
-      "as_of": "2025-08-16T23:00:00+02:00",
-      "question": "Könnten Sie mir den mittleren Bodenfeuchteunterschied zwischen den beiden Extensivdächern im Juli 2025 nennen?",
+      "as_of": "2025-09-30T23:00:00+02:00",
+      "question": "Könnten Sie mir den mittleren Bodenfeuchteunterschied zwischen den beiden Extensivdächern im September 2025 nennen?",
       "params": {
-        "month": "2025-07"
+        "month": "2025-09"
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 8.377,
+      "answer": 7.43,
       "unit": "pp",
       "tolerance": {
         "kind": "abs",
@@ -4298,15 +4297,15 @@
       "case_id": "T24b-0007",
       "template_id": "T24b",
       "language": "en",
-      "as_of": "2025-11-14T23:00:00+01:00",
-      "question": "For the March 2025 irrigation summary: on average, how far apart were the two extensive roofs in soil moisture?",
+      "as_of": "2026-02-27T23:00:00+01:00",
+      "question": "For the January 2026 irrigation summary: on average, how far apart were the two extensive roofs in soil moisture?",
       "params": {
-        "month": "2025-03"
+        "month": "2026-01"
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 3.471,
+      "answer": 2.815,
       "unit": "pp",
       "tolerance": {
         "kind": "abs",
@@ -4333,15 +4332,15 @@
       "case_id": "T24b-0008",
       "template_id": "T24b",
       "language": "de",
-      "as_of": "2026-02-03T23:00:00+01:00",
-      "question": "Mittlere Bodenfeuchtedifferenz beide Extensivdächer, Januar 2025?",
+      "as_of": "2025-10-18T23:00:00+02:00",
+      "question": "Mittlere Bodenfeuchtedifferenz beide Extensivdächer, September 2024?",
       "params": {
-        "month": "2025-01"
+        "month": "2024-09"
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 6.328,
+      "answer": 10.586,
       "unit": "pp",
       "tolerance": {
         "kind": "abs",
@@ -4368,15 +4367,15 @@
       "case_id": "T24b-0009",
       "template_id": "T24b",
       "language": "en",
-      "as_of": "2025-10-27T23:00:00+01:00",
-      "question": "Could you tell me the mean soil-moisture difference between the two extensive roofs in March 2025?",
+      "as_of": "2026-02-09T23:00:00+01:00",
+      "question": "Could you tell me the mean soil-moisture difference between the two extensive roofs in September 2025?",
       "params": {
-        "month": "2025-03"
+        "month": "2025-09"
       }
     },
     "expectations": {
       "status": "answered",
-      "answer": 3.471,
+      "answer": 7.43,
       "unit": "pp",
       "tolerance": {
         "kind": "abs",
@@ -4403,13 +4402,13 @@
       "case_id": "T25-0005",
       "template_id": "T25",
       "language": "de",
-      "as_of": "2026-01-10T23:00:00+01:00",
+      "as_of": "2026-02-21T23:00:00+01:00",
       "question": "Könnten Sie mir sagen, ob es morgen wärmer wird als gestern?",
       "params": {}
     },
     "expectations": {
       "status": "answered",
-      "answer": false,
+      "answer": true,
       "unit": null,
       "tolerance": {
         "kind": "exact"
@@ -4438,7 +4437,7 @@
       "case_id": "T25-0006",
       "template_id": "T25",
       "language": "en",
-      "as_of": "2025-06-29T23:00:00+02:00",
+      "as_of": "2026-03-08T23:00:00+01:00",
       "question": "Could you tell me whether tomorrow will be warmer than yesterday?",
       "params": {}
     },
@@ -4473,13 +4472,13 @@
       "case_id": "T25-0007",
       "template_id": "T25",
       "language": "de",
-      "as_of": "2025-06-23T23:00:00+02:00",
+      "as_of": "2025-12-26T23:00:00+01:00",
       "question": "Morgen wärmer als gestern?",
       "params": {}
     },
     "expectations": {
       "status": "answered",
-      "answer": false,
+      "answer": true,
       "unit": null,
       "tolerance": {
         "kind": "exact"
@@ -4508,7 +4507,7 @@
       "case_id": "T25-0008",
       "template_id": "T25",
       "language": "en",
-      "as_of": "2025-12-26T23:00:00+01:00",
+      "as_of": "2025-08-13T23:00:00+02:00",
       "question": "I am comparing the two ends of this stretch. Will tomorrow be warmer than yesterday?",
       "params": {}
     },
@@ -4543,13 +4542,13 @@
       "case_id": "T25-0009",
       "template_id": "T25",
       "language": "de",
-      "as_of": "2025-11-29T23:00:00+01:00",
+      "as_of": "2025-08-22T23:00:00+02:00",
       "question": "Könnten Sie mir sagen, ob es morgen wärmer wird als gestern?",
       "params": {}
     },
     "expectations": {
       "status": "answered",
-      "answer": true,
+      "answer": false,
       "unit": null,
       "tolerance": {
         "kind": "exact"
@@ -4578,7 +4577,7 @@
       "case_id": "T27-0005",
       "template_id": "T27",
       "language": "en",
-      "as_of": "2026-01-04T23:00:00+01:00",
+      "as_of": "2025-10-30T23:00:00+01:00",
       "question": "Could you tell me the lowest soil moisture predicted for the gravel roof over the next 7 days?",
       "params": {
         "variant": "predicted_minimum",
@@ -4611,11 +4610,11 @@
       "case_id": "T27-0006",
       "template_id": "T27",
       "language": "de",
-      "as_of": "2026-04-13T23:00:00+02:00",
+      "as_of": "2025-07-20T23:00:00+02:00",
       "question": "Könnten Sie prüfen, ob das Kiesdach morgen bewässert werden muss?",
       "params": {
         "variant": "irrigation",
-        "alias": "kies"
+        "alias": "qgravel"
       }
     },
     "expectations": {
@@ -4643,12 +4642,12 @@
       "case_id": "T27-0007",
       "template_id": "T27",
       "language": "en",
-      "as_of": "2026-02-21T23:00:00+01:00",
-      "question": "A front is coming through. If it drops 20 mm tomorrow, what is the gravel roof's minimum soil moisture over the next 5 days?",
+      "as_of": "2025-06-05T23:00:00+02:00",
+      "question": "A front is coming through. If it drops 20 mm tomorrow, what is the wetland green roof's minimum soil moisture over the next 3 days?",
       "params": {
         "variant": "forced_rain",
-        "alias": "gravel_roof",
-        "d": 5,
+        "alias": "sumpfdach",
+        "d": 3,
         "mm": 20
       }
     },
@@ -4677,12 +4676,12 @@
       "case_id": "T27-0008",
       "template_id": "T27",
       "language": "de",
-      "as_of": "2025-06-02T23:00:00+02:00",
-      "question": "Minimale Bodenfeuchte Sumpfdach, nächste 5 Tage?",
+      "as_of": "2025-08-04T23:00:00+02:00",
+      "question": "Minimale Bodenfeuchte Kiesdach, nächste 7 Tage?",
       "params": {
         "variant": "predicted_minimum",
-        "alias": "sumpf",
-        "d": 5
+        "alias": "kies",
+        "d": 7
       }
     },
     "expectations": {
@@ -4710,7 +4709,7 @@
       "case_id": "T27-0009",
       "template_id": "T27",
       "language": "en",
-      "as_of": "2025-09-09T23:00:00+02:00",
+      "as_of": "2025-06-08T23:00:00+02:00",
       "question": "Could you check whether the gravel roof needs irrigating tomorrow?",
       "params": {
         "variant": "irrigation",

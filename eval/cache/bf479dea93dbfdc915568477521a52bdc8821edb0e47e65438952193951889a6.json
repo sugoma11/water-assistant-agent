@@ -1,0 +1,136 @@
+{
+  "request": {
+    "params": {
+      "daily": "temperature_2m_mean,temperature_2m_max,temperature_2m_min,relative_humidity_2m_mean,precipitation_sum,wind_speed_10m_mean,shortwave_radiation_sum",
+      "end_date": "2026-04-06",
+      "latitude": 51.353484,
+      "longitude": 12.432152,
+      "start_date": "2026-03-27",
+      "timezone": "auto",
+      "wind_speed_unit": "kmh"
+    },
+    "url": "https://archive-api.open-meteo.com/v1/archive"
+  },
+  "response": {
+    "data": [
+      {
+        "Date": "2026-03-27",
+        "gs": 1167.0,
+        "precip": 0.0,
+        "rf": 67.0,
+        "tm": 2.7,
+        "tn": -1.4,
+        "tx": 6.5,
+        "w": 8.7
+      },
+      {
+        "Date": "2026-03-28",
+        "gs": 1433.0,
+        "precip": 1.8,
+        "rf": 70.0,
+        "tm": 3.6,
+        "tn": -0.6,
+        "tx": 9.8,
+        "w": 12.0
+      },
+      {
+        "Date": "2026-03-29",
+        "gs": 1299.0,
+        "precip": 2.1,
+        "rf": 76.0,
+        "tm": 5.3,
+        "tn": 2.4,
+        "tx": 8.4,
+        "w": 11.7
+      },
+      {
+        "Date": "2026-03-30",
+        "gs": 649.0,
+        "precip": 7.7,
+        "rf": 80.0,
+        "tm": 4.7,
+        "tn": 3.3,
+        "tx": 7.1,
+        "w": 16.4
+      },
+      {
+        "Date": "2026-03-31",
+        "gs": 1547.0,
+        "precip": 8.0,
+        "rf": 80.0,
+        "tm": 5.1,
+        "tn": 1.6,
+        "tx": 9.3,
+        "w": 12.7
+      },
+      {
+        "Date": "2026-04-01",
+        "gs": 1056.0,
+        "precip": 0.3,
+        "rf": 82.0,
+        "tm": 4.5,
+        "tn": -0.3,
+        "tx": 8.1,
+        "w": 4.9
+      },
+      {
+        "Date": "2026-04-02",
+        "gs": 1939.0,
+        "precip": 0.0,
+        "rf": 73.0,
+        "tm": 5.3,
+        "tn": -0.5,
+        "tx": 10.6,
+        "w": 5.0
+      },
+      {
+        "Date": "2026-04-03",
+        "gs": 959.0,
+        "precip": 0.1,
+        "rf": 74.0,
+        "tm": 7.1,
+        "tn": 4.4,
+        "tx": 10.3,
+        "w": 10.2
+      },
+      {
+        "Date": "2026-04-04",
+        "gs": 1036.0,
+        "precip": 1.1,
+        "rf": 67.0,
+        "tm": 11.1,
+        "tn": 8.0,
+        "tx": 14.3,
+        "w": 16.5
+      },
+      {
+        "Date": "2026-04-05",
+        "gs": 1236.0,
+        "precip": 0.1,
+        "rf": 67.0,
+        "tm": 13.0,
+        "tn": 9.1,
+        "tx": 18.5,
+        "w": 20.0
+      },
+      {
+        "Date": "2026-04-06",
+        "gs": 1857.9999999999998,
+        "precip": 0.0,
+        "rf": 54.0,
+        "tm": 9.1,
+        "tn": 5.6,
+        "tx": 13.3,
+        "w": 16.7
+      }
+    ],
+    "latitude": 51.35325,
+    "longitude": 12.509026,
+    "source": "archive",
+    "status": "success",
+    "summary": null,
+    "timezone": "Europe/Berlin",
+    "truncated": false,
+    "weekly": null
+  }
+}

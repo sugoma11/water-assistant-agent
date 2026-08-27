@@ -4652,6 +4652,72 @@ rather than replace and catches it when it does not.
   Report the growth ratio beside it — 38× on the sub-agent description in
   candidate 2 — as a signal and never as a threshold. → T133
 
+- [x] T138 **The stripe was still not a property of the value, and `{d}` is where
+  it showed.** T113 found this defect on `{month}`, repaired that one parameter,
+  and wrote the general rule into `decisions.md § Value pools are striped`: *the
+  stripe must be a property of the value, not of its index in one particular
+  list.* Four other parameters were still striped over whichever list the draw
+  site happened to hold, and one of them broke.
+  **Measured on the committed suite, not inferred.** `{d}` is fed by five horizon
+  lists — the forward one `(2…7)`, T15b's `(3,4,5,6,7,8,10)`, T19's
+  `(3,5,7,10,14)`, T20's and T23's — each striped over itself, each internally
+  disjoint. `d = 3` is therefore test_seen's through the forward list and
+  **train's** through T15b's. `train ∩ test_seen` on `{d}` is `{3, 4, 5, 6}`:
+  **21 train cases and 27 test_seen cases** carry a horizon the other side also
+  carries. `{thr}` was one draw from the same fault — 25 is train's through
+  T09's `MOISTURE_THRESHOLDS` and test_seen's through T02's
+  `HOT_DAY_THRESHOLDS`, and no case happened to draw it on the train side.
+  `{x}` is safe only because T23 is holdout, which is a property of the split
+  table and not of the stripe.
+  **Nothing caught it, and the reason is the detector's key.**
+  `splits.sampled_values` keys on `(template_id, parameter)` — the unit
+  memorization works in — so a parameter disjoint inside every template and
+  shared across them passes every check the repo had: the sampler test, the
+  emitted-suite test, the committed-file test and the emit gate alike. §1.7
+  states the rule at the coarser key ("train ∩ test_seen = ∅ on **every sampled
+  param**"), and nothing was asking it there.
+  **One ladder per parameter, and the pools narrow it afterwards.** `HORIZONS`,
+  `THRESHOLDS` and `MOISTURE_LEVELS` are the sorted unions of the pools that feed
+  `{d}`, `{thr}` and `{x}`; `_striped(pool, ladder, pools)` reads parity off the
+  ladder and the value off the pool, and `_months` — T113's one-off repair — is
+  re-expressed through it, `swc`'s complete months being that parameter's ladder.
+  The unions are **derived**, so a pool that gains a member cannot fall outside
+  the ladder meant to cover it. Two consequences worth stating: `PAST_HORIZONS`
+  gains `4, 6, 8`, because the ladder would otherwise leave T19's train side the
+  single value 14 — a pool this cut has emptied rather than striped — and the
+  three inline horizon tuples become `RAIN_HORIZONS`, `HEATWAVE_HORIZONS` and
+  `OVERRIDE_HORIZONS` so a ladder can be asserted to cover them.
+  **The guard is the coarse key, at both places the fine one already sits.**
+  `splits.value_overlaps` beside `splits.overlaps`, `value_overlaps` beside
+  `parameter_overlaps` in the generation report, and both as emit gates in
+  `scripts/generate_cases.py`. Plus a sampler-level test at the coarse key and a
+  per-parameter ladder regression test beside T113's month one.
+  **The committed suite still carries it.** The repair is in the generator; the
+  three files predate it, and `train.json` and `test_seen.json` have to be
+  regenerated and re-captured for the suite to hold the property. `test_unseen`
+  is untouched by construction — the holdout takes every pool whole, its rng
+  stream is its own, and `_striped` returns a holdout's pool in the same order
+  `Pools.of` did. That regeneration re-bases the two committed measurement runs
+  and is T139's, not this one's. → T113
+
+- [ ] T139 **Regenerate the suite onto the repaired stripe, and re-capture what it
+  asks for.** T138 fixed the generator; this is what makes the *files* hold the
+  property. `uv run python scripts/generate_cases.py` with the live GR2L and the
+  Archive, then `scripts/capture_cache.py` over the new windows, then the pins.
+  **It re-bases two measured runs, which is the whole cost.** `train.json` and
+  `test_seen.json` change — the rng stream shifts the moment one draw does, so it
+  is every case in both, not the 48 that carry a shared `{d}` — and every
+  `eval/cache/` entry keyed to a window those cases no longer ask for goes stale.
+  `eval/measurements/20260825T174410Z.json` (P8c) and
+  `20260826T164850Z.json` (T134) then describe a suite that no longer exists:
+  they are not *wrong*, and neither is repaired or re-run here, but nothing after
+  this may be differenced against them. `test_unseen.json` is expected to come
+  back byte-identical, and a diff there is a defect in this task rather than in
+  T138.
+  **So it lands with a fresh measurement run and not between two arms of one**,
+  on the same reasoning T136 landed before the T134 repeat rather than inside it.
+  → T138
+
 ---
 
 ## Final

@@ -247,19 +247,25 @@ class GenerationRun:
     def report(self) -> dict[str, Any]:
         """The numbers a generation pass is checked by, in one object.
 
-        The last three are T113's, and they are read off the **cases** rather than
-        off the sampler: a split whose constraint is enforced in generation still
-        has to be shown to hold in what it produced, and the emitted parameters
-        are the only evidence that survives the run.
+        The last four are T113's and T138's, and they are read off the **cases**
+        rather than off the sampler: a split whose constraint is enforced in
+        generation still has to be shown to hold in what it produced, and the
+        emitted parameters are the only evidence that survives the run.
+
+        The two overlap reports differ in their key, and both are emit gates.
+        ``parameter_overlaps`` is per (template, parameter) — the unit
+        memorization works in — and ``value_overlaps`` per parameter alone, which
+        is the unit §1.7 states the rule in and the only one that can see a value
+        placed on both sides through two different pools.
         """
         reasons: dict[str, int] = {}
         for rejection in self.rejections:
             reasons[rejection.reason] = reasons.get(rejection.reason, 0) + 1
         splits = sorted({item.split for item in self.instances})
         by_split = {split: self.for_split(split) for split in splits}
-        overlaps = split_pools.overlaps(
-            by_split.get("train", []), by_split.get("test_seen", [])
-        )
+        train, seen = by_split.get("train", []), by_split.get("test_seen", [])
+        overlaps = split_pools.overlaps(train, seen)
+        values = split_pools.value_overlaps(train, seen)
         return {
             "n": {split: len(cases) for split, cases in by_split.items()},
             "shortfalls": [
@@ -282,8 +288,11 @@ class GenerationRun:
             "languages": split_pools.language_stratum(by_split),
             "as_of": split_pools.stripe_report(by_split),
             "parameter_overlaps": {
-                f"{template}.{param}": sorted(map(str, values))
-                for (template, param), values in overlaps.items()
+                f"{template}.{param}": sorted(map(str, shared))
+                for (template, param), shared in overlaps.items()
+            },
+            "value_overlaps": {
+                param: sorted(map(str, shared)) for param, shared in values.items()
             },
         }
 

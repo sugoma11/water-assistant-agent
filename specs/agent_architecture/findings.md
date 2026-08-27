@@ -2044,3 +2044,23 @@ this fix.
 *Verified:* bug reproduced and fix landed against the live Open-Meteo API;
 tests added at `tests/assistant/test_weather_window.py`.
 *Date:* 2026-07-29.
+
+**The value stripe was not a property of the value on `{d}`, and the committed
+suite carries it.** `{d}` is fed by five horizon lists — `FORWARD_HORIZONS`
+`(2,3,4,5,6,7)`, T15b's `(3,4,5,6,7,8,10)`, `PAST_HORIZONS` `(3,5,7,10,14)`,
+T20's `(3,4,5,6,7)` and T23's `(2,3,4,5,7,10)` — each striped over itself, each
+internally disjoint. Read over the parameter rather than over
+`(template_id, {d})`, `train ∩ test_seen = {3, 4, 5, 6}`: **21 of 100 train cases
+and 27 of 125 test_seen cases** in the committed files carry a horizon the other
+side also carries, `d = 3` being train's through T15b and test_seen's through
+T09, T13, T14 and T21. `{thr}` was one draw away from the same thing — 25 is
+train's through T09's `MOISTURE_THRESHOLDS` and test_seen's through T02's
+`HOT_DAY_THRESHOLDS`, and no train draw took it. `{x}` is placed twice as well
+and is inert only because T23 is holdout. Every check the repo had passed,
+because all four key on `(template_id, parameter)` while §1.7 states the rule on
+the parameter alone. The generator is repaired (T138: one ladder per parameter);
+the three files predate the repair and `test_unseen` is unaffected by
+construction.
+*Verified:* `splits.value_overlaps` over the committed `train.json` and
+`test_seen.json`, and by striping each pool directly through
+`splits.pools()["train"|"test_seen"]`. *Date:* 2026-08-27.

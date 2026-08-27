@@ -121,10 +121,14 @@ def main(argv: list[str] | None = None) -> int:
     report = run.report()
     print(json.dumps(report, indent=2, ensure_ascii=False))
 
-    if report["parameter_overlaps"]:
+    if report["parameter_overlaps"] or report["value_overlaps"]:
         print(
             "\nRefusing to emit: train and test_seen share a sampled parameter value, "
-            "which opens the memorized-constant detector (questions.md §1.7).",
+            "which opens the memorized-constant detector (questions.md §1.7). "
+            "`value_overlaps` alone means the value sits on both sides through two "
+            "different pools of one parameter — a ladder is missing "
+            "(`decisions.md § Value pools are striped, and the holdout takes them "
+            "whole`).",
             file=sys.stderr,
         )
         return 1

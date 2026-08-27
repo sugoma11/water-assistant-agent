@@ -375,6 +375,19 @@ def _pick(rng: Random, values: Sequence[Any]) -> Any:
     return rng.choice(list(values))
 
 
+def _striped(pool: Sequence[Any], ladder: Sequence[Any], pools: Pools) -> tuple[Any, ...]:
+    """*pool*'s members on this split's side, striped over *ladder* rather than itself.
+
+    The one operation the ladders exist for: parity is read off the ladder, so a
+    value's side is the same whichever pool asks for it, and the pool then narrows
+    what came back. The **pool's** own object is returned rather than the ladder's,
+    which keeps ``8.0`` a float where a pool wrote one — a ladder deduplicates
+    ``8`` against ``8.0`` and either could survive that.
+    """
+    members = {value: value for value in pool}
+    return tuple(members[value] for value in pools.of(ladder) if value in members)
+
+
 def _roof(rng: Random, pool: str) -> str:
     return _pick(rng, pool_members(pool))
 
@@ -463,13 +476,10 @@ def _months(table: str, pools: Pools) -> tuple[str, ...]:
 
     Striping the widest list and narrowing afterwards makes a month's side a
     property of the month, whichever template asks and through whichever table.
+    ``swc``'s complete months *are* ``{month}``'s ladder, which is why this one is
+    computed rather than listed beside the others.
     """
-    available = set(_complete_months(table))
-    return tuple(
-        month
-        for month in pools.of(_complete_months(WIDEST_MONTH_TABLE))
-        if month in available
-    )
+    return _striped(_complete_months(table), _complete_months(WIDEST_MONTH_TABLE), pools)
 
 
 def _month_window(month: str) -> tuple[date, date]:
@@ -536,13 +546,70 @@ HOT_DAY_THRESHOLDS: tuple[int, ...] = (20, 22, 24, 25, 26, 28, 30)
 MOISTURE_THRESHOLDS: tuple[float, ...] = (5, 8, 10, 12, 14, 15, 16, 18, 20, 22, 25)
 RAIN_THRESHOLDS: tuple[float, ...] = (0.5, 1, 2, 3, 5, 8, 10)
 FORWARD_HORIZONS: tuple[int, ...] = (2, 3, 4, 5, 6, 7)
-PAST_HORIZONS: tuple[int, ...] = (3, 5, 7, 10, 14)
+PAST_HORIZONS: tuple[int, ...] = (3, 4, 5, 6, 7, 8, 10, 14)
+RAIN_HORIZONS: tuple[int, ...] = (3, 4, 5, 6, 7, 8, 10)
+HEATWAVE_HORIZONS: tuple[int, ...] = (3, 4, 5, 6, 7)
+OVERRIDE_HORIZONS: tuple[int, ...] = (2, 3, 4, 5, 7, 10)
 FORCED_RAIN_MM: tuple[float, ...] = (10, 20, 30, 40, 50)
 ALBEDOS: tuple[float, ...] = (0.05, 0.1, 0.3, 0.45, 0.6, 0.75, 0.9)
 STATED_MOISTURE: tuple[float, ...] = (4.5, 6.0, 8.0, 9.5, 11.0, 12.0, 13.5, 15.0, 16.0)
 STATED_TMAX: tuple[float, ...] = (16, 19, 22, 25, 28, 31, 34)
 STATED_RAIN: tuple[float, ...] = (0.0, 1.0, 2.0, 4.0, 7.0, 10.0, 14.0)
 BEYOND_HORIZON_DAYS: tuple[int, ...] = (21, 25, 28, 35, 42, 56)
+
+# --- The ladders a parameter's stripe is taken over ----------------------------
+#
+# `decisions.md § Value pools are striped, and the holdout takes them whole` sets
+# the validity condition these exist for: **the stripe must be a property of the
+# value, not of its index in one particular list.** A parameter drawn from more
+# than one pool breaks it the moment two of those pools share a value — striped
+# separately, the shared value lands on train's side in one and on test_seen's in
+# the other, and §1.7's per-parameter disjointness is gone while every per-template
+# check still passes. Measured on `{month}` first (T113, `_months` below) and on
+# `{d}` after it (T138), which reached all three of train, test_seen and the
+# holdout through four different horizon lists.
+#
+# The repair is one ladder per *parameter*: stripe the union once, narrow to the
+# pool afterwards. Derived rather than written out, so a pool that gains a member
+# cannot quietly fall outside the ladder that is supposed to cover it.
+
+
+def _ladder(*pools: Sequence[Any]) -> tuple[Any, ...]:
+    """The sorted union of *pools* — the list a parameter's parity is read off."""
+    return tuple(sorted({value for pool in pools for value in pool}))
+
+
+HORIZONS: tuple[int, ...] = _ladder(
+    FORWARD_HORIZONS, PAST_HORIZONS, RAIN_HORIZONS, HEATWAVE_HORIZONS, OVERRIDE_HORIZONS
+)
+"""``{d}``'s ladder: every horizon any template offers, forward or backward.
+
+Five pools feed one parameter name. ``PAST_HORIZONS`` carries even members it did
+not need on its own (4, 6, 8) because the ladder decides its parity: without them
+T19's train side would be the single value 14, and a template drawing one horizon
+four times is a pool this cut has emptied rather than striped.
+"""
+
+THRESHOLDS: tuple[float, ...] = _ladder(
+    HOT_DAY_THRESHOLDS, MOISTURE_THRESHOLDS, RAIN_THRESHOLDS
+)
+"""``{thr}``'s ladder, across the three quantities the catalog spells ``thr``.
+
+Degrees on T02, %θ on T09, millimetres on T13 — one parameter *name*, which is
+the unit §1.7's rule and the detector both work in. Only 25 was ever placed
+inconsistently by the per-pool stripe (train through T09's list, test_seen
+through T02's); the ladder moves that one value and leaves the other eighteen
+where they were.
+"""
+
+MOISTURE_LEVELS: tuple[float, ...] = _ladder(STATED_MOISTURE, MOISTURE_THRESHOLDS)
+"""``{x}``'s ladder: the stated readings T16a/b give and the seeds T23 overrides.
+
+Inert today — T23 is holdout and the holdout takes every pool whole, so nothing
+is currently placed twice — and here anyway, because that safety is a property of
+the split table rather than of the stripe. Moving T23 into train+seen would
+otherwise reopen the defect silently.
+"""
 
 UNSERVED_VARIABLES: tuple[str, ...] = (
     "soil temperature",
@@ -594,7 +661,7 @@ def _build_t02(
 ) -> tuple[dict[str, Any], date]:
     window = _band_window(rng, 14, pools)
     return (
-        {"period": _period(window), "thr": _pick(rng, pools.of(HOT_DAY_THRESHOLDS))},
+        {"period": _period(window), "thr": _pick(rng, _striped(HOT_DAY_THRESHOLDS, THRESHOLDS, pools))},
         window[1],
     )
 
@@ -693,7 +760,7 @@ def _sample_horizon(pool: Sequence[int] = FORWARD_HORIZONS) -> Sampler:
     def sample(
         rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
     ) -> dict[str, Any]:
-        return {"d": _pick(rng, pools.of(pool))}
+        return {"d": _pick(rng, _striped(pool, HORIZONS, pools))}
 
     return sample
 
@@ -702,8 +769,8 @@ def _sample_t13(
     rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
 ) -> dict[str, Any]:
     return {
-        "thr": _pick(rng, pools.of(RAIN_THRESHOLDS)),
-        "d": _pick(rng, pools.of(FORWARD_HORIZONS)),
+        "thr": _pick(rng, _striped(RAIN_THRESHOLDS, THRESHOLDS, pools)),
+        "d": _pick(rng, _striped(FORWARD_HORIZONS, HORIZONS, pools)),
     }
 
 
@@ -718,7 +785,7 @@ def _sample_t18b(
 ) -> dict[str, Any]:
     return {
         "variable": _pick(rng, pools.of(UNSERVED_VARIABLES)),
-        "d": _pick(rng, pools.of(FORWARD_HORIZONS)),
+        "d": _pick(rng, _striped(FORWARD_HORIZONS, HORIZONS, pools)),
     }
 
 
@@ -751,21 +818,21 @@ def _sample_t09(
 ) -> dict[str, Any]:
     return {
         "roof": _roof(rng, "P2"),
-        "thr": _pick(rng, pools.of(MOISTURE_THRESHOLDS)),
-        "d": _pick(rng, pools.of(FORWARD_HORIZONS)),
+        "thr": _pick(rng, _striped(MOISTURE_THRESHOLDS, THRESHOLDS, pools)),
+        "d": _pick(rng, _striped(FORWARD_HORIZONS, HORIZONS, pools)),
     }
 
 
 def _sample_t10(
     rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
 ) -> dict[str, Any]:
-    return {"roof": _roof(rng, "P2"), "d": _pick(rng, pools.of(FORWARD_HORIZONS))}
+    return {"roof": _roof(rng, "P2"), "d": _pick(rng, _striped(FORWARD_HORIZONS, HORIZONS, pools))}
 
 
 def _sample_t19(
     rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
 ) -> dict[str, Any]:
-    days = _pick(rng, pools.of(PAST_HORIZONS))
+    days = _pick(rng, _striped(PAST_HORIZONS, HORIZONS, pools))
     if _day(as_of) - timedelta(days=days) < BAND_START - timedelta(days=30):
         raise Undrawable("the comparison window opens before the record is usable")
     return {"roof": _roof(rng, "P2"), "d": days}
@@ -804,7 +871,7 @@ def _requires_t19(params: Mapping[str, Any], as_of: datetime) -> tuple[Requireme
 def _sample_t21(
     rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
 ) -> dict[str, Any]:
-    days = _pick(rng, pools.of(FORWARD_HORIZONS))
+    days = _pick(rng, _striped(FORWARD_HORIZONS, HORIZONS, pools))
     return {
         "roof": _roof(rng, "P2"),
         "d": days,
@@ -845,8 +912,8 @@ def _sample_t23(
 ) -> dict[str, Any]:
     return {
         "roof": _roof(rng, "P2"),
-        "x": _pick(rng, pools.of(MOISTURE_THRESHOLDS)),
-        "d": _pick(rng, pools.of((2, 3, 4, 5, 7, 10))),
+        "x": _pick(rng, _striped(MOISTURE_THRESHOLDS, MOISTURE_LEVELS, pools)),
+        "d": _pick(rng, _striped(OVERRIDE_HORIZONS, HORIZONS, pools)),
     }
 
 
@@ -860,7 +927,7 @@ def _sample_stated(
     """
     return {
         "roof": _roof(rng, "P2"),
-        "x": _pick(rng, pools.of(STATED_MOISTURE)),
+        "x": _pick(rng, _striped(STATED_MOISTURE, MOISTURE_LEVELS, pools)),
         "tmax": _pick(rng, pools.of(STATED_TMAX)),
         "y": _pick(rng, pools.of(STATED_RAIN)),
     }
@@ -869,7 +936,7 @@ def _sample_stated(
 def _sample_t26(
     rng: Random, as_of: datetime, fixed: Mapping[str, Any], pools: Pools
 ) -> dict[str, Any]:
-    days = _pick(rng, pools.of(FORWARD_HORIZONS))
+    days = _pick(rng, _striped(FORWARD_HORIZONS, HORIZONS, pools))
     params: dict[str, Any] = {
         "variant": fixed["variant"],
         "d": days,
@@ -1063,7 +1130,7 @@ def _sample_t27(
         "variant": variant,
     }
     if variant != VARIANT_IRRIGATION:
-        params["d"] = _pick(rng, pools.of(FORWARD_HORIZONS))
+        params["d"] = _pick(rng, _striped(FORWARD_HORIZONS, HORIZONS, pools))
     if variant == VARIANT_FORCED_RAIN:
         params["mm"] = _pick(rng, pools.of(FORCED_RAIN_MM))
     return params
@@ -1360,7 +1427,7 @@ TEMPLATES: dict[str, Template] = {
         expected_tool_calls=_calls({"name": WEATHER_TOOL},),
         must_not_tools=(TEXT_TO_SQL_TOOL,),
         render=_render("How much rain will fall in the next {d} days?"),
-        draw=from_as_of(_sample_horizon((3, 4, 5, 6, 7, 8, 10))),
+        draw=from_as_of(_sample_horizon(RAIN_HORIZONS)),
     ),
     "T18a": Template(
         template_id="T18a",
@@ -1530,7 +1597,7 @@ TEMPLATES: dict[str, Template] = {
             "Does the forecast for the next {d} days qualify as a heatwave under the "
             "manual's definition?"
         ),
-        draw=from_as_of(_sample_horizon((3, 4, 5, 6, 7))),
+        draw=from_as_of(_sample_horizon(HEATWAVE_HORIZONS)),
         balanced=True,
     ),
     "T25": Template(

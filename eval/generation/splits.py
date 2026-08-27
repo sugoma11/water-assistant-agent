@@ -15,9 +15,12 @@ constraint happens to hold.
   T20 unbalanceable (§1.7).
 * every **discrete value pool** — :attr:`Pools.parity` takes every other member by
   position, so train and test_seen share no ``thr``, ``month``, ``event``,
-  ``alias``, ``mm``, ``a``, ``x``, ``tmax``, ``y``, ``d`` or ``offset``. A
-  ``{period}`` is a continuum and is cut where it touches the day stripe: its end
-  day is one of the split's own.
+  ``alias``, ``mm``, ``a``, ``x``, ``tmax``, ``y``, ``d`` or ``offset``. Position
+  is read off the *parameter's* ladder rather than off the pool at hand
+  (:func:`~eval.generation.templates._striped`), because several of those names
+  are fed by more than one pool and a value must fall on the same side through
+  every one of them. A ``{period}`` is a continuum and is cut where it touches
+  the day stripe: its end day is one of the split's own.
 * **roof** is shared, deliberately: the §1.8 pools are 3–5 wide and confounded
   with modellability, so disjoint pools would confound roof generalization with
   tool availability.
@@ -36,14 +39,18 @@ third — T20 has to reach both classes out of five horizons — and would confo
 template-transfer failure with an unseen parameter value, which is exactly what
 "the b-side of a train-side pair moving one named axis" forbids.
 
-The verification half of the module (:func:`sampled_values`, :func:`overlaps`,
+The verification half of the module (:func:`sampled_values`,
+:func:`parameter_values`, :func:`overlaps`, :func:`value_overlaps`,
 :func:`stripe_report`) reads the *emitted cases* rather than the sampler, because
 the exit criterion is a property of the suite and not of the code that wrote it.
+It asks the disjointness question at **two** keys, and the coarser one is not
+redundant: a parameter drawn from several pools can be disjoint inside every
+template while a value sits on both sides of the cut (T138).
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import date, datetime
 from typing import Any
 
@@ -97,45 +104,84 @@ def pools(days: Sequence[date] | None = None) -> dict[str, Pools]:
 # --- Verification, over the emitted cases ---------------------------------------
 
 
-def sampled_values(
-    cases: Iterable[Mapping[str, Any]], *, ignore: frozenset[str] = SHARED_AXES
-) -> dict[tuple[str, str], set[Any]]:
-    """Every value each (template, parameter) took, read off the cases themselves.
+def _drawn(
+    cases: Iterable[Mapping[str, Any]],
+    key: Callable[[str, str], Any],
+    ignore: frozenset[str],
+) -> dict[Any, set[Any]]:
+    """Every value each *key* took, read off the cases themselves.
 
-    Keyed by template because that is the unit disjointness protects: a memorized
-    constant is memorized for the template it was seen under. Unhashable values
-    are stringified rather than dropped — a parameter that ever becomes a list is
-    still a parameter a candidate could memorize.
+    Unhashable values are stringified rather than dropped — a parameter that ever
+    becomes a list is still a parameter a candidate could memorize.
     """
-    values: dict[tuple[str, str], set[Any]] = {}
+    values: dict[Any, set[Any]] = {}
     for case in cases:
         inputs = case["inputs"]
         for name, value in (inputs.get("params") or {}).items():
             if name in ignore:
                 continue
-            key = (inputs["template_id"], name)
-            values.setdefault(key, set()).add(
+            values.setdefault(key(inputs["template_id"], name), set()).add(
                 value if isinstance(value, (str, int, float, bool, type(None))) else str(value)
             )
     return values
 
 
+def _shared(left: Mapping[Any, set[Any]], right: Mapping[Any, set[Any]]) -> dict[Any, set[Any]]:
+    """The keys the two sides both reached, with the values they both reached.
+
+    Only the keys that actually overlap are returned, so the whole report is
+    ``{}`` when the constraint holds and names the offending key when it does not.
+    """
+    return {
+        key: common
+        for key, values in left.items()
+        if (common := values & right.get(key, set()))
+    }
+
+
+def sampled_values(
+    cases: Iterable[Mapping[str, Any]], *, ignore: frozenset[str] = SHARED_AXES
+) -> dict[tuple[str, str], set[Any]]:
+    """Every value each (template, parameter) took.
+
+    Keyed by template because that is the unit *memorization* works in: a
+    memorized constant is memorized for the template it was seen under.
+    """
+    return _drawn(cases, lambda template, name: (template, name), ignore)
+
+
+def parameter_values(
+    cases: Iterable[Mapping[str, Any]], *, ignore: frozenset[str] = SHARED_AXES
+) -> dict[str, set[Any]]:
+    """Every value each parameter took, across every template that drew it.
+
+    The coarser key, and the one §1.7 states the rule in: "train ∩ test_seen = ∅
+    on every sampled param". It is what :func:`sampled_values` cannot see — a
+    parameter fed by several pools can be disjoint inside every template and
+    shared across them, which is the shape of the ``{d}`` defect (T138).
+    """
+    return _drawn(cases, lambda template, name: name, ignore)
+
+
 def overlaps(
     train: Iterable[Mapping[str, Any]], test_seen: Iterable[Mapping[str, Any]]
 ) -> dict[tuple[str, str], set[Any]]:
-    """Per-parameter values the two splits share — empty is §1.7's rule kept.
+    """Per-(template, parameter) values the two splits share — ``{}`` is the rule kept."""
+    return _shared(sampled_values(train), sampled_values(test_seen))
 
-    Only the pairs that actually overlap are returned, so the whole report is
-    ``{}`` when the constraint holds and names the offending parameter when it
-    does not.
+
+def value_overlaps(
+    train: Iterable[Mapping[str, Any]], test_seen: Iterable[Mapping[str, Any]]
+) -> dict[str, set[Any]]:
+    """Per-parameter values the two splits share — the stripe read as a property of the value.
+
+    Strictly stronger than :func:`overlaps`, and the check that would have caught
+    ``{d}``: five horizon pools, each striped over itself, each internally
+    disjoint, and ``d = 3`` on train's side through T15b while it was on
+    test_seen's through T09, T13, T14 and T21 (``decisions.md § Value pools are
+    striped, and the holdout takes them whole``, the validity condition).
     """
-    left, right = sampled_values(train), sampled_values(test_seen)
-    shared: dict[tuple[str, str], set[Any]] = {}
-    for key, values in left.items():
-        common = values & right.get(key, set())
-        if common:
-            shared[key] = common
-    return shared
+    return _shared(parameter_values(train), parameter_values(test_seen))
 
 
 def as_of_days(cases: Iterable[Mapping[str, Any]]) -> set[date]:
@@ -196,7 +242,9 @@ __all__ = [
     "day_pools",
     "language_stratum",
     "overlaps",
+    "parameter_values",
     "pools",
     "sampled_values",
     "stripe_report",
+    "value_overlaps",
 ]

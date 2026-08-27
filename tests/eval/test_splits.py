@@ -29,12 +29,23 @@ from eval.generation.templates import (
     BAND_END,
     BAND_START,
     FORWARD_HORIZONS,
+    HEATWAVE_HORIZONS,
+    HORIZONS,
+    HOT_DAY_THRESHOLDS,
+    MOISTURE_LEVELS,
     MOISTURE_THRESHOLDS,
+    OVERRIDE_HORIZONS,
+    PAST_HORIZONS,
+    RAIN_HORIZONS,
+    RAIN_THRESHOLDS,
+    STATED_MOISTURE,
     TEMPLATES,
+    THRESHOLDS,
     Template,
     Undrawable,
     _complete_months,
     _months,
+    _striped,
     as_of_at,
     band_days,
     rain_events,
@@ -178,6 +189,61 @@ def test_the_month_stripe_is_a_property_of_the_month():
     assert "2025-07" in left or "2025-07" in right
 
 
+LADDERED: dict[str, tuple[tuple[Any, ...], ...]] = {
+    "d": (FORWARD_HORIZONS, RAIN_HORIZONS, PAST_HORIZONS, HEATWAVE_HORIZONS, OVERRIDE_HORIZONS),
+    "thr": (HOT_DAY_THRESHOLDS, MOISTURE_THRESHOLDS, RAIN_THRESHOLDS),
+    "x": (STATED_MOISTURE, MOISTURE_THRESHOLDS),
+}
+"""The three parameters the catalog feeds from more than one pool, and their pools.
+
+Written out rather than derived, because what is under test is that the ladder in
+:mod:`eval.generation.templates` covers every pool a draw site actually passes it:
+a registry derived from the same constants would agree with itself.
+"""
+
+LADDERS: dict[str, tuple[Any, ...]] = {"d": HORIZONS, "thr": THRESHOLDS, "x": MOISTURE_LEVELS}
+
+
+@pytest.mark.parametrize("param", sorted(LADDERED))
+def test_a_multi_pool_parameter_is_striped_over_its_ladder(param: str):
+    """T138's defect, as a standing regression test beside the month one.
+
+    ``{d}`` reached five horizon lists, each striped over itself and each
+    internally disjoint, and the same day landed on different sides through
+    different lists: ``d = 3`` was train's through T15b's pool and test_seen's
+    through the forward one, so train ∩ test_seen on ``{d}`` was ``{3, 4, 5, 6}``
+    in a suite every per-template check passed. The stripe is now taken over the
+    parameter's ladder and narrowed to the pool afterwards.
+    """
+    train, seen, holdout = (S.pools()[split] for split in S.SPLITS)
+    ladder = LADDERS[param]
+    left: set[Any] = set()
+    right: set[Any] = set()
+    for pool in LADDERED[param]:
+        assert set(pool) <= set(ladder), "the ladder does not cover this pool"
+        drawn = {side: set(_striped(pool, ladder, side)) for side in (train, seen)}
+        # Neither side may be emptied: a pool one split cannot draw from is a cut,
+        # not a stripe, and PAST_HORIZONS is the one this nearly happened to.
+        assert len(drawn[train]) >= 2 and len(drawn[seen]) >= 2
+        assert not (drawn[train] & drawn[seen])
+        assert drawn[train] | drawn[seen] == set(pool)
+        assert _striped(pool, ladder, holdout) == tuple(pool)
+        left |= drawn[train]
+        right |= drawn[seen]
+    assert not (left & right)
+
+
+def test_the_ladders_keep_a_pools_own_value_object():
+    """``8.0`` stays a float, so the emitted JSON does not change shape.
+
+    A ladder is a set union and deduplicates ``8`` against ``8.0`` — either may
+    survive that — so the stripe reads *position* off the ladder and the value
+    off the pool.
+    """
+    drawn = _striped(STATED_MOISTURE, MOISTURE_LEVELS, S.pools()["train"])
+    assert drawn and all(isinstance(value, float) for value in drawn)
+
+
 # --- Per-parameter disjointness, over the samplers ------------------------------------
 
 
@@ -197,6 +263,33 @@ def test_no_sampled_parameter_can_be_drawn_by_both_splits():
         if key[1] not in S.SHARED_AXES and (train[key] & seen[key])
     }
     assert overlaps == {}
+
+
+def test_no_parameter_value_reaches_both_splits_through_different_templates():
+    """§1.7's rule at the key it is written in: "∅ on every sampled param" (T138).
+
+    Strictly stronger than the test above, and the one that fails on the defect
+    that test cannot see: five pools feeding ``{d}``, each striped over itself,
+    each internally disjoint, and ``d = 3`` on both sides of the cut. ``{thr}``
+    was one draw away from the same thing at 25.
+    """
+    train, seen = _drawn("train"), _drawn("test_seen")
+
+    def by_param(values: dict[tuple[str, str], set[Any]]) -> dict[str, set[Any]]:
+        merged: dict[str, set[Any]] = {}
+        for (_, param), drawn in values.items():
+            if param not in S.SHARED_AXES:
+                merged.setdefault(param, set()).update(drawn)
+        return merged
+
+    left, right = by_param(train), by_param(seen)
+    overlaps = {
+        param: shared
+        for param, values in left.items()
+        if (shared := values & right.get(param, set()))
+    }
+    assert overlaps == {}
+    assert {"d", "thr", "x"} <= left.keys(), "the multi-pool parameters are drawn"
 
 
 def test_the_disjointness_check_would_see_an_overlap():
@@ -292,7 +385,9 @@ def test_a_generated_suite_carries_no_parameter_overlap():
     train, seen = run.for_split("train"), run.for_split("test_seen")
     assert train and seen
     assert S.overlaps(train, seen) == {}
+    assert S.value_overlaps(train, seen) == {}
     assert run.report()["parameter_overlaps"] == {}
+    assert run.report()["value_overlaps"] == {}
     # And the values are there to overlap: every one of these templates writes a
     # parameter into every case it produced.
     values = S.sampled_values(train)

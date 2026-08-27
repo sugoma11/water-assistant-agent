@@ -1517,8 +1517,19 @@ axis a holdout entry moves.
 **Validity condition:** the stripe must be a property of the *value*, not of its
 index in one particular list. Two lists that share values and are striped
 separately put the same value on both sides — measured on T24a's `{month}`, whose
-two tables offer overlapping month lists (`findings.md`). Pools that overlap are
-striped once, over the widest of them, and narrowed afterwards.
+two tables offer overlapping month lists, and again on `{d}`, whose five horizon
+lists put `d = 3` on train's side through T15b and on test_seen's through T09,
+T13, T14 and T21 (`findings.md`). Pools that overlap are striped once, over a
+**ladder** — the sorted union of every pool that feeds the parameter — and
+narrowed afterwards. The ladder is per *parameter name*, because that is the unit
+§1.7 states the rule in and the unit the detector reads.
+
+**The check has to ask at that key too.** Keying the disjointness report on
+`(template_id, parameter)` is right for memorization — a constant is memorized
+for the template it was seen under — and blind to exactly this defect, which is
+disjoint inside every template and shared across them. Both keys are reported and
+both gate emission; the coarse one is the cheap check that the ladders are
+complete.
 
 ---
 

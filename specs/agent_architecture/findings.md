@@ -991,9 +991,101 @@ lever that targets effect size, where repeats target noise that is already
 negligible — with the caveat that more iterations are also more opportunities to
 bake in a constant, which is what T144's check now guards.
 
+## The exclusion cascade, and why the cache is what causes it
+
+**Measured on T143's 18 conditions**
+(`eval/measurements/20260827T104417Z.json`),
+which lost 160 of 336 test_unseen rollouts and 116 of 750 test_seen rollouts to
+`harness_error`. Every one of them is `upstream`. The loss is not spread over
+the suite: it is concentrated in a *kind* of question, and one miss costs the
+whole case rather than one call.
+
+**It falls on forward-looking templates, and on nothing else.**
+
+| split | template | excluded | what it asks |
+|---|---|---|---|
+| test_unseen | T22 | 45/48 (94 %) | soil moisture predicted **tomorrow** |
+| test_unseen | T18b | 42/48 (88 %) | forecast dew point, **next 5 days** |
+| test_unseen | T26 | 32/48 (67 %) | albedo 0.05, 20 mm on **day 1 of 2** |
+| test_unseen | T23 | 30/48 (62 %) | where moisture **would lie today** if… |
+| test_seen | T21 | 73 % | minimum moisture over the **next 7 days** |
+| test_seen | T09 | 57 % | moisture below a threshold, **next 7 days** |
+| test_unseen | T17b | 0/48 | — |
+
+T17b loses nothing. The split is not between templates but between *window
+kinds*: a question naming an absolute past window resolves to one request and
+hits; a question naming a relative forward window resolves to whichever window
+the candidate chose, and the cache is keyed on the request.
+
+**The cascade, and its size.** An excluded case averages **5.45 extra tool
+calls** against **0.73** for an included one — 7.5×. 38 % of excluded cases hit
+the step cap and 40 % end in a `parse_failure`. The sequence is: the candidate
+resolves a forward window a day away from the oracle's → the request key misses
+→
+`upstream` → the agent retries with different arguments → misses again → burns
+its step budget → emits no parseable contract. **One key miss costs the case,
+not
+the call**, which is why per-condition `upstream` counts (75–124) exceed the
+number of cases that carry them.
+
+The agent's half of that is a prompt matter: §3 says an `upstream` error means
+*do not repeat the call*, and the weakened seed is exactly the text that deleted
+the tool-result taxonomy saying so. That explains the amplitude. It does not
+explain the miss.
+
+**Why ±3 did not fix it.** Registration 2 widened the capture neighbourhood from
+`[-1, 1]` to `[-3…3]`, 509 → 947 entries, and test_unseen still lost ~39 %.
+Two reasons, both structural rather than a matter of degree:
+
+- **A window has two degrees of freedom**, not one. The neighbourhood varies one
+  offset; a candidate may move the start, the end, or reach the same days
+  through
+  `past_days`/`forecast_days` instead of absolute dates. The covered set is a
+  line
+  through a plane.
+- **GR2L is keyed on `data[]` plus parameters** (§5) — the *entire* fetched row
+  array. A window differing by one day is not a nearby key, it is an unrelated
+  one. There is no locality in the key for a wider neighbourhood to exploit.
+
+**The fix the architecture already licenses.** §5 states what the cache is for:
+
+> What the cache is load-bearing *for* is GR2L; for weather it is cost and
+> speed, the station needing no entry at all and Archive being re-fetchable
+> indefinitely.
+
+So a weather miss on the measurement path is being treated as fatal when the
+architecture says weather determinism does not rest on the cache at all. Three
+changes follow, in order of how much they buy:
+
+1. **Cache weather per day, not per request.** One entry per `(source, date)`,
+   assembled into whatever window is asked for. Any window then hits as long as
+   its *days* are captured, and the days are bounded — `as_of` plus the 16-day
+   horizon §3.3 enforces. This turns a plane of possible windows into a bounded
+   set of days and should remove the weather half of the misses outright.
+2. **Let Archive fill a measurement miss, and record it.** Reanalysis of a past
+   window is stable, which is the property §5 already relies on. The station
+   path
+   needs nothing: it is a pure function of the pinned DB. GR2L keeps the strict
+   rule, since that is the component whose determinism the cache carries.
+3. **Capture over the horizon, not over a neighbourhood.** For a forward
+   template the reachable windows are enumerable from `as_of` and the 16-day
+   cap, so the capture pass can cover them exhaustively rather than guess an
+   offset.
+
+**What this would change in the numbers.** The exclusion rate is not noise: §7
+reads per-arm exclusion counts to decide whether a comparison happened under
+equal conditions at all, and test_unseen currently answers on 28–31 of 56 cases.
+Its seven templates already support description rather than inference (§8); at a
+50 % loss they support less than that. The four worst-hit templates are all
+model-bearing or forecast-facing, so the loss is **not** uniform over what the
+suite measures — it falls hardest on exactly the families the water-balance
+tools
+exist for.
+
 ## External endpoints and what they can carry
 
-Measured while sizing P8c's measurement run, and the reason the run is routed the
+Measured while sizing P8c's measurement run, and the reason the run is routed
+the
 way it is. None of it is a result; all of it is infrastructure that decides
 whether a result can exist.
 

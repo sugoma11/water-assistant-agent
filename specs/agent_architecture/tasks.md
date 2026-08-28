@@ -67,7 +67,7 @@ Three rules make a packet fit:
 | **P8a** candidate surface, `predict_fn` | T120, T121, T125 | arch §6, §2's optimizable-text bullet; `decisions.md § The optimizer entry point and the candidate surface`; `findings.md § Optimizer internals` | two records with different `as_of` evaluated concurrently *through* `predict_fn`; the unread-prompt assertion fires when a component is unread |
 | **P8b** scorers, search wiring | T122–T124, T126 | arch §7; `decisions.md § Candidate selection and the scorers' aggregation` | a short search over a handful of train cases completes; the skip semantics run through this repo's own aggregation callable, asserted to be passed — omitting it silently makes the objective the mean of the numeric scorer values |
 | **P8c** measurement run, statistics | T127–T129 | arch §7's reporting rules; `decisions.md § Replication and the LLM cache`; `specs/prompt-tuning-stats/plan.md` §5–§7 | three repeats × two arms; the bootstrap resamples `template_id`; both gaps separate; test_unseen as a win/loss table |
-| **P9** what the first run exposed | T131–T145 | `findings.md § The measurement run (P8c)` and the three entries above it | the spike says what reaches the reflection model, measured rather than read; every tool's own text says it is a tool, and the proposer is told so too; the rerun starts from a seed no candidate can mistake for a system prompt, and — T134 having found nothing on top of a hand-written one — a second run starts from a seed with room in it |
+| **P9** what the first run exposed | T131–T146 | `findings.md § The measurement run (P8c)` and the three entries above it | the spike says what reaches the reflection model, measured rather than read; every tool's own text says it is a tool, and the proposer is told so too; the rerun starts from a seed no candidate can mistake for a system prompt, and — T134 having found nothing on top of a hand-written one — a second run starts from a seed with room in it |
 
 **Sequencing that the table does not show.**
 
@@ -4850,6 +4850,39 @@ rather than replace and catches it when it does not.
   broken instrument. The paired comparison *inside* this run is clean, and §7
   already forbids differencing across registrations. Registered as
   registration 5. → T144
+- [ ] T146 **Cache weather by day, so a forward window cannot miss.** T143 lost
+  160 of 336 test_unseen rollouts and 116 of 750 test_seen rollouts, every one
+  `upstream`, and the loss is not spread over the suite: T22 94 %, T18b 88 %,
+  T26 67 %, T23 62 %, T21 73 %, T09 57 % — and T17b **zero**. The split is not
+  between templates but between window kinds. An absolute past window resolves
+  to one request and hits; a relative forward window resolves to whichever
+  window the candidate chose, and the cache is keyed on the request.
+  **One miss costs the case, not the call.** An excluded case averages 5.45
+  extra tool calls against 0.73 for an included one; 38 % hit the step cap and
+  40 % end in a `parse_failure`. The miss returns `upstream`, the agent retries
+  with different arguments, misses again, and burns its step budget. §3 already
+  says an `upstream` error means *do not repeat the call* — and the weakened
+  seed is the text that deleted the taxonomy saying so, which explains the
+  amplitude but not the miss.
+  **±3 cannot fix it and a wider neighbourhood will not either.** A window has
+  two degrees of freedom and may be reached through `past_days` /
+  `forecast_days` instead of dates, so the covered set is a line through a
+  plane; and GR2L is keyed on `data[]` plus parameters (§5), the entire fetched
+  row array, so a window one day out is an unrelated key rather than a nearby
+  one. There is no locality for a neighbourhood to exploit.
+  **§5 already licenses the fix**: *what the cache is load-bearing for is GR2L;
+  for weather it is cost and speed, Archive being re-fetchable indefinitely*. So
+  cache weather per `(source, date)` and assemble any window from days — the
+  days are bounded by `as_of` plus §3.3's 16-day horizon, which turns a plane of
+  windows into an enumerable set. Let Archive fill a measurement miss and record
+  it; the station path needs nothing, being a pure function of the pinned DB.
+  GR2L keeps the strict rule, since it is the component whose determinism the
+  cache carries.
+  **It is not cosmetic.** §7 reads per-arm exclusion counts to decide whether a
+  comparison happened under equal conditions, test_unseen currently answers on
+  28-31 of 56 cases, and the worst-hit templates are all model-bearing or
+  forecast-facing — so the loss falls hardest on the families the water-balance
+  tools exist for. → T145
 
 ---
 
@@ -4863,7 +4896,7 @@ rather than replace and catches it when it does not.
 
 ## Summary
 
-**114 tasks** across ten phases, 17 of them parallelizable, executed as **24
+**115 tasks** across ten phases, 17 of them parallelizable, executed as **24
 packets** — one session each, mapped above.
 
 | Phase | Tasks | Parallelizable | Packets | Gates |
@@ -4877,7 +4910,7 @@ packets** — one session each, mapped above.
 | P6 harness and pilot | 8 | — | 4 | **T107 freezes the testbed** |
 | P7 oracles and generation | 7 | — | 5 | T115, pulled forward to P2b, gates capture |
 | P8 optimizer | 10 | — | 3 | — |
-| P9 what the first run exposed | 15 | 2 | 1 | T131 blocks T132–T134; T133 blocks T137; T136 lands before T134's rerun; T138–T139 repair the stripe and regenerate; T142 follows T134's null; T143 follows T142's; T144 follows T143's leak; T145 reruns on the repaired suite |
+| P9 what the first run exposed | 16 | 2 | 1 | T131 blocks T132–T134; T133 blocks T137; T136 lands before T134's rerun; T138–T139 repair the stripe and regenerate; T142 follows T134's null; T143 follows T142's; T144 follows T143's leak; T145 reruns on the repaired suite; T146 fixes the cache the exclusions come from |
 | final | 1 | — | — | — |
 
 **Parallel opportunities.** P0's documentation edits (T001–T005, T008) touch six

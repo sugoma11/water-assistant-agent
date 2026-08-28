@@ -96,6 +96,13 @@ describe. Read every response and its feedback, and carry into the instruction
 the domain facts, the answer-format rules and the strategies the feedback shows
 the assistant needs — none of it will be in front of it next time.
 
+The examples below include the gold answer to each one. Do not write a number,
+a date, a site or roof name, a sensor reading or any other value read off an
+example into the instruction: the next input will not match this one, and a
+value copied from an example is not a rule it will satisfy. Say what the
+assistant should look up, compute or ask a tool for, never what the answer
+happened to be here.
+
 Provide the new instruction inside a single ``` block and nothing else.
 """
 """The template for ``agent_root_instruction`` — the one component that is not a tool."""
@@ -141,6 +148,13 @@ Read the responses and the feedback and identify what the assistant got wrong
 about *this* tool — when to reach for it, what to pass it, how to read what it
 returns — and what its description has to say for the assistant to get that
 right with none of the feedback in front of it.
+
+The examples below include the gold answer to each one. Do not write a number,
+a date, a site or roof name, a sensor reading or any other value read off an
+example into the description: the next call will not match this one, and a
+value copied from an example is not a rule it will satisfy. Say what to pass
+`{callable}` and how to read what it returns, never what an argument or a
+return value happened to be here.
 
 Provide the new tool description inside a single ``` block and nothing else.
 """

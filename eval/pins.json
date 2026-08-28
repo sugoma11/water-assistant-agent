@@ -59,7 +59,7 @@
         "temperature": 0.0
       },
       "endpoint": "https://openrouter.ai/api/v1",
-      "model_id": "openrouter/deepseek/deepseek-v4-flash-0731",
+      "model_id": "openrouter/z-ai/glm-5.3",
       "served_by": "gmicloud"
     },
     "reflection_model_canary_sha256": "5bbf7327070d9d52067f0617e1afc8c86402cdb89e815fe260361025e4edfeb8",
@@ -72,7 +72,7 @@
       },
       "endpoint": "https://openrouter.ai/api/v1",
       "model_id": "openrouter/deepseek/deepseek-v4-flash-0731",
-      "served_by": "gmicloud,mistral"
+      "served_by": "gmicloud,mistral,z-ai"
     },
     "sql_fixer_model": {
       "decoding": {
@@ -81,7 +81,7 @@
       },
       "endpoint": "https://openrouter.ai/api/v1",
       "model_id": "openrouter/deepseek/deepseek-v4-flash-0731",
-      "served_by": "gmicloud,mistral"
+      "served_by": "gmicloud,mistral,z-ai"
     },
     "station_derivation": {
       "derivation_sha256": "da6c872647ed04026a92d0127323cda5ce65002bc4fd077bb300463041109ae3",
@@ -95,7 +95,7 @@
       },
       "endpoint": "https://openrouter.ai/api/v1",
       "model_id": "openrouter/deepseek/deepseek-v4-flash-0731",
-      "served_by": "gmicloud,mistral"
+      "served_by": "gmicloud,mistral,z-ai"
     },
     "task_model": {
       "decoding": {
@@ -104,7 +104,7 @@
       },
       "endpoint": "https://openrouter.ai/api/v1",
       "model_id": "openrouter/mistralai/ministral-8b-2512",
-      "served_by": "gmicloud,mistral"
+      "served_by": "gmicloud,mistral,z-ai"
     },
     "task_model_canary_sha256": "a5a16ab4e8e0e892efb159a434cb8678d876353facf95779aac210ec07f9c2b6",
     "water_duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"

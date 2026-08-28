@@ -117,7 +117,7 @@ logger = structlog.get_logger(__name__)
 BASELINE_ARM = "baseline"
 OPTIMIZED_ARM = "optimized"
 
-DEFAULT_MAX_METRIC_CALLS = 500
+DEFAULT_MAX_METRIC_CALLS = 2000
 """GEPA's budget, in rollouts. Pre-registered per run (T129), never tuned on a result.
 
 **It has to clear the trainset's size before it buys anything.** MLflow passes
@@ -128,6 +128,15 @@ between (``gepa/api.py:328``). A budget equal to the split's size is therefore
 spent entirely on measuring the seed and the search returns it unchanged, which
 is a no-op that reports itself as a completed search. At 100 train cases, 500
 leaves 400 after the seed's evaluation.
+
+**Raised 500 -> 2000 by registration 5.** At 100 train cases a full valset
+evaluation is 100 rollouts, so 500 bought registration 4 six iterations: it
+improved at 1, 2 and 3 and found nothing at 4, 5 and 6 before the budget ended.
+Three barren iterations is not a plateau, and the wide interval that run
+reported needs a larger *effect* rather than quieter noise — within-case repeat
+noise is 3.0% of the variance the interval is built from, so more repeats cannot
+buy what more search might. 2000 buys roughly 22 iterations, enough for a
+plateau to be visible as one.
 """
 
 
@@ -425,7 +434,7 @@ def run_search(
     # pre-registration, for the same reason: refusing here would discard a
     # search that has already been paid for, and the candidate is still the
     # thing the search selected. The measurement driver is where a leak becomes
-    # a number in the thesis, and that is where it is refused (T140).
+    # a number in the thesis, and that is where it is refused (T144).
     leaks = find_leaks(
         {name: prompt.template for name, prompt in _selected_texts(result).items()},
         read_candidates(pinned),

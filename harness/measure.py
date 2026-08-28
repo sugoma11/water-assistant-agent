@@ -492,7 +492,7 @@ def measure(
         exploratory=exploratory,
     )
     # The second refusal, and the same asymmetry: a search reports its leaks and
-    # a measurement refuses them (T140). A candidate carrying a gold answer
+    # a measurement refuses them (T144). A candidate carrying a gold answer
     # scores on knowing it rather than on finding it, and §7's train → test_seen
     # gap cannot catch that where the answer is invariant across a template's
     # instances — test_seen shares its templates with train, so the memorized

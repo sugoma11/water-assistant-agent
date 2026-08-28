@@ -849,7 +849,7 @@ conditions €3.09, against a registered estimate of $4.4. 1686 rollouts at
 workers = 1 took ~14 hours, and 2 rate-limit raises survived amendment 2's retry
 budget out of 1686.
 
-## The headroom runs (T138, T139)
+## The headroom runs (T142, T143)
 
 **Measured on the superseded suite.** Both runs predate T138's generator fix and
 T139's regeneration: their cases are `train.json`
@@ -874,10 +874,10 @@ than one thing moved between any two of them.
 | reg. | student | seed | test_seen answer Δ |
 |---|---|---|---|
 | 2 (T134) | deepseek-v4-flash | hand-written, 30,296 ch | +0.011 [0, +0.032] |
-| 3 (T138) | deepseek-v4-flash | weakened, 4,964 ch | *search only* |
-| 4 (T139) | ministral-8b | weakened, 4,964 ch | +0.087 [−0.046, +0.246] |
+| 3 (T142) | deepseek-v4-flash | weakened, 4,964 ch | *search only* |
+| 4 (T143) | ministral-8b | weakened, 4,964 ch | +0.087 [−0.046, +0.246] |
 
-**Weakening the seed did far less than expected.** T138 cut the candidate
+**Weakening the seed did far less than expected.** T142 cut the candidate
 surface 84% — every routing rule, tool-result taxonomy and argument description
 deleted, contract preserved byte-for-byte — and the train selection score fell
 only 0.844 → 0.829. The per-scorer split says why: abstention lost 0.070 and
@@ -893,7 +893,7 @@ answer accuracy to 0.571 — 13.6 and 21.5 points of headroom where the text
 alone had bought 1.5. §8's stated 20-point sensitivity is a claim about the
 suite; this is the first configuration that clears it.
 
-**T139's measurement is complete and its primary estimand does not exclude
+**T143's measurement is complete and its primary estimand does not exclude
 zero**: 18 conditions, three repeats, \$2.85 of the \$6.00 registered limit,
 written to `eval/measurements/20260827T104417Z.json`. Exclusion counts converged
 between the arms on every split — test_seen 57 vs 59 of 375, test_unseen 82 vs
@@ -913,7 +913,7 @@ outright.
 ### What the optimizer wrote, and why the gain is not what it looks like
 
 Two of seven components changed; the five function-tool docstrings came through
-byte-identical in **both** T138 and T139. The gain is concentrated in two
+byte-identical in **both** T142 and T143. The gain is concentrated in two
 templates of nineteen, and dropping them dissolves it:
 
 | test_seen answer, paired per case | n | Δ | 95% CI |
@@ -958,11 +958,11 @@ as a gain rather than as overfit. Only test_unseen sees through it — and there
 the answer gain is +0.058 with trajectory falling 0.033 and a win/loss table of
 1 win, 1 loss, 5 ties, which §7 restricts to description anyway.
 
-This is a blind spot in the design, not in the run, and it is why **T140's
+This is a blind spot in the design, not in the run, and it is why **T144's
 leakage check is mechanical**: a gold answer present in a candidate and absent
 from the seed is refused on the measurement path and reported on the search
 path.
-Run against T139's own winner it flags `10.0` (T06) and `0.0` (T01, the
+Run against T143's own winner it flags `10.0` (T06) and `0.0` (T01, the
 zero-aggregate illustration — a debatable flag kept deliberately, since `0.0` is
 genuinely T01's answer and T01 got *worse*).
 
@@ -989,7 +989,7 @@ improvements landed at 1, 2 and 3, and iterations 4–6 found nothing before the
 budget ended. Three barren iterations is not a plateau. A larger budget is the
 lever that targets effect size, where repeats target noise that is already
 negligible — with the caveat that more iterations are also more opportunities to
-bake in a constant, which is what T140's check now guards.
+bake in a constant, which is what T144's check now guards.
 
 ## External endpoints and what they can carry
 

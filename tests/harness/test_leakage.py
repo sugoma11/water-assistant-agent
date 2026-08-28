@@ -1,6 +1,6 @@
 """A candidate must not carry a gold answer, and the check must stay quiet otherwise.
 
-The failure being guarded is T139's: the search wrote ``the irrigation threshold
+The failure being guarded is T143's: the search wrote ``the irrigation threshold
 for the extensive roofs is 10.0 %θ`` into the root instruction, which is the gold
 answer of every T06 instance in train *and* test_seen. §7's train → test_seen gap
 is stated to catch memorized constants and cannot catch that one — the splits
@@ -54,7 +54,7 @@ def cases_dir(tmp_path: Path) -> Path:
 
 
 def test_a_constant_the_candidate_added_is_a_leak(cases_dir: Path) -> None:
-    """T139's actual failure, reduced to its shape."""
+    """T143's actual failure, reduced to its shape."""
     leaks = find_leaks(
         {"root_instruction": "The irrigation threshold is 10.0 %θ."},
         {"root_instruction": "Answer the question you were asked."},

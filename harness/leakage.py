@@ -1,6 +1,6 @@
-"""Gold answers must not appear in candidate text (T140).
+"""Gold answers must not appear in candidate text (T144).
 
-**The failure this exists for, observed rather than imagined.** T139's registered
+**The failure this exists for, observed rather than imagined.** T143's registered
 search wrote ``The irrigation threshold for the extensive roofs is 10.0 %θ`` into
 the root instruction. ``10.0`` is the gold answer of *every* T06 instance in
 train **and** in test_seen: the template asks for one documented constant, so its
@@ -222,7 +222,7 @@ def enforce(
             report(leaks)
             + "\n\nA candidate carrying a gold answer scores on knowing it rather "
             "than on finding it, and test_seen cannot detect that where the "
-            "answer is invariant across a template's instances (T139/T06). "
+            "answer is invariant across a template's instances (T143/T06). "
             "Re-run the search, or declare the run exploratory — an exploratory "
             "run is reported as one and is never a test number."
         )

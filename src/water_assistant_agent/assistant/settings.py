@@ -72,7 +72,7 @@ class AssistantSettings(BaseSettings):
     # conclusion first; not imported from there because the product package must
     # not depend on the experiments package.
     #
-    # **A COMMA-SEPARATED LIST is a whitelist, not a loosening** (T139). The pin
+    # **A COMMA-SEPARATED LIST is a whitelist, not a loosening** (T143). The pin
     # is process-wide while the model is not: a run that puts the root agent on
     # one model and the frozen text-to-SQL chain on another needs a server for
     # each, and no single slug serves both — `mistral` serves no deepseek and

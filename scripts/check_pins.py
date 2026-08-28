@@ -544,7 +544,7 @@ def verify_provider_whitelist(computed: dict[str, Any]) -> int:
     """A multi-slug provider pin is hard only if each model resolves to ONE server.
 
     ``served_by`` may name several providers, because the run may span several
-    models and no single provider serves them all — T139 puts the root agent on
+    models and no single provider serves them all — T143 puts the root agent on
     ``mistralai/ministral-8b-2512`` (served only by ``mistral``) while the frozen
     text-to-SQL chain and the reflection model stay on deepseek (served here by
     ``gmicloud``). That list is still a hard pin, but **only because the

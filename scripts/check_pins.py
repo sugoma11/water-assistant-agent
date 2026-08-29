@@ -530,6 +530,95 @@ def _report_stale_gr2l_artifacts(previous: str) -> None:
             )
 
 
+MODEL_PIN_KEYS = (
+    "task_model",
+    "sub_agent_model",
+    "sql_builder_model",
+    "sql_fixer_model",
+    "reflection_model",
+)
+"""The five pins carrying a ``model_id`` and a ``served_by`` (§5)."""
+
+
+def verify_provider_whitelist(computed: dict[str, Any]) -> int:
+    """A multi-slug provider pin is hard only if each model resolves to ONE server.
+
+    ``served_by`` may name several providers, because the run may span several
+    models and no single provider serves them all — T143 puts the root agent on
+    ``mistralai/ministral-8b-2512`` (served only by ``mistral``) while the frozen
+    text-to-SQL chain and the reflection model stay on deepseek (served here by
+    ``gmicloud``). That list is still a hard pin, but **only because the
+    intersection of the list with each model's provider set is a singleton**. Let
+    a second member into one of those intersections and OpenRouter is free to
+    route that model call-by-call again, which is precisely the hazard T134
+    introduced the field to close — and nothing in the committed pin would show
+    it, because the pin records the list rather than the resolution.
+
+    So the property is verified against the live endpoint listing rather than
+    assumed. A single-slug pin needs none of this and is skipped; a multi-slug
+    pin that cannot be verified **fails**, because "unverifiable" and "pinned"
+    must not print the same way.
+    """
+    import urllib.error
+    import urllib.request
+
+    from water_assistant_agent.assistant.settings import get_settings
+
+    settings = get_settings()
+    if not (settings.llm_openrouter_provider or "").strip():
+        return 0
+
+    models = sorted(
+        {
+            computed[k]["model_id"]
+            for k in MODEL_PIN_KEYS
+            if isinstance(computed.get(k), dict) and computed[k].get("model_id")
+        }
+    )
+    print("\nProvider pin — verifying each model resolves to one server:")
+    failed = False
+    for model in models:
+        # Resolve THIS model, because the setting is a scoped mapping: a bare
+        # whitelist cannot pin two models when one provider serves both, which
+        # is how glm-5.3 came to be soft-pinned between gmicloud and z-ai (T147).
+        slugs = (
+            (settings.openrouter_provider_kwargs(settings.llm_api_base, model) or {})
+            .get("extra_body", {})
+            .get("provider", {})
+            .get("only")
+            or []
+        )
+        slug_path = model.split("/", 1)[1] if model.startswith("openrouter/") else model
+        url = f"https://openrouter.ai/api/v1/models/{slug_path}/endpoints"
+        request = urllib.request.Request(
+            url, headers={"Authorization": f"Bearer {settings.llm_api_key or ''}"}
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                payload = json.load(response)
+            serving = {
+                (endpoint.get("tag") or "").split("/", 1)[0]
+                for endpoint in payload["data"]["endpoints"]
+            }
+        except (urllib.error.URLError, KeyError, ValueError, TimeoutError) as exc:
+            print(f"  UNVERIFIED {model}: {type(exc).__name__}: {exc}")
+            failed = True
+            continue
+        resolved = sorted(serving & set(slugs))
+        if len(resolved) == 1:
+            print(f"  ok         {model} -> {resolved[0]}")
+        elif not resolved:
+            print(f"  NO SERVER  {model}: none of {slugs} serves it; every call fails")
+            failed = True
+        else:
+            print(
+                f"  SOFT PIN   {model}: {resolved} both serve it, so routing is "
+                "free to mix them call by call"
+            )
+            failed = True
+    return 1 if failed else 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -576,7 +665,11 @@ def main() -> int:
         _write(computed, committed)
         print(f"Wrote {PINS_PATH.relative_to(REPO_ROOT)}")
         return 0
-    return check(computed, _load_committed())
+    status = check(computed, _load_committed())
+    # After the pin table, because it is a property OF the pins rather than one
+    # of them: `served_by` can be a whitelist, and a whitelist is only a pin
+    # while each model in it resolves to one server.
+    return max(status, verify_provider_whitelist(computed))
 
 
 if __name__ == "__main__":

@@ -71,6 +71,19 @@ class AssistantSettings(BaseSettings):
     # same env var name as `experiments.text2sql.harness`, which reached this
     # conclusion first; not imported from there because the product package must
     # not depend on the experiments package.
+    #
+    # **A COMMA-SEPARATED LIST is a whitelist, not a loosening** (T143). The pin
+    # is process-wide while the model is not: a run that puts the root agent on
+    # one model and the frozen text-to-SQL chain on another needs a server for
+    # each, and no single slug serves both — `mistral` serves no deepseek and
+    # `gmicloud` serves no Ministral. Listing both keeps `allow_fallbacks: False`
+    # and leaves each model exactly one reachable server, so the pin stays hard
+    # per call even though it names two providers. It is only that when the
+    # intersection of the list with each pinned model's provider set is a
+    # SINGLETON; a list whose intersection has two members would restore the
+    # per-call mixing this field exists to prevent, so `check_pins` verifies the
+    # singleton property against the live endpoint listing rather than trusting
+    # the list.
     llm_openrouter_provider: str | None = Field(
         default=None,
         validation_alias=AliasChoices(

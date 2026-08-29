@@ -1,5 +1,5 @@
 {
-  "_comment": "Architecture \u00a75's pin list. Verified by `just pins`; rewritten only by `just pins-write`. A null is an unpinned slot \u2014 the artifact does not exist yet, or the value needs a live capture.",
+  "_comment": "Architecture §5's pin list. Verified by `just pins`; rewritten only by `just pins-write`. A null is an unpinned slot — the artifact does not exist yet, or the value needs a live capture.",
   "pins": {
     "candidate_prompt_versions": {
       "calc_irrigation": 6,
@@ -59,8 +59,8 @@
         "temperature": 0.0
       },
       "endpoint": "https://openrouter.ai/api/v1",
-      "model_id": "openrouter/deepseek/deepseek-v4-flash-0731",
-      "served_by": "deepinfra"
+      "model_id": "openrouter/z-ai/glm-5.3",
+      "served_by": "z-ai"
     },
     "reflection_model_canary_sha256": "5bbf7327070d9d52067f0617e1afc8c86402cdb89e815fe260361025e4edfeb8",
     "roofs_version": "1.0",
@@ -72,7 +72,7 @@
       },
       "endpoint": "https://openrouter.ai/api/v1",
       "model_id": "openrouter/deepseek/deepseek-v4-flash-0731",
-      "served_by": "deepinfra"
+      "served_by": "gmicloud"
     },
     "sql_fixer_model": {
       "decoding": {
@@ -81,7 +81,7 @@
       },
       "endpoint": "https://openrouter.ai/api/v1",
       "model_id": "openrouter/deepseek/deepseek-v4-flash-0731",
-      "served_by": "deepinfra"
+      "served_by": "gmicloud"
     },
     "station_derivation": {
       "derivation_sha256": "da6c872647ed04026a92d0127323cda5ce65002bc4fd077bb300463041109ae3",
@@ -95,7 +95,7 @@
       },
       "endpoint": "https://openrouter.ai/api/v1",
       "model_id": "openrouter/deepseek/deepseek-v4-flash-0731",
-      "served_by": "deepinfra"
+      "served_by": "gmicloud"
     },
     "task_model": {
       "decoding": {
@@ -103,10 +103,10 @@
         "temperature": 0.0
       },
       "endpoint": "https://openrouter.ai/api/v1",
-      "model_id": "openrouter/deepseek/deepseek-v4-flash-0731",
-      "served_by": "deepinfra"
+      "model_id": "openrouter/mistralai/ministral-8b-2512",
+      "served_by": "mistral"
     },
-    "task_model_canary_sha256": "5bbf7327070d9d52067f0617e1afc8c86402cdb89e815fe260361025e4edfeb8",
+    "task_model_canary_sha256": "a5a16ab4e8e0e892efb159a434cb8678d876353facf95779aac210ec07f9c2b6",
     "water_duckdb_sha256": "5311fd9195c0ce9e16d121e5d854bb643875c4ae5dfc1f871a3763ef52dfa6b7"
   }
 }

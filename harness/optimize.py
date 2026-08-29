@@ -81,7 +81,15 @@ import structlog
 from mlflow.genai.optimize.optimizers import GepaPromptOptimizer
 from mlflow.genai.optimize.types import PromptOptimizationResult
 
-from harness.candidates import candidate_uris, evaluation_pass, seed_versions
+from harness.candidates import (
+    PROMPT_NAMES,
+    candidate_uris,
+    evaluation_pass,
+    read_candidates,
+    seed_versions,
+)
+from harness.leakage import Leak, find_leaks
+from harness.leakage import report as leakage_report
 from harness.ledger import RunLedger, experiment_run, ledgered
 from harness.metaprompt import reflection_prompt_templates, templates_digest
 from harness.predict import as_keyword_fn
@@ -109,7 +117,7 @@ logger = structlog.get_logger(__name__)
 BASELINE_ARM = "baseline"
 OPTIMIZED_ARM = "optimized"
 
-DEFAULT_MAX_METRIC_CALLS = 500
+DEFAULT_MAX_METRIC_CALLS = 2000
 """GEPA's budget, in rollouts. Pre-registered per run (T129), never tuned on a result.
 
 **It has to clear the trainset's size before it buys anything.** MLflow passes
@@ -120,6 +128,15 @@ between (``gepa/api.py:328``). A budget equal to the split's size is therefore
 spent entirely on measuring the seed and the search returns it unchanged, which
 is a no-op that reports itself as a completed search. At 100 train cases, 500
 leaves 400 after the seed's evaluation.
+
+**Raised 500 -> 2000 by registration 5.** At 100 train cases a full valset
+evaluation is 100 rollouts, so 500 bought registration 4 six iterations: it
+improved at 1, 2 and 3 and found nothing at 4, 5 and 6 before the budget ended.
+Three barren iterations is not a plateau, and the wide interval that run
+reported needs a larger *effect* rather than quieter noise — within-case repeat
+noise is 3.0% of the variance the interval is built from, so more repeats cannot
+buy what more search might. 2000 buys roughly 22 iterations, enough for a
+plateau to be visible as one.
 """
 
 
@@ -150,12 +167,14 @@ class SearchResult:
     records: int
     reflection_model: str
     ledger: RunLedger
+    leaks: tuple[Leak, ...] = ()
 
     def summary(self) -> str:
         return (
             f"{self.records} record(s), "
             f"{self.result.initial_eval_score} → {self.result.final_eval_score}; "
-            f"{self.residuals.summary()}; {self.ledger.summary()}"
+            f"{self.residuals.summary()}; {self.ledger.summary()}; "
+            f"{leakage_report(self.leaks)}"
         )
 
 
@@ -411,6 +430,17 @@ def run_search(
         # with the per-iteration tables rather than in a run of its own (T127).
         run_ledger.log()
 
+    # Reported, never refused — the asymmetry §6 runs on for the
+    # pre-registration, for the same reason: refusing here would discard a
+    # search that has already been paid for, and the candidate is still the
+    # thing the search selected. The measurement driver is where a leak becomes
+    # a number in the thesis, and that is where it is refused (T144).
+    leaks = find_leaks(
+        {name: prompt.template for name, prompt in _selected_texts(result).items()},
+        read_candidates(pinned),
+    )
+    logger.info("Answer leakage", arm=arm, summary=leakage_report(leaks))
+
     search = SearchResult(
         result=result,
         residuals=residual_report(
@@ -423,9 +453,25 @@ def run_search(
         records=len(records),
         reflection_model=reflection_uri,
         ledger=run_ledger,
+        leaks=tuple(leaks),
     )
     logger.info("Search complete", arm=arm, summary=search.summary())
     return search
+
+
+def _selected_texts(result: PromptOptimizationResult) -> dict[str, Any]:
+    """The winner's text per component key, from the prompts the search registered.
+
+    ``optimized_prompts`` carries registry *names* (``agent_tool_…``) while every
+    other surface here is keyed by component, so the mapping is undone once and
+    here rather than at each reader.
+    """
+    by_name = {prompt.name: prompt for prompt in result.optimized_prompts}
+    return {
+        component: by_name[name]
+        for component, name in PROMPT_NAMES.items()
+        if name in by_name
+    }
 
 
 _PREFLIGHT_INPUTS: Mapping[str, Any] = {

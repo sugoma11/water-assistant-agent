@@ -849,9 +849,243 @@ conditions €3.09, against a registered estimate of $4.4. 1686 rollouts at
 workers = 1 took ~14 hours, and 2 rate-limit raises survived amendment 2's retry
 budget out of 1686.
 
+## The headroom runs (T142, T143)
+
+**Measured on the superseded suite.** Both runs predate T138's generator fix and
+T139's regeneration: their cases are `train.json`
+`d66cc411…`/`test_seen.json` `a0d0a016…`, the files that carried the `{d}` and
+`{thr}` stripe overlap between train and test_seen, and the committed files are
+now `c8be84c0…`/`eadf8225…`. **No number below is comparable with one measured
+after the regeneration**, and none of them is quoted beside one. `test_unseen`
+is byte-identical across the repair, so only that split's figures survive the
+change unaltered.
+
+What does *not* depend on the repair is the T06 finding below: its answer is
+`10.0` in train and test_seen on **both** sides of the regeneration, because the
+template asks for one documented constant and its invariance is a property of the
+question rather than of the sampler. The same holds for the exclusion-convergence
+result and for the variance decomposition, neither of which reads a drawn value.
+
+Three registrations now ask one question — *how much does prompt optimization
+add?* — under three configurations, and the answer depends on what room the seed
+and the model leave. They are reported side by side and **never pooled**: more
+than one thing moved between any two of them.
+
+| reg. | student | seed | test_seen answer Δ |
+|---|---|---|---|
+| 2 (T134) | deepseek-v4-flash | hand-written, 30,296 ch | +0.011 [0, +0.032] |
+| 3 (T142) | deepseek-v4-flash | weakened, 4,964 ch | *search only* |
+| 4 (T143) | ministral-8b | weakened, 4,964 ch | +0.087 [−0.046, +0.246] |
+
+**Weakening the seed did far less than expected.** T142 cut the candidate
+surface 84% — every routing rule, tool-result taxonomy and argument description
+deleted, contract preserved byte-for-byte — and the train selection score fell
+only 0.844 → 0.829. The per-scorer split says why: abstention lost 0.070 and
+answer about 0.03, while **card recall rose 0.075**, because that metric scores
+the union of every `lookup_reference` call in a run and an unguided agent calls
+it more often. Half the degradation cancelled inside the 0.4/0.3/0.2/0.1 blend.
+A metric can move the wrong way for a right reason, and the blend hides it.
+
+**The model is the variable the text could not move.** deepseek answers this
+suite at ~0.82 whatever the prompt says. Swapping the root agent for an 8B model
+on the *same* weakened seed dropped the train selection score to 0.692 and
+answer accuracy to 0.571 — 13.6 and 21.5 points of headroom where the text
+alone had bought 1.5. §8's stated 20-point sensitivity is a claim about the
+suite; this is the first configuration that clears it.
+
+**T143's measurement is complete and its primary estimand does not exclude
+zero**: 18 conditions, three repeats, \$2.85 of the \$6.00 registered limit,
+written to `eval/measurements/20260827T104417Z.json`. Exclusion counts converged
+between the arms on every split — test_seen 57 vs 59 of 375, test_unseen 82 vs
+78 of 168, train 9 vs 8 of 300 — so §7's repeat condition does **not** fire and
+the comparison is established rather than merely recorded. That convergence is
+what P8c lacked (14 vs 25) and is the one procedural thing this run can claim
+outright.
+
+| test_seen | baseline | optimized | Δ [95% CI] |
+|---|---|---|---|
+| answer | 0.601 | 0.688 | +0.087 [−0.046, +0.246] |
+| trajectory | 0.754 | 0.740 | −0.013 [−0.116, +0.072] |
+| abstention | 0.829 | 0.864 | +0.036 [−0.033, +0.105] |
+| card recall | 0.740 | 0.773 | +0.033 [−0.147, +0.273] |
+| selection | 0.716 | 0.754 | +0.037 [−0.032, +0.110] |
+
+### What the optimizer wrote, and why the gain is not what it looks like
+
+Two of seven components changed; the five function-tool docstrings came through
+byte-identical in **both** T142 and T143. The gain is concentrated in two
+templates of nineteen, and dropping them dissolves it:
+
+| test_seen answer, paired per case | n | Δ | 95% CI |
+|---|---|---|---|
+| all templates | 19 | +0.135 | [+0.012, +0.287] |
+| minus T06 | 18 | +0.087 | [−0.010, +0.204] |
+| minus T06 and T03 | 17 | +0.045 | [−0.026, +0.123] |
+
+**T06 (+1.000) is answer memorization.** The winning root instruction states
+*"The irrigation threshold for the extensive roofs is **10.0 %θ**"*, and `10.0`
+is the gold answer of every T06 instance in train **and** test_seen — the
+template asks for one documented constant, so only its phrasing varies. T06's
+trajectory difference is `+0.000`: the agent still calls `lookup_reference` and
+merely reports the number from its own prompt instead of from the card.
+
+**T03 (+0.800) is a legitimate but template-shaped fix.** Train answers 9.514 pp
+and test_seen 8.542 pp, so no constant transfers; what transfers is the recipe —
+sensors `QEx1`/`QEx2`, per-timestamp alignment, and the `pp` unit rule.
+
+**One change is genuinely general**, and it explains the abstention trade: *"Do
+not confuse a zero aggregate with missing data. If a query like `SUM(...)`
+returns `0.0`, that is a valid answer."* It lifts answer accuracy and suppresses
+correct refusals at once — abstention accuracy on unanswerable cases falls
+0.978 → 0.860 on test_seen and 0.778 → 0.556 on test_unseen, while false
+abstention improves 0.125 → 0.092 and 0.153 → 0.032. Both losing templates
+(T01 −0.250, T04 −0.133) are wetland scope-limit questions.
+
+**And one change is fabricated.** The winning `text_to_sql_agent` text names a
+`measurements` table with columns `outflow_L` / `roof_segment` / `date` and
+instructs the caller to *"pass a complete SQL query string"*. None of that
+exists — the tables are `outflow`, `radiation`, `swc`, `tsoil`, `wetter`, and
+the sub-agent takes natural language. The candidate won carrying it, and
+nothing in the harness validates a candidate's claims about the schema.
+
+### The methodological finding: test_seen cannot catch a memorized constant
+
+§7 states that the train → test_seen gap *"catches memorized constants and
+phrasing overfit"*. **It cannot, where the constant is invariant across a
+template's instances.** test_seen shares its templates with train by
+construction, so a memorized T06 answer is *correct* on test_seen and scores
+as a gain rather than as overfit. Only test_unseen sees through it — and there
+the answer gain is +0.058 with trajectory falling 0.033 and a win/loss table of
+1 win, 1 loss, 5 ties, which §7 restricts to description anyway.
+
+This is a blind spot in the design, not in the run, and it is why **T144's
+leakage check is mechanical**: a gold answer present in a candidate and absent
+from the seed is refused on the measurement path and reported on the search
+path.
+Run against T143's own winner it flags `10.0` (T06) and `0.0` (T01, the
+zero-aggregate illustration — a debatable flag kept deliberately, since `0.0` is
+genuinely T01's answer and T01 got *worse*).
+
+### More rollouts would not have helped; more templates would
+
+A variance decomposition over test_seen settles what the wide interval is made
+of. Between-template variance is 0.0923; within-case variance across repeats is
+0.0358, which at 4.4 cases per template and three repeats contributes **3.0%**
+of the total. Infinite repeats would narrow the SD from 0.3038 to 0.2993 — a
+1.5% narrowing, nowhere near enough. §8's claim that "instances of the same
+template asymptote and only more templates move the ceiling" is now measured
+rather than asserted.
+
+| templates | power to exclude zero |
+|---|---|
+| 19 (current) | 0.63 |
+| 25 | 0.75 |
+| 40 | 0.92 |
+| 60 | 0.99 |
+
+**The search, by contrast, was budget-starved rather than converged.** A full
+valset evaluation costs 100 rollouts, so 500 metric calls bought six iterations;
+improvements landed at 1, 2 and 3, and iterations 4–6 found nothing before the
+budget ended. Three barren iterations is not a plateau. A larger budget is the
+lever that targets effect size, where repeats target noise that is already
+negligible — with the caveat that more iterations are also more opportunities to
+bake in a constant, which is what T144's check now guards.
+
+## The exclusion cascade, and why the cache is what causes it
+
+**Measured on T143's 18 conditions**
+(`eval/measurements/20260827T104417Z.json`),
+which lost 160 of 336 test_unseen rollouts and 116 of 750 test_seen rollouts to
+`harness_error`. Every one of them is `upstream`. The loss is not spread over
+the suite: it is concentrated in a *kind* of question, and one miss costs the
+whole case rather than one call.
+
+**It falls on forward-looking templates, and on nothing else.**
+
+| split | template | excluded | what it asks |
+|---|---|---|---|
+| test_unseen | T22 | 45/48 (94 %) | soil moisture predicted **tomorrow** |
+| test_unseen | T18b | 42/48 (88 %) | forecast dew point, **next 5 days** |
+| test_unseen | T26 | 32/48 (67 %) | albedo 0.05, 20 mm on **day 1 of 2** |
+| test_unseen | T23 | 30/48 (62 %) | where moisture **would lie today** if… |
+| test_seen | T21 | 73 % | minimum moisture over the **next 7 days** |
+| test_seen | T09 | 57 % | moisture below a threshold, **next 7 days** |
+| test_unseen | T17b | 0/48 | — |
+
+T17b loses nothing. The split is not between templates but between *window
+kinds*: a question naming an absolute past window resolves to one request and
+hits; a question naming a relative forward window resolves to whichever window
+the candidate chose, and the cache is keyed on the request.
+
+**The cascade, and its size.** An excluded case averages **5.45 extra tool
+calls** against **0.73** for an included one — 7.5×. 38 % of excluded cases hit
+the step cap and 40 % end in a `parse_failure`. The sequence is: the candidate
+resolves a forward window a day away from the oracle's → the request key misses
+→
+`upstream` → the agent retries with different arguments → misses again → burns
+its step budget → emits no parseable contract. **One key miss costs the case,
+not
+the call**, which is why per-condition `upstream` counts (75–124) exceed the
+number of cases that carry them.
+
+The agent's half of that is a prompt matter: §3 says an `upstream` error means
+*do not repeat the call*, and the weakened seed is exactly the text that deleted
+the tool-result taxonomy saying so. That explains the amplitude. It does not
+explain the miss.
+
+**Why ±3 did not fix it.** Registration 2 widened the capture neighbourhood from
+`[-1, 1]` to `[-3…3]`, 509 → 947 entries, and test_unseen still lost ~39 %.
+Two reasons, both structural rather than a matter of degree:
+
+- **A window has two degrees of freedom**, not one. The neighbourhood varies one
+  offset; a candidate may move the start, the end, or reach the same days
+  through
+  `past_days`/`forecast_days` instead of absolute dates. The covered set is a
+  line
+  through a plane.
+- **GR2L is keyed on `data[]` plus parameters** (§5) — the *entire* fetched row
+  array. A window differing by one day is not a nearby key, it is an unrelated
+  one. There is no locality in the key for a wider neighbourhood to exploit.
+
+**The fix the architecture already licenses.** §5 states what the cache is for:
+
+> What the cache is load-bearing *for* is GR2L; for weather it is cost and
+> speed, the station needing no entry at all and Archive being re-fetchable
+> indefinitely.
+
+So a weather miss on the measurement path is being treated as fatal when the
+architecture says weather determinism does not rest on the cache at all. Three
+changes follow, in order of how much they buy:
+
+1. **Cache weather per day, not per request.** One entry per `(source, date)`,
+   assembled into whatever window is asked for. Any window then hits as long as
+   its *days* are captured, and the days are bounded — `as_of` plus the 16-day
+   horizon §3.3 enforces. This turns a plane of possible windows into a bounded
+   set of days and should remove the weather half of the misses outright.
+2. **Let Archive fill a measurement miss, and record it.** Reanalysis of a past
+   window is stable, which is the property §5 already relies on. The station
+   path
+   needs nothing: it is a pure function of the pinned DB. GR2L keeps the strict
+   rule, since that is the component whose determinism the cache carries.
+3. **Capture over the horizon, not over a neighbourhood.** For a forward
+   template the reachable windows are enumerable from `as_of` and the 16-day
+   cap, so the capture pass can cover them exhaustively rather than guess an
+   offset.
+
+**What this would change in the numbers.** The exclusion rate is not noise: §7
+reads per-arm exclusion counts to decide whether a comparison happened under
+equal conditions at all, and test_unseen currently answers on 28–31 of 56 cases.
+Its seven templates already support description rather than inference (§8); at a
+50 % loss they support less than that. The four worst-hit templates are all
+model-bearing or forecast-facing, so the loss is **not** uniform over what the
+suite measures — it falls hardest on exactly the families the water-balance
+tools
+exist for.
+
 ## External endpoints and what they can carry
 
-Measured while sizing P8c's measurement run, and the reason the run is routed the
+Measured while sizing P8c's measurement run, and the reason the run is routed
+the
 way it is. None of it is a result; all of it is infrastructure that decides
 whether a result can exist.
 

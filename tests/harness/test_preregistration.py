@@ -89,33 +89,32 @@ def test_the_registered_reflection_model_is_the_configured_one() -> None:
     assert load()[SEARCH]["reflection_model"] == get_settings().reflection_model
 
 
-def test_the_metaprompts_are_not_in_this_registration_and_a_search_says_so() -> None:
-    """The two templates are search hyperparameters, and this registration is spent.
+def test_the_metaprompts_are_registered_and_a_search_deviates_from_nothing() -> None:
+    """The two templates are search hyperparameters, and the registration names them.
 
-    T133's per-component metaprompts change what every proposal is asked for, so
-    a search before them and one after are not comparable — which makes them a
-    *new* registration's business rather than an amendment to the one the P8c run
-    was measured under. Amending it would also be an amendment made after a test
-    rollout, which is the one thing every entry in ``amendments`` evidences it is
-    not.
+    T133's per-component metaprompts change what every proposal is asked for, so a
+    search before them and one after are not comparable, which made them a *new*
+    registration's business rather than an amendment to the one P8c was measured
+    under.
 
-    Until the rerun's registration (T134) records
-    :func:`~harness.metaprompt.templates_digest` under ``search.gepa_kwargs``, a
-    search reports the difference in its own record — the asymmetry §6 already
-    runs on: reported for a search, refused for a measurement. So this test fails
-    the moment they are registered, and the fix then is to assert the registered
-    digest rather than its absence.
+    Registrations 2 and 3 left ``search.gepa_kwargs`` empty and every search duly
+    reported a deviation naming the digest it had actually run — the asymmetry §6
+    runs on: reported for a search, refused for a measurement. Registration 4
+    registers the digest outright, which is the end state this test's earlier form
+    pointed at, so the assertion is now the digest rather than its absence. A
+    deviation line here means the metaprompt MOVED, not that the registration was
+    written incompletely.
     """
     from harness.metaprompt import templates_digest
     from harness.optimize import gepa_kwargs_summary, search_gepa_kwargs
 
-    assert load()[SEARCH]["gepa_kwargs"] == {}
+    assert load()[SEARCH]["gepa_kwargs"] == {
+        "reflection_prompt_template": f"sha256:{templates_digest()}"
+    }
 
-    (line,) = deviations(
+    assert not deviations(
         SEARCH, {"gepa_kwargs": gepa_kwargs_summary(search_gepa_kwargs())}
     )
-    assert "search.gepa_kwargs" in line
-    assert templates_digest() in line
 
 
 def test_the_registration_covers_every_reporting_rule_of_section_7() -> None:
@@ -126,14 +125,23 @@ def test_the_registration_covers_every_reporting_rule_of_section_7() -> None:
     """
     analysis = load()["analysis"]
 
+    # A registered rule is prose, and prose long enough to need wrapping is
+    # written as a list of lines — the registration file's own convention
+    # everywhere else. The guard is that the RULE survives, not which shape it
+    # was written in, so the phrase is looked for in the joined text.
+    def prose(value: object) -> str:
+        return " ".join(value) if isinstance(value, list) else str(value)
+
     assert analysis["bootstrap"]["unit"] == "template_id"
-    assert analysis["repeat_reduction"].startswith("mean over the repeats per case")
+    assert prose(analysis["repeat_reduction"]).startswith(
+        "mean over the repeats per case"
+    )
     assert analysis["train_number"] == "selection score"
     assert analysis["gaps"] == ["train->test_seen", "test_seen->test_unseen"]
-    assert "no interval" in analysis["test_unseen_trajectory"]
-    assert "never blended" in analysis["abstention"]
+    assert "no interval" in prose(analysis["test_unseen_trajectory"])
+    assert "never blended" in prose(analysis["abstention"])
     assert "mean_extra_calls" in analysis["diagnostics"]
-    assert "apart from answer accuracy" in analysis["parse_failure"]
+    assert "apart from answer accuracy" in prose(analysis["parse_failure"])
 
 
 def test_an_amendment_is_appended_with_its_reason_and_its_cost() -> None:

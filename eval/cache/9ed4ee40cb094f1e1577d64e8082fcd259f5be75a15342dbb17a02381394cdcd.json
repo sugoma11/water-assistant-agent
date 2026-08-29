@@ -1,0 +1,66 @@
+{
+  "request": {
+    "params": {
+      "daily": "temperature_2m_mean,temperature_2m_max,temperature_2m_min,relative_humidity_2m_mean,precipitation_sum,wind_speed_10m_mean,shortwave_radiation_sum",
+      "end_date": "2026-04-16",
+      "latitude": 51.353484,
+      "longitude": 12.432152,
+      "start_date": "2026-04-13",
+      "timezone": "auto",
+      "wind_speed_unit": "kmh"
+    },
+    "url": "https://archive-api.open-meteo.com/v1/archive"
+  },
+  "response": {
+    "data": [
+      {
+        "Date": "2026-04-13",
+        "gs": 1455.0,
+        "precip": 0.6,
+        "rf": 78.0,
+        "tm": 9.7,
+        "tn": 4.9,
+        "tx": 14.6,
+        "w": 11.6
+      },
+      {
+        "Date": "2026-04-14",
+        "gs": 867.0,
+        "precip": 1.7,
+        "rf": 79.0,
+        "tm": 9.5,
+        "tn": 7.2,
+        "tx": 11.6,
+        "w": 8.9
+      },
+      {
+        "Date": "2026-04-15",
+        "gs": 2184.0,
+        "precip": 0.0,
+        "rf": 72.0,
+        "tm": 9.5,
+        "tn": 3.0,
+        "tx": 14.9,
+        "w": 5.0
+      },
+      {
+        "Date": "2026-04-16",
+        "gs": 1968.0,
+        "precip": 0.1,
+        "rf": 68.0,
+        "tm": 13.5,
+        "tn": 8.4,
+        "tx": 18.9,
+        "w": 7.8
+      }
+    ],
+    "latitude": 51.35325,
+    "longitude": 12.509026,
+    "source": "archive",
+    "status": "success",
+    "summary": null,
+    "timezone": "Europe/Berlin",
+    "truncated": false,
+    "weekly": null
+  }
+}

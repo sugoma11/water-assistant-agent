@@ -1,0 +1,56 @@
+{
+  "request": {
+    "params": {
+      "daily": "temperature_2m_mean,temperature_2m_max,temperature_2m_min,relative_humidity_2m_mean,precipitation_sum,wind_speed_10m_mean,shortwave_radiation_sum",
+      "end_date": "2025-12-01",
+      "latitude": 51.353484,
+      "longitude": 12.432152,
+      "start_date": "2025-11-29",
+      "timezone": "auto",
+      "wind_speed_unit": "kmh"
+    },
+    "url": "https://archive-api.open-meteo.com/v1/archive"
+  },
+  "response": {
+    "data": [
+      {
+        "Date": "2025-11-29",
+        "gs": 304.0,
+        "precip": 1.5,
+        "rf": 91.0,
+        "tm": 5.7,
+        "tn": 4.7,
+        "tx": 7.9,
+        "w": 11.8
+      },
+      {
+        "Date": "2025-11-30",
+        "gs": 333.0,
+        "precip": 0.9,
+        "rf": 91.0,
+        "tm": 5.8,
+        "tn": 3.9,
+        "tx": 8.8,
+        "w": 10.8
+      },
+      {
+        "Date": "2025-12-01",
+        "gs": 440.00000000000006,
+        "precip": 0.0,
+        "rf": 86.0,
+        "tm": 3.7,
+        "tn": 0.6,
+        "tx": 6.0,
+        "w": 10.2
+      }
+    ],
+    "latitude": 51.35325,
+    "longitude": 12.509026,
+    "source": "archive",
+    "status": "success",
+    "summary": null,
+    "timezone": "Europe/Berlin",
+    "truncated": false,
+    "weekly": null
+  }
+}

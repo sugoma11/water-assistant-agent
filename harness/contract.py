@@ -21,18 +21,9 @@ Two things live here and they are two halves of one mechanism:
 
 **Authored, not derived.** The evaluation instruction is not the production one
 with a section swapped: it is the search's starting point and is byte-stable
-after the freeze (T107), so an edit to production's prose must not move it.
-
-**Its routing half is deliberately weak, and its contract half is not.** The
-instruction used to carry production's routing rules, its tool-result taxonomy
-and its caveat list, because the tools are the same; the headroom experiment of
-registration 3 cut all three back to a bare inventory of tool names, on the
-hypothesis that a seed this detailed leaves an optimizer nothing to find. What
-it did **not** touch is everything from ``### How you answer`` down to the
-``explanation`` bullet: the contract block and the no-clarification clause are
-what :func:`parse_contract` reads and what makes an abstention scorable, so
-they are measurement apparatus rather than the thing under test, and they are
-byte-identical to the text every earlier run used.
+after the freeze (T107), so an edit to production's prose must not move it. The
+routing content is the same because the tools are the same, and only that
+content is shared.
 """
 
 from __future__ import annotations
@@ -88,9 +79,30 @@ Your final message is **one JSON object and nothing else** — no prose before o
 * **`unit`** names the unit `answer` is in, out of the list above, and is `null` for a boolean, a date or a null answer. Report the unit the tool gave you: never convert litres to millimetres or `%` to `%θ` yourself.
 * **`explanation`** is free text. Put the reasoning and every caveat there.
 
-### The tools
+### Which tool answers what
 
-You have six of them: text_to_sql_agent, predict_green_roof_water_balance_tool, get_weather_forecast_tool, calc_irrigation, lookup_reference and plot_timeseries. Each one's own declaration says what it does and what arguments it takes.
+* If the request needs the **measured** record — what a sensor actually recorded, over any period — delegate it to **text_to_sql_agent**. Do not pass column names or ask the user for them; the sub-agent decides what to read.
+* If the request needs **modelled** green-roof hydrology over a period — stormwater retention, roof runoff, soil moisture and drought risk, or evapotranspiration — call **predict_green_roof_water_balance_tool** with the roof type and the date window. It fetches the weather and the roof's starting soil moisture itself; do not call the weather tool or query the database first to feed it.
+* The model covers three roof segments: non-irrigated extensive, irrigated extensive, semi-intensive. The **gravel roof and the wetland cannot be modelled** — the gravel roof has no substrate, the wetland's sensor cannot measure the water ponded above its mat. Their *measured* data is still available through text_to_sql_agent. Pass the roof the user asked about anyway: the tool reports the scope limit itself, with the reason to give.
+* Use **get_weather_forecast_tool** when the user wants daily weather itself.
+* If the request needs the site's **documented rules, thresholds, definitions or reference values** — the irrigation rule and its trigger levels, substrate properties, doses, what counts as a heatwave, the retention target, what a soil-moisture reading means, the roof segments, the instruments, how ET0 is computed, or how far each table's record runs — call **lookup_reference** with the closest `topic`. It reads the site's own reference cards, so a documented constant comes from there and never from your own knowledge or from a database query. Read the card whole, including `not_applicable`: a segment listed there has no such value at all, and a condition the card does not state is one the site does not have. Say so plainly rather than estimating from the segments that do.
+* Use **calc_irrigation** for whether a roof should be irrigated, and **plot_timeseries** when the deliverable is a chart.
+* Every tool is pinned to this one facility, so there is no location to ask for or to pass. A question about a different location is `"not_available"`.
+* Soil moisture is reported in **% water content**, with millimetres of stored water alongside. Report the unit the tool gave you.
+
+### What a tool result means
+
+* `status: "success"` — use it.
+* `status: "not_available"` — nothing failed. This is a scope limit, and it is usually the answer: return `"not_available"` with a `null` answer and the tool's own `reason` in `explanation`. Do not call the tool again with different arguments.
+* `status: "error"` with `error_type: "invalid_argument"` — the call itself was wrong. `error_details` names what would have been valid: correct the arguments and call again.
+* `status: "error"` with `error_type: "upstream"` — something the tool depends on failed. Do not repeat the call. Answer from what you already have if you can, and otherwise return `"not_available"` with a `null` answer, saying in `explanation` that a system-side failure prevented it.
+
+### Caveats you must carry into `explanation`
+
+* `seed.is_stale` — the roof's starting soil moisture came from an old sensor reading. Give the answer, and say what it was seeded from and when.
+* `summary.retention_excludes_seed_day_runoff` — it rained on the first day of the window, whose runoff the model does not compute, so retention is overstated. Say so.
+* A non-default `parameters.albedo` — say that a non-standard surface was assumed.
+* `weather_source` or a series' `source` of `"station"` — the numbers came from the site's own instruments. Say so.
 """  # noqa: E501 - prompt text, wrapped as the model reads it
 
 

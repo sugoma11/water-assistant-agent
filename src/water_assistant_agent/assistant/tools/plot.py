@@ -1050,13 +1050,104 @@ def make_plot_timeseries_tool(ctx: "ScenarioContext") -> PlotTimeseriesTool:
         This text is the declaration of ``plot_timeseries``, one of the tools the
         assistant may call.
 
-        ``series`` is a list of dicts, each naming a ``source``
-        (``"measured"``, ``"weather"`` or ``"model"``), a ``variable``, and —
-        where the source needs them — a ``roof`` and a ``table``. The window is
-        either ``start_date`` and ``end_date`` (``YYYY-MM-DD`` strings) or
-        ``past_days`` and ``forecast_days`` (ints, counted from today). ``kind``
-        (str) is one of ``line``, ``bar``, ``model_overlay`` or ``diff``.
-        Returns a dict with a ``status`` and an ``artifact_ref`` for the chart.
+        **Fetches its own data; do not query the database separately for
+        plotting**, and do not pass values in — each series names a *source* and a
+        *variable*, and the tool reads it. Use it when the user asks to see, show,
+        plot or chart how something developed over a period.
+
+        A series is drawn from one of three sources, and they can share a chart:
+
+        **``measured``** — the site's own record, through a fixed vocabulary of
+        variables per table. Give ``table`` and ``variable``, plus ``roof`` where
+        the table is per roof:
+
+        - ``swc`` — ``soil_moisture`` (%θ), per roof
+        - ``tsoil`` — ``soil_temperature`` (°C), per roof
+        - ``outflow`` — ``outflow`` (mm of runoff), per roof, lysimeter roofs only
+        - ``wetter`` — the site's weather station, no roof: ``precipitation`` (mm),
+          ``air_temperature`` (°C), ``relative_humidity`` (%),
+          ``shortwave_radiation`` (W/m²)
+        - ``radiation`` — the roofs' radiation masts: ``shortwave_down``,
+          ``shortwave_up``, ``longwave_down``, ``longwave_up`` (W/m²),
+          ``surface_temperature``, ``surface_temperature_corrected`` (K)
+
+        **``weather``** — the daily weather for the facility, the same rows the
+        weather tool reports and under the same short names, no roof and no
+        table: ``precip`` (mm), ``tm`` / ``tx`` / ``tn`` (°C), ``rf`` (%), ``w``
+        (km/h, not m/s), ``gs`` (J/cm²/day, not W/m²).
+
+        **``model``** — a GR2L simulation of one ``roof``: ``swc_pct`` (%θ),
+        ``Ssub`` / ``Sret`` (mm of stored water), ``OUT`` (mm of runoff), ``ET`` /
+        ``ET_PM`` (mm of actual / potential evapotranspiration), ``Qdown`` /
+        ``Qup`` (mm). The tool fetches the weather and reads the roof's own
+        starting soil moisture itself — do not call another tool first. The
+        **gravel roof and the wetland cannot be modelled**, and asking for one
+        comes back as ``status='not_available'`` with the reason; their
+        *measured* series are drawn like any other roof's.
+
+        Nothing else can be drawn: a variable outside these lists comes back as an
+        ``invalid_argument`` naming what was valid, and there is no way to plot a
+        computed column. For a quantity they do not carry, query the database
+        instead and answer from the numbers.
+
+        How the series is aggregated is **not** a choice: rain and runoff sum over
+        a day, water contents and temperatures average, and the result says which
+        operator ran. Half-hourly detail is kept for an all-measured plot and
+        aggregated to calendar days (Europe/Berlin) as soon as a daily series
+        shares the chart.
+
+        Args:
+            series: The series to draw, as a list of declarations. Each takes
+                ``source`` (``"measured"``, ``"weather"`` or ``"model"``),
+                ``variable``, and — for a ``measured`` series over a per-roof
+                table or for any ``model`` series — ``roof``, in whatever spelling
+                the user used: ``"Kiesdach"`` and ``"gravel"`` both resolve. A
+                ``measured`` series also takes ``table``. Two roofs compared over
+                one quantity are two series with the same ``variable`` and
+                different ``roof``; a measurement against its prediction is a
+                ``measured`` and a ``model`` series side by side. A ``model``
+                series may also carry ``initial_soil_moisture_pct`` (%θ),
+                ``albedo`` (0.0-1.0) and ``forcings`` (what-if weather,
+                ``{"precip": {"2026-07-22": 50.0}}``) — omit all three in normal
+                use, and say in the answer whenever one was set.
+            start_date: Window start, ``YYYY-MM-DD`` (give ``end_date`` with it).
+            end_date: Window end, ``YYYY-MM-DD``. Required whenever ``start_date``
+                is given.
+            past_days: Number of **complete past days**, ending yesterday.
+            forecast_days: Number of days from **today** forward.
+            kind: ``line`` (the default), ``bar`` for daily totals such as rain,
+                ``model_overlay`` for a measurement drawn against a prediction, or
+                ``diff`` for the gap between two series.
+
+        Returns:
+            dict: on success ``status='success'`` with the resolved ``start`` and
+            ``end``, the ``resolution`` the series were drawn at, an
+            ``artifact_ref`` naming the chart, and one entry per series carrying
+            what was asked for (source, variable, roof, any modelling arguments)
+            and what followed from it (the ``column`` read, the ``aggregation``
+            applied, the ``unit`` and the ``axis``, and ``stats`` — how many points
+            were drawn, over what span, and their min, max, mean and total).
+            **The values themselves are not returned** — the chart is the
+            deliverable and the user can already see it, so describe what was drawn
+            and answer from ``stats`` rather than reciting numbers.
+
+            Four things in a series are caveats to pass on rather than details to
+            drop: a ``note`` (the radiation masts' one-hour timestamp offset,
+            outflow's litres-are-millimetres relabel, the modelled seed day that
+            computes no runoff), ``gaps`` above zero (days the series has no point
+            for), ``truncated`` (the series stops before the window does, because
+            the record ends there), and a ``seed`` whose ``is_stale`` is true (the
+            modelled run started from an old sensor reading). ``weather_source``
+            of ``'station'`` means the site's own instruments — say so.
+
+            When a ``model`` series names the gravel roof or the wetland, or the
+            window reaches past the forecast horizon, ``status='not_available'``
+            with a ``reason`` to pass on: that is a scope limit, not a malfunction,
+            and their measured series can still be drawn. On failure
+            ``status='error'`` with ``error_details`` and an ``error_type``:
+            ``'invalid_argument'`` means the call itself was wrong and can be
+            corrected and retried, ``'upstream'`` means something the tool depends
+            on failed.
         """
         if kind not in PLOT_KINDS:
             return ErrorResult(

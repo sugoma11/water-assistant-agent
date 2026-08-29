@@ -1,39 +1,39 @@
 {
-  "_comment": "Architecture §5's pin list. Verified by `just pins`; rewritten only by `just pins-write`. A null is an unpinned slot — the artifact does not exist yet, or the value needs a live capture.",
+  "_comment": "Architecture \u00a75's pin list. Verified by `just pins`; rewritten only by `just pins-write`. A null is an unpinned slot \u2014 the artifact does not exist yet, or the value needs a live capture.",
   "pins": {
     "candidate_prompt_versions": {
-      "calc_irrigation": 6,
-      "get_weather_forecast_tool": 6,
-      "lookup_reference": 6,
-      "plot_timeseries": 6,
-      "predict_green_roof_water_balance_tool": 7,
-      "root_instruction": 6,
-      "text_to_sql_agent": 6
+      "calc_irrigation": 9,
+      "get_weather_forecast_tool": 9,
+      "lookup_reference": 9,
+      "plot_timeseries": 9,
+      "predict_green_roof_water_balance_tool": 10,
+      "root_instruction": 9,
+      "text_to_sql_agent": 9
     },
     "candidate_prompts": {
       "calc_irrigation": {
         "prompt": "agent_tool_calc_irrigation",
-        "sha256": "c10020e92b2e7d8d53a315027040900b4dbdf9377f464d33a8e52f3b98ff2e7d"
+        "sha256": "640ce2e8e08efe3079cced83c885eb7fc98d49e6c1a64d0a3b8da6416a14f702"
       },
       "get_weather_forecast_tool": {
         "prompt": "agent_tool_get_weather_forecast_tool",
-        "sha256": "a137789af23f17c1ab505d0217171b3d1e75e331c44708d567e4c571cf4a0628"
+        "sha256": "b8ad167ba7a859b7c800a87a646f5c1047b09aafb17699add6c932dea2f068cf"
       },
       "lookup_reference": {
         "prompt": "agent_tool_lookup_reference",
-        "sha256": "0e3ac00f00fee37d1708aa15211f902df7247f81d58d0a051cfdedb41b72f1ce"
+        "sha256": "a0f1c88f244e7eafe804e20ed7dbecec8beda9c278cc6690a6df60f40ff89203"
       },
       "plot_timeseries": {
         "prompt": "agent_tool_plot_timeseries",
-        "sha256": "becdf9d832c61370ace708369bf0208659fb1c2f5425cebcd5da86da2120ee71"
+        "sha256": "3f619765ec06c1928a66e5f606a72ebd14c869b7bd5cbea5d28b1aa646626290"
       },
       "predict_green_roof_water_balance_tool": {
         "prompt": "agent_tool_predict_green_roof_water_balance_tool",
-        "sha256": "0d36ce06412c68218da5b179c2e1cc3d391b8132bf3a4b8ebac9f8c31a0dfa20"
+        "sha256": "ae7fa0625a7ab2608fb05772ca9eb9e95c94871258518bf24e5d9ddd027437f1"
       },
       "root_instruction": {
         "prompt": "agent_root_instruction",
-        "sha256": "86ad4fe270ff25979d08c7cce45f5d79585f4eda56c92365ddbd6acf1d591f6c"
+        "sha256": "6b196a8ad51bdcca12494da1fca04209d53b6d0674a0a0be960aa62025c7ead5"
       },
       "text_to_sql_agent": {
         "prompt": "agent_tool_text_to_sql_agent",

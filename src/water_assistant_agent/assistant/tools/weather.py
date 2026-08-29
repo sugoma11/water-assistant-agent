@@ -82,63 +82,9 @@ def make_weather_forecast_tool(ctx: "ScenarioContext") -> WeatherForecastTool:
         This text is the declaration of ``get_weather_forecast_tool``, one of the
         tools the assistant may call.
 
-        Returns the daily mean/max/min temperature, relative humidity, precipitation,
-        wind speed, and global radiation for each day. The location is the facility
-        itself and is fixed, so only the date window has to be given. Use it on its
-        own when the user asks about the weather; the green-roof tool fetches its own
-        weather.
-
-        Every value comes back in the unit named under ``Returns`` below. Two of them
-        are **not** the unit normally assumed — wind is km/h, not m/s, and radiation
-        is J/cm²/day, not W/m². State the unit given; never convert or guess one.
-
-        Args:
-            start_date: Window start, ``YYYY-MM-DD``. Give it together with
-                ``end_date`` to select an explicit date range (used for historical
-                windows).
-            end_date: Window end, ``YYYY-MM-DD``. Required whenever ``start_date`` is
-                given.
-            past_days: Number of **complete past days** to include, ending yesterday.
-                It adds no forecast days: ask for ``past_days=7`` and you get last
-                week's observations only. Nothing bounds how far back it may reach.
-            forecast_days: Number of days from **today** forward to include (0-16).
-                Combine it with ``past_days`` to span both sides of today; with
-                neither given, the window is the coming 7 days. Nothing is
-                available more than 16 days ahead.
-
-        Returns:
-            dict: on success ``status='success'`` with the site's
-            ``latitude``/``longitude``/``elevation`` (m), ``timezone``, ``source``,
-            and ``data`` — one row per day, each carrying the day's date and these
-            seven values under short keys:
-
-            * ``Date`` — the day, ``YYYY-MM-DD``
-            * ``tm`` — mean temperature, **°C**
-            * ``tx`` — maximum temperature, **°C**
-            * ``tn`` — minimum temperature, **°C**
-            * ``rf`` — mean relative humidity, **%**
-            * ``precip`` — precipitation total, **mm**
-            * ``w`` — mean wind speed, **km/h** (10 m above ground)
-            * ``gs`` — global (shortwave) radiation total, **J/cm²/day**
-
-            ``source`` says where the whole window came from and is chosen
-            automatically, never by you: ``'station'`` means the site's own
-            instruments — **say so in the answer** — and ``'archive'`` means a
-            reanalysis of the wider area.
-
-            A window longer than 31 days comes back with ``truncated: true``, an
-            empty ``data``, and instead a ``summary`` over the whole window plus
-            ``weekly`` aggregates — same fields, one row per week. Answer from
-            those; do not re-request the window in pieces to get the days back.
-
-            When the window ends more than 16 days ahead, ``status='not_available'``
-            with a ``reason`` to pass on to the user: no weather exists that far
-            out, so that is a scope limit, not a malfunction — say so instead of
-            retrying with different arguments. On failure ``status='error'`` with
-            ``error_details`` and an ``error_type``: ``'invalid_argument'`` means
-            the call itself was wrong and can be corrected and retried,
-            ``'upstream'`` means something the tool depends on failed — report the
-            system-side problem rather than retrying.
+        The window is either ``start_date`` and ``end_date`` (``YYYY-MM-DD``
+        strings) or ``past_days`` and ``forecast_days`` (ints, counted from
+        today). Returns a dict with a ``status`` and one row per day.
         """
         # Resolved before the fetch: Open-Meteo's own past_days silently appends a
         # seven-day forecast tail, which would land in `data` unlabelled. The day

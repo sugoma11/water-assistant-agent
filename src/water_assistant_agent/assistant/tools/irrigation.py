@@ -191,76 +191,11 @@ def make_irrigation_tool(ctx: "ScenarioContext") -> IrrigationTool:
         This text is the declaration of ``calc_irrigation``, one of the tools the
         assistant may call.
 
-        **Fetches its own weather forecast and reads the roof's own soil-moisture
-        sensor** — do not call the weather tool first and do not query the database
-        for the roof's moisture. It then runs the deployed controller's water
-        balance over the coming week and applies the site's priority ladder.
-
-        The answer is a **decision, not an amount**: ``irrigate`` true or false,
-        the rung that decided it, and the fixed dose the site applies when the
-        answer is yes. There is no per-case volume to compute — the dose is site
-        policy — so never derive one.
-
-        Use it for "should we water the roof?", "does it need irrigating this
-        week?", "why is the controller irrigating?" and the like. For how much
-        water a roof *retained*, or how its moisture will run over a past window,
-        use the water-balance model tool instead: that is a different model, and
-        an answer that mixes the two is wrong.
-
-        Three roofs are irrigable: ``irrigated_extensive``,
-        ``non_irrigated_extensive`` (advisory — it has no valve), ``semi_intensive``.
-        The **gravel roof and the wetland are out of the rule's scope** and come
-        back as ``status='not_available'``; name the roof the user asked about
-        anyway, because that answer is the honest one.
-
-        The rungs, in the order they are tested, are what ``reason`` reports:
-
-        - ``below_wilting_point`` — the roof dries past its wilting point within
-          48 h. Irrigate whatever else is true.
-        - ``no_heat_no_stress`` — nothing near 24 °C is forecast, so no cooling is
-          wanted and the roof is not critical.
-        - ``sufficient_moisture`` — cooling would be welcome, but the substrate is
-          wetter than the dry threshold.
-        - ``refill_forecast`` — the roof is dry and heat is coming, but rain is
-          expected to refill it within the week.
-        - ``cooling_requested`` — heat, a dry roof and no rain to wait for.
-        - ``no_forecast`` / ``missing_values`` — the window could not be decided
-          from; neither irrigates, and a gap is not a dry roof.
-
-        Args:
-            roof_type: One of ``irrigated_extensive``, ``non_irrigated_extensive``,
-                ``semi_intensive``. Name the roof the user actually asked about
-                even when it is the gravel roof or the wetland.
-            soil_moisture_pct: Optional **stated** soil moisture, in % water
-                content (e.g. ``12.5``). **Omit it in normal use** — the tool reads
-                the roof's own sensor. Pass it only for a what-if ("if the roof
-                were at 8 %, would you water it?") or when the user states the
-                value, and then pass all three stated arguments together: they
-                replace the whole measurement, and the tool runs the rule on them
-                alone.
-            max_temperature_c: Optional **stated** highest temperature expected
-                over the next 48 h, °C. Only with the other two.
-            forecast_precip_mm: Optional **stated** rain expected over the coming
-                week, mm. Only with the other two.
-
-        Returns:
-            dict: on success ``status='success'`` with ``irrigate``, the ``reason``
-            code, ``inputs`` (``'modelled'`` from the roof's own data, or
-            ``'stated'`` from the caller's values — say which in the answer), the
-            ``features`` the rung turned on (driest %θ and hottest day of the
-            48 h window, whether rain will refill the roof and when), the ``dose``
-            to state if the answer is yes (``valve_minutes`` is what the site
-            currently applies; ``dose_mm`` is null until the site states it — do
-            not invent one), the ``seed`` the run started from (say so in the
-            answer when ``is_stale``), and the ``weather_source`` that forced it
-            (``'station'`` means the site's own instruments — say so). When the
-            rule does not apply — the gravel roof, the wetland, or no
-            soil-moisture reading to start from — ``status='not_available'`` with
-            a ``reason`` to pass on; that is a scope limit, not a malfunction. On
-            failure ``status='error'`` with ``error_details`` and an
-            ``error_type``: ``'invalid_argument'`` means the call itself was wrong
-            and can be corrected and retried, ``'upstream'`` means something the
-            tool depends on failed.
+        It runs the site's irrigation rule for the roof named by ``roof_type``
+        (str). ``soil_moisture_pct``, ``max_temperature_c`` and
+        ``forecast_precip_mm`` (floats) are optional and replace the measured
+        values the tool would otherwise read. Returns a dict with a ``status``,
+        an ``irrigate`` decision, the ``reason`` code and the ``dose``.
         """
         # Normalized once, here, and every lookup below uses the result — the
         # scope table, the rules and the echoed `roof_type` alike.

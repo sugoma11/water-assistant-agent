@@ -1,0 +1,27 @@
+{
+  "arm_reconstructed_from": "mlflow run b609241ec0064cc3b49ae2ac025e1d97 artifact prompt_candidates/iteration_1",
+  "components_changed": [
+    "root_instruction"
+  ],
+  "max_metric_calls": 2000,
+  "records": 100,
+  "reflection_model": "openrouter:/z-ai/glm-5.3",
+  "rollouts_spent": 797,
+  "search_completed": false,
+  "selection_score": [
+    0.6889444444444445,
+    0.7441666666666668
+  ],
+  "split": "train",
+  "stop_reason": "Halted by operator at 797/2000 rollouts: proposer wall-clock and spend, not a score. 14 barren iterations since the only improvement (iteration 1).",
+  "stopped_at_iteration": 17,
+  "versions": {
+    "calc_irrigation": 9,
+    "get_weather_forecast_tool": 9,
+    "lookup_reference": 9,
+    "plot_timeseries": 9,
+    "predict_green_roof_water_balance_tool": 10,
+    "root_instruction": 16,
+    "text_to_sql_agent": 9
+  }
+}

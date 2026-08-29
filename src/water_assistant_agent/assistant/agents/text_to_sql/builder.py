@@ -51,7 +51,7 @@ async def abuild_sql(user_statement: str) -> BuilderResult:
     completion_result = await litellm.acompletion(
         model=settings.sql_builder_model,
         messages=messages,
-        **settings.litellm_extra(),
+        **settings.litellm_extra(settings.sql_builder_model),
     )
     message = completion_result.choices[0]["message"]
     reasoning = message.get("reasoning_content", "") or ""

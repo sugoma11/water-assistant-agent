@@ -172,7 +172,8 @@ class TaskModelWitness:
     def build(self) -> BaseLlm:
         """The task model for this rollout, witnessed."""
         self.model = WitnessedLiteLlm(
-            model=self.settings.root_agent_model, **self.settings.litellm_extra()
+            model=self.settings.root_agent_model,
+            **self.settings.litellm_extra(self.settings.root_agent_model),
         )
         return self.model
 
@@ -505,7 +506,7 @@ def probe_task_canary(settings: AssistantSettings | None = None) -> tuple[str, s
 
     settings = settings or get_settings()
     model = WitnessedLiteLlm(
-        model=settings.root_agent_model, **settings.litellm_extra()
+        model=settings.root_agent_model, **settings.litellm_extra(settings.root_agent_model)
     )
     request = Request(
         model=settings.root_agent_model,

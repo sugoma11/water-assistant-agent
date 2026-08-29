@@ -10,7 +10,6 @@
   ],
   "registered_on": "2026-08-28",
   "registration": 5,
-
   "supersedes": {
     "registration": 4,
     "registered_on": "2026-08-27",
@@ -49,7 +48,6 @@
       "3.0% of the total, so more repeats cannot buy what more search might."
     ]
   },
-
   "registered_against": {
     "commit": "6050b2392f228645f1c09b451149e177b446ad4f",
     "commit_note": [
@@ -71,12 +69,20 @@
       "byte-identical to a fresh generation pass."
     ],
     "splits": {
-      "train": {"cases": 100, "templates": 25},
-      "test_seen": {"cases": 125, "templates": 25},
-      "test_unseen": {"cases": 56, "templates": 7}
+      "train": {
+        "cases": 100,
+        "templates": 25
+      },
+      "test_seen": {
+        "cases": 125,
+        "templates": 25
+      },
+      "test_unseen": {
+        "cases": 56,
+        "templates": 7
+      }
     }
   },
-
   "what_moved_from_registration_4": {
     "the_suite": "REPAIRED — see supersedes.why_a_fifth_one (1). Not a choice this registration made; a defect the previous one was measured under.",
     "the_metaprompt": "FIXED — see (2). templates_digest moves 667be72b… → 37daf614…, and it is registered outright below so a deviation line means the template moved again rather than that the registration was incomplete.",
@@ -106,7 +112,6 @@
       "already forbids differencing those."
     ]
   },
-
   "models": {
     "task": "openrouter/mistralai/ministral-8b-2512",
     "sub_agent": "openrouter/deepseek/deepseek-v4-flash-0731",
@@ -114,13 +119,16 @@
     "sql_fixer": "openrouter/deepseek/deepseek-v4-flash-0731",
     "reflection": "openrouter/z-ai/glm-5.3",
     "endpoint": "https://openrouter.ai/api/v1",
-    "served_by": "gmicloud,mistral,z-ai",
+    "served_by": "ministral=mistral,deepseek=gmicloud,glm=z-ai",
     "resolved_served_by": {
       "openrouter/mistralai/ministral-8b-2512": "mistral",
       "openrouter/deepseek/deepseek-v4-flash-0731": "gmicloud",
       "openrouter/z-ai/glm-5.3": "z-ai"
     },
-    "decoding": {"temperature": 0.0, "seed": 42},
+    "decoding": {
+      "temperature": 0.0,
+      "seed": 42
+    },
     "a_strong_teacher_for_a_weak_student": [
       "THE CONFIGURATION PROMPT OPTIMIZATION IS USUALLY CLAIMED FOR, and the one no",
       "registration has yet tested. Registrations 2 and 3 ran one model in both roles",
@@ -149,7 +157,6 @@
       "all: for this model the whitelist is not even a choice."
     ]
   },
-
   "budget": {
     "currency": "USD",
     "limit": 10.0,
@@ -177,9 +184,11 @@
       ]
     },
     "if_exhausted": "The split order in `measurement.splits` decides what is lost, as it has since registration 1's amendment 3. Registered before any test rollout and on no test number.",
-    "ledger_prices_usd_per_mtok": {"input": 0.112, "output": 0.224}
+    "ledger_prices_usd_per_mtok": {
+      "input": 0.112,
+      "output": 0.224
+    }
   },
-
   "arms": {
     "baseline": [
       "The weakened seed at the pinned candidate_prompt_versions, answered by",
@@ -209,7 +218,6 @@
       "memorized constant this registration exists partly to prevent."
     ]
   },
-
   "search": {
     "entry_point": "mlflow.genai.optimize_prompts",
     "optimizer": "GepaPromptOptimizer",
@@ -249,10 +257,16 @@
       "would replay."
     ]
   },
-
   "measurement": {
-    "arms": ["baseline", "optimized"],
-    "splits": ["test_seen", "test_unseen", "train"],
+    "arms": [
+      "baseline",
+      "optimized"
+    ],
+    "splits": [
+      "test_seen",
+      "test_unseen",
+      "train"
+    ],
     "repeats": 3,
     "temperature": 0.0,
     "seed": 42,
@@ -276,9 +290,15 @@
       "here so the diagnostic is read with it rather than against T134's."
     ]
   },
-
   "capture": {
-    "neighbourhood": [-3, -2, -1, 1, 2, 3],
+    "neighbourhood": [
+      -3,
+      -2,
+      -1,
+      1,
+      2,
+      3
+    ],
     "unchanged_since_registration_2": true,
     "why_it_is_not_widened": [
       "Registration 4 lost 57 and 59 of 375 test_seen rollouts and 82 and 78 of 168",
@@ -292,7 +312,6 @@
       "repeated rather than reported — registered here, before the counts exist."
     ]
   },
-
   "analysis": {
     "unit_of_analysis": "template_id",
     "repeat_reduction": "mean over the repeats per case, before any aggregation over cases",
@@ -306,7 +325,10 @@
     },
     "primary_estimand": "the paired difference optimized - baseline, per metric, on test_seen",
     "train_number": "selection score",
-    "gaps": ["train->test_seen", "test_seen->test_unseen"],
+    "gaps": [
+      "train->test_seen",
+      "test_seen->test_unseen"
+    ],
     "test_unseen_trajectory": "per-template win/loss table; no accuracy and no interval",
     "abstention": "accuracy over the unanswerable cases and the false-abstention rate over the answerable ones, reported separately and never blended",
     "exclusion": "harness_error cases leave every aggregate and are counted per arm with their sources broken out; invalid_argument never excludes",
@@ -380,7 +402,6 @@
       "number appears."
     ]
   },
-
   "protocol": {
     "method_debugging": [
       "train only. The two test splits have been run under registrations 1, 2 and 4,",
@@ -407,7 +428,6 @@
       "unfavourable one. One search, one measurement, one report."
     ]
   },
-
   "known_gaps": [
     {
       "id": "T132",
@@ -446,6 +466,71 @@
       "effect": "test_unseen supports description and not inference, which §7 already required of it."
     }
   ],
-
-  "amendments": []
+  "amendments": [
+    {
+      "id": 1,
+      "on": "2026-08-29",
+      "before_any_test_rollout": true,
+      "what": [
+        "models.served_by: 'gmicloud,mistral,z-ai' -> 'ministral=mistral,deepseek=gmicloud,glm=z-ai'.",
+        "The provider pin becomes a per-model mapping rather than a flat whitelist, and",
+        "`openrouter_provider_kwargs` takes the model it is pinning. Every call site now",
+        "passes its own model id.",
+        "`_model_pin` and `reflection_model_pin` record the provider the MODEL resolves",
+        "to, rather than the raw setting and `provider[0]` respectively.",
+        "`check_pins` verifies the singleton property per model instead of over a global",
+        "whitelist. `eval/pins.json` is rewritten: five served_by slots move.",
+        "NOTHING ELSE. The budget, the arms, the splits, the repeats, the suite, the",
+        "seed, the metaprompt digest, the models themselves and the whole analysis",
+        "section are unchanged."
+      ],
+      "why": [
+        "THE REGISTERED SEARCH RAN WITH AN EFFECTIVELY UNPINNED PROPOSER, and this",
+        "records it rather than discovering it later.",
+        "When registration 5 was written, z-ai/glm-5.3 had exactly ONE OpenRouter",
+        "provider (`z-ai`), which is why a flat whitelist was sufficient and was",
+        "verified as such: the intersection of {gmicloud, mistral, z-ai} with each",
+        "model's provider set was a singleton for all three. By the following morning",
+        "glm-5.3 was served by SEVEN providers including gmicloud, so the whitelist",
+        "admitted both gmicloud and z-ai for that model and OpenRouter was free to route",
+        "the reflection calls between them call by call.",
+        "That is §5's provider-swap hazard occurring inside a registered run, which is",
+        "the hazard T134 introduced the pin to close — and it was closed for the two",
+        "models that matter to the numbers and open for the one that does not.",
+        "A flat whitelist CANNOT express what this run needs, which is why the fix is a",
+        "mechanism change rather than a different list: gmicloud serves both",
+        "deepseek-v4-flash and glm-5.3, so no single list pins each of them to one",
+        "server. The entries are scoped per model.",
+        "The defect was caught by the check written for exactly this in T143 — it failed",
+        "the suite the first time it was run after the provider set moved. What it shows",
+        "is that the check has to run BEFORE every registered run rather than whenever a",
+        "session happens to invoke it, because a provider set can move overnight."
+      ],
+      "cost": [
+        "THE T145 SEARCH IS NOT RE-RUN. Its 37 reflection calls may have been split",
+        "across gmicloud and z-ai and the logs do not record which served each one: the",
+        "provider header is captured for rollouts, through the ledger's witness, and not",
+        "for reflection calls. So the candidate this run measures was proposed under a",
+        "model whose serving build is unknown, and the search is NOT exactly reproducible.",
+        "What is unaffected is every measured number. The measurement never calls the",
+        "reflection model; the student and the frozen SQL chain were hard-pinned",
+        "throughout and are verified so again after this amendment. The candidate is the",
+        "one the search selected, and it is measured as it stands.",
+        "Re-running the search would buy exact reproducibility of the proposal step at",
+        "~6 hours and EUR 2.76, and would produce a DIFFERENT candidate, which is its own",
+        "loss: the run would then report a candidate nobody has examined in place of one",
+        "whose text is already recorded in findings.md. The trade is taken deliberately",
+        "and the un-reproducibility is stated rather than repaired.",
+        "A future run gets both, since the mechanism is fixed from here on."
+      ],
+      "not_amended": [
+        "The arms, the splits, the repeats, the pairing, the bootstrap unit and its seed,",
+        "the two gaps, the win/loss table, the exclusion rule, the diagnostics, the",
+        "capture neighbourhood, the selection weights, the search budget, the budget",
+        "limit, the suite, the seed candidate, the metaprompt digest, and the whole",
+        "protocol section. The three model ids are unchanged: this names which server",
+        "answers for each."
+      ]
+    }
+  ]
 }

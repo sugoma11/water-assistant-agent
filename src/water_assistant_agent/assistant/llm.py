@@ -49,10 +49,22 @@ def _model_pin(model_id: str, settings: AssistantSettings) -> dict[str, Any]:
     own. ``eval/pins.json`` carries the slot and reports it unfilled until a live
     pass writes it.
     """
+    provider = (
+        (settings.openrouter_provider_kwargs(settings.llm_api_base, model_id) or {})
+        .get("extra_body", {})
+        .get("provider", {})
+        .get("only")
+        or []
+    )
     return {
         "model_id": model_id,
         "endpoint": settings.llm_api_base or _DIRECT_ENDPOINT,
-        "served_by": settings.llm_openrouter_provider or None,
+        # The provider this MODEL resolves to, not the raw setting. The setting
+        # is a scoped mapping covering several models, and recording it whole
+        # would have every pin claim every server (T147). A resolution that is
+        # still not a singleton is recorded as the list it is, so the pin says
+        # "unpinned between these" rather than naming one arbitrarily.
+        "served_by": (provider[0] if len(provider) == 1 else ",".join(provider)) or None,
         "decoding": {
             "temperature": settings.llm_temperature,
             "seed": settings.llm_seed,
@@ -137,7 +149,9 @@ def reflection_model_pin(settings: AssistantSettings | None = None) -> dict[str,
         # Read back off the bound kwargs rather than off the settings field, so
         # this cannot claim a provider the reflection call did not pin — the
         # reflection endpoint is its own and may not be OpenRouter at all.
-        "served_by": provider[0] if provider else None,
+        # Singleton or nothing: `provider[0]` silently named the first of a
+        # list, so a model the whitelist did not pin read as pinned (T147).
+        "served_by": (provider[0] if len(provider) == 1 else ",".join(provider)) or None,
         "decoding": {
             "temperature": extra["temperature"],
             "seed": extra["seed"],

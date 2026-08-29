@@ -46,7 +46,7 @@ async def arun_fixer_completion(system_prompt: str, user_message: str) -> str:
         model=settings.sql_fixer_model,
         messages=messages,
         response_format=FixerAgentResponse,
-        **settings.litellm_extra(),
+        **settings.litellm_extra(settings.sql_fixer_model),
     )
     content = completion_result.choices[0]["message"]["content"]
     try:

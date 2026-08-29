@@ -565,9 +565,7 @@ def verify_provider_whitelist(computed: dict[str, Any]) -> int:
     from water_assistant_agent.assistant.settings import get_settings
 
     settings = get_settings()
-    slugs = [s.strip() for s in (settings.llm_openrouter_provider or "").split(",")]
-    slugs = [s for s in slugs if s]
-    if len(slugs) < 2:
+    if not (settings.llm_openrouter_provider or "").strip():
         return 0
 
     models = sorted(
@@ -577,9 +575,19 @@ def verify_provider_whitelist(computed: dict[str, Any]) -> int:
             if isinstance(computed.get(k), dict) and computed[k].get("model_id")
         }
     )
-    print(f"\nProvider whitelist {slugs} — verifying one server per model:")
+    print("\nProvider pin — verifying each model resolves to one server:")
     failed = False
     for model in models:
+        # Resolve THIS model, because the setting is a scoped mapping: a bare
+        # whitelist cannot pin two models when one provider serves both, which
+        # is how glm-5.3 came to be soft-pinned between gmicloud and z-ai (T147).
+        slugs = (
+            (settings.openrouter_provider_kwargs(settings.llm_api_base, model) or {})
+            .get("extra_body", {})
+            .get("provider", {})
+            .get("only")
+            or []
+        )
         slug_path = model.split("/", 1)[1] if model.startswith("openrouter/") else model
         url = f"https://openrouter.ai/api/v1/models/{slug_path}/endpoints"
         request = urllib.request.Request(

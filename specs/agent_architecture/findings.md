@@ -1122,6 +1122,29 @@ lost the responses it was computed from.
 *Verified:* `uv run python scripts/capture_cache.py --verify`.
 *Date:* 2026-08-29.
 
+**The record pass issued no weather request at all, and the ground truth still
+reproduces.** A full `scripts/capture_cache.py` in record mode over all 281
+cases: **281 answered, 0 refused, 0 failed, 0 new entries** (1616 → 1616), and
+**zero `Fetching Open-Meteo` calls** — every day every oracle, neighbour and
+band warm asked for was already committed. It also re-ran every oracle against
+the live GR2L service and reported "every case reproduced its committed answer",
+so the re-key cost no answer its provenance.
+*Verified:* `uv run python scripts/capture_cache.py`. *Date:* 2026-08-29.
+
+**The pass's 36 dropped warms are GR2L forcing arithmetic, not a warm gap.**
+Broken out per attempt: **0 are weather** (the day band succeeded for all 281
+cases) and all 36 are `ForcingError` from the GR2L sweep — a case whose forcing
+lands on `as_of + offset` warmed at spans shorter than the offset, so
+`forcings['precip'] names 2025-12-28, which is outside the window
+2025-12-27..2025-12-27`. Concentrated in T26 (its `mm`/`offset` counterfactual)
+with a tail in T21. There is nothing to warm there: the argument is rejected
+before any request, so a candidate issuing the same call gets an
+`invalid_argument`, which is **scored rather than excluded**
+(`decisions.md` § Tool errors and harness exclusion). The counter is doing what
+T140 added it for — the dropouts are legible instead of silent.
+*Verified:* the warm replayed per attempt with the exception recorded.
+*Date:* 2026-08-29.
+
 **What is not measured yet.** Whether the exclusion rate actually falls is a
 fact about the next measurement run and is reported there, not predicted here.
 The mechanism is removed; the number is owed.

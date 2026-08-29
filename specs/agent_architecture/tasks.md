@@ -4899,7 +4899,13 @@ rather than replace and catches it when it does not.
   script refuses to write a conflict); 2843 → 1605 files. 11 further days, in
   two runs, were captured so the band is complete over all 176 distinct `as_of`
   days — **358 of 358**. `capture_cache.py --verify` then answered **281/281
-  cases with the network blocked, 0 unfillable, 0 live calls**.
+  cases with the network blocked, 0 unfillable, 0 live calls**, and a full
+  record pass against the live GR2L service added **0 new entries while issuing
+  no Open-Meteo request at all** and reported every case still reproducing its
+  committed answer. Its 36 dropped warms are all GR2L `ForcingError` — a
+  counterfactual warmed at a span shorter than its own forcing offset, rejected
+  before any request and `invalid_argument` for a candidate too — and **none are
+  weather** (`findings.md`).
   **The two dependencies no longer share a replay policy**, which is the second
   half. `make_case_context` binds `ctx.cache` — GR2L's — to the `ReplayCache`
   and hands the weather half its own recording one, so a measurement miss is one

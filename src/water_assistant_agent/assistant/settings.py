@@ -170,7 +170,7 @@ class AssistantSettings(BaseSettings):
     # Lifetime of a minted access token, in days (C8).
     auth_token_ttl_days: int = 7
 
-    def litellm_extra(self) -> dict[str, Any]:
+    def litellm_extra(self, model: str | None = None) -> dict[str, Any]:
         """Extra kwargs forwarded to litellm / the LiteLlm wrapper.
 
         Carries the pinned decoding parameters as well as the endpoint, so every
@@ -192,10 +192,12 @@ class AssistantSettings(BaseSettings):
             extra["api_base"] = self.llm_api_base
         if self.llm_api_key is not None:
             extra["api_key"] = self.llm_api_key
-        extra.update(self.openrouter_provider_kwargs(self.llm_api_base))
+        extra.update(self.openrouter_provider_kwargs(self.llm_api_base, model))
         return extra
 
-    def openrouter_provider_kwargs(self, api_base: str | None) -> dict[str, Any]:
+    def openrouter_provider_kwargs(
+        self, api_base: str | None, model: str | None = None
+    ) -> dict[str, Any]:
         """``extra_body`` pinning the OpenRouter provider, or ``{}`` when it does not apply.
 
         Empty for every non-OpenRouter endpoint and whenever the pin is unset,
@@ -205,10 +207,32 @@ class AssistantSettings(BaseSettings):
         mid-measurement — the drift being the whole thing this prevents, and the
         one failure mode a loud error is strictly better than.
         """
-        slug = (self.llm_openrouter_provider or "").strip()
-        if not slug or not api_base or "openrouter.ai" not in api_base:
+        entries = [s.strip() for s in (self.llm_openrouter_provider or "").split(",")]
+        entries = [s for s in entries if s]
+        if not entries or not api_base or "openrouter.ai" not in api_base:
             return {}
-        return {"extra_body": {"provider": {"only": [slug], "allow_fallbacks": False}}}
+        scoped: dict[str, str] = {}
+        plain: list[str] = []
+        for entry in entries:
+            key, sep, slug = entry.partition("=")
+            if sep:
+                scoped[key.strip()] = slug.strip()
+            else:
+                plain.append(entry)
+        if model:
+            matched = [slug for key, slug in scoped.items() if key in model]
+            if matched:
+                return {
+                    "extra_body": {
+                        "provider": {"only": matched, "allow_fallbacks": False}
+                    }
+                }
+        # No scoped entry matched: the plain slugs, which is the whole list when
+        # every entry is scoped. A run that names no provider for the model it is
+        # calling gets the union rather than nothing, so an unlisted model still
+        # reaches a pinned server rather than the open router.
+        only = plain or sorted(set(scoped.values()))
+        return {"extra_body": {"provider": {"only": only, "allow_fallbacks": False}}}
 
     def reflection_extra(self) -> dict[str, Any]:
         """The same, for the reflection model's own endpoint and key.
@@ -220,7 +244,7 @@ class AssistantSettings(BaseSettings):
         and what ``reflection_model_pin`` records — the two read one function, so
         a pin cannot describe an endpoint the call did not use.
         """
-        extra = self.litellm_extra()
+        extra = self.litellm_extra(self.reflection_model)
         base = self.reflection_api_base or self.llm_api_base
         key = self.reflection_api_key or self.llm_api_key
         # Re-decided against the reflection model's OWN endpoint. `litellm_extra`
@@ -229,7 +253,7 @@ class AssistantSettings(BaseSettings):
         # kisski server, or dropping the pin from a reflection call that does run
         # on OpenRouter. Both directions are wrong for the same reason.
         extra.pop("extra_body", None)
-        extra.update(self.openrouter_provider_kwargs(base))
+        extra.update(self.openrouter_provider_kwargs(base, self.reflection_model))
         if base is not None:
             extra["api_base"] = base
         if key is not None:

@@ -90,7 +90,10 @@ taken.
 
 def _build_model() -> LiteLlm:
     settings = get_settings()
-    return LiteLlm(model=settings.root_agent_model, **settings.litellm_extra())
+    return LiteLlm(
+        model=settings.root_agent_model,
+        **settings.litellm_extra(settings.root_agent_model),
+    )
 
 
 def _make_temporal_instruction(ctx: ScenarioContext):

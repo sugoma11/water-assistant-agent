@@ -141,7 +141,10 @@ def make_query_builder_tool(pipeline: TextToSqlPipeline) -> QueryBuilderTool:
 
 def _build_model() -> LiteLlm:
     settings = get_settings()
-    return LiteLlm(model=settings.text_to_sql_agent_model, **settings.litellm_extra())
+    return LiteLlm(
+        model=settings.text_to_sql_agent_model,
+        **settings.litellm_extra(settings.text_to_sql_agent_model),
+    )
 
 
 def build_text_to_sql_agent(

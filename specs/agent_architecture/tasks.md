@@ -4850,7 +4850,7 @@ rather than replace and catches it when it does not.
   broken instrument. The paired comparison *inside* this run is clean, and §7
   already forbids differencing across registrations. Registered as
   registration 5. → T144
-- [ ] T146 **Cache weather by day, so a forward window cannot miss.** T143 lost
+- [x] T146 **Cache weather by day, so a forward window cannot miss.** T143 lost
   160 of 336 test_unseen rollouts and 116 of 750 test_seen rollouts, every one
   `upstream`, and the loss is not spread over the suite: T22 94 %, T18b 88 %,
   T26 67 %, T23 62 %, T21 73 %, T09 57 % — and T17b **zero**. The split is not
@@ -4882,7 +4882,39 @@ rather than replace and catches it when it does not.
   comparison happened under equal conditions, test_unseen currently answers on
   28-31 of 56 cases, and the worst-hit templates are all model-bearing or
   forecast-facing — so the loss falls hardest on the families the water-balance
-  tools exist for. → T145
+  tools exist for.
+  **Landed, and the re-key is lossless — checked, not assumed.**
+  `ArchiveWeatherClient` decomposes a window into days, looks them up through a
+  new `ResponseCache.fetch_many`, and assembles the answer back; the key is the
+  canonical **one-day** request, so it is still a function of what the client
+  sends rather than of a schema beside it. A miss is filled **in contiguous
+  runs**, so a cold 31-day window is one request and 31 reusable entries, and
+  the capture pass's per-window weather sweep becomes one `ctx.weather.fetch`
+  over the `as_of ± 16` band — which also closes the backward axis it never
+  reached (T25's `past_days=1` route), an axis that used to cost a doubling of
+  the cache and now costs 16 days.
+  `scripts/rekey_weather_cache.py` re-keyed the committed cache in place:
+  **1677 window entries → 439 day entries, agreeing on all 439 days with zero
+  conflicts**, the 187 already-one-day entries re-deriving byte-identical (the
+  script refuses to write a conflict); 2843 → 1605 files. 11 further days, in
+  two runs, were captured so the band is complete over all 176 distinct `as_of`
+  days — **358 of 358**. `capture_cache.py --verify` then answered **281/281
+  cases with the network blocked, 0 unfillable, 0 live calls**.
+  **The two dependencies no longer share a replay policy**, which is the second
+  half. `make_case_context` binds `ctx.cache` — GR2L's — to the `ReplayCache`
+  and hands the weather half its own recording one, so a measurement miss is one
+  Archive request rather than a lost case; `ReplayCache` overrides `fetch_many`
+  as well as `fetch`, or the strictness would have a hole the day it gained a
+  method. `assert_no_live_call` is renamed **`assert_model_replays`**: it
+  asserts the model half and no longer the network, and a name that claimed
+  otherwise would be the kind of guarantee this testbed keeps refusing.
+  `measure_condition` now counts and logs `recorded_entries` per condition,
+  since §7's record-count reporting is no longer a search-only property.
+  **Registered**: `measurement.response_cache_mode` is a pre-registered
+  parameter, so the change is `eval/preregistration.json` **amendment 2**,
+  before any test rollout, with its cost written down — the measurement path is
+  no longer offline by construction, and an Open-Meteo outage during a condition
+  now excludes where it would have replayed. → T145
 
 - [x] T140 **The capture surface was the oracle's request set, and the holdout
   is where that showed.** T134 widened the neighbourhood from ±1 to ±3 and

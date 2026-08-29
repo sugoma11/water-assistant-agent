@@ -1082,6 +1082,50 @@ suite measures — it falls hardest on exactly the families the water-balance
 tools
 exist for.
 
+### What the re-key measured when it landed (T146)
+
+Changes 1 and 2 above are implemented, and change 3 with them — the capture pass
+warms a **band of days** rather than a sweep of windows. The numbers below are
+the pass's own output, not estimates.
+
+**The day is a sound cache unit, checked rather than assumed.** The committed
+cache held **1677 Open-Meteo window entries covering 439 distinct days**, so the
+overlap is heavy: each shared day is an independent statement of the same value
+by a different request. Re-keyed one day at a time, they **agree on all 439 with
+zero conflicts**, and the **187 entries that were already one day long re-derive
+byte-identical** to what is committed. That is the empirical half of the
+argument; the structural half is that ERA5 is a reanalysis, so a day's row does
+not depend on the window it was asked for.
+*Verified:* `uv run python scripts/rekey_weather_cache.py`, which reports the
+conflict set and refuses to write if it is non-empty. *Date:* 2026-08-29.
+
+**The re-key is a 3.8× shrink and a large widening at once.** 1677 window
+entries → **439 day entries**; the cache went 2843 → 1605 files (1166 GR2L,
+untouched). What the day entries cover is not the 1677 windows but every window
+assemblable from those days.
+*Verified:* same run. *Date:* 2026-08-29.
+
+**The reachable set is now enumerable, and the suite's is complete.** One
+`as_of` can resolve **289 windows** inside the 16-day horizon (`past_days` ×
+`forecast_days`, 17 × 17) drawn from **33 days**. Over the suite's **176
+distinct `as_of` days**, the ±16-day band is **358 days**, of which the re-keyed
+cache already held **347**; the remaining **11**, in two contiguous runs, were
+captured in **two Archive requests**. The band is now complete: 0 of 358
+missing.
+*Verified:* enumerated against `eval/cases/{train,test_seen,test_unseen}.json`
+and `eval/cache/`. *Date:* 2026-08-29.
+
+**Replay survives the re-key intact.** `scripts/capture_cache.py --verify`
+answers **281 of 281 cases with the network physically blocked**: 0 unfillable,
+0 live calls attempted, 0 entries recorded during replay. So no committed answer
+lost the responses it was computed from.
+*Verified:* `uv run python scripts/capture_cache.py --verify`.
+*Date:* 2026-08-29.
+
+**What is not measured yet.** Whether the exclusion rate actually falls is a
+fact about the next measurement run and is reported there, not predicted here.
+The mechanism is removed; the number is owed.
+
 ## External endpoints and what they can carry
 
 Measured while sizing P8c's measurement run, and the reason the run is routed

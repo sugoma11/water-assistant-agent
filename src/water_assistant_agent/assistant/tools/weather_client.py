@@ -19,11 +19,17 @@ resolved by :func:`resolve_window` in the tool wrappers, before the client is ev
 called, because Open-Meteo's own ``past_days`` silently carries a seven-day forecast
 tail: ``past_days=5`` returns five past days *plus* today and six forecast days, and
 the rows are indistinguishable once transposed.
+
+**A window is what the client is asked for; a day is what it caches** (T146).
+:class:`ArchiveWeatherClient` decomposes every window into calendar days, looks
+them up together and assembles the answer back, so two windows sharing a day
+share its entry and no window has to have been captured as a window.
 """
 
 import asyncio
+from collections.abc import Sequence
 from datetime import date, timedelta
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import httpx
 import structlog
@@ -299,6 +305,41 @@ def _upstream_error(response: httpx.Response) -> OpenMeteoError:
     return OpenMeteoError(reason or f"HTTP {response.status_code}")
 
 
+def days_in_window(start_date: str, end_date: str) -> list[str]:
+    """Every calendar day of the inclusive window, as ISO text, in order.
+
+    The window's decomposition into the unit :class:`ArchiveWeatherClient` caches
+    and assembles from (T146). Days rather than the window itself, because a
+    window has two degrees of freedom and a rollout may reach one through
+    ``past_days`` / ``forecast_days`` instead of dates — so the set of *windows* a
+    case can produce is a plane, while the set of *days* those windows are made
+    of is bounded by ``as_of`` and :data:`FORECAST_HORIZON_DAYS` and is therefore
+    enumerable.
+    """
+    start, end = date.fromisoformat(start_date), date.fromisoformat(end_date)
+    if start > end:
+        raise InvalidWindowError(f"start_date {start} is after end_date {end}.")
+    return [(start + timedelta(days=offset)).isoformat() for offset in range((end - start).days + 1)]
+
+
+def _contiguous_runs(days: Sequence[str]) -> list[tuple[str, str]]:
+    """*days* grouped into maximal contiguous ``(first, last)`` spans, in order.
+
+    What turns a list of missing days back into as few Archive requests as it can
+    be answered in: a cold 31-day window is one request whose rows are then filed
+    one per day, not 31 requests. Duplicates and unsorted input are tolerated —
+    the caller's list is whatever the window produced.
+    """
+    ordered = sorted({date.fromisoformat(day) for day in days})
+    runs: list[tuple[str, str]] = []
+    for day in ordered:
+        if runs and day == date.fromisoformat(runs[-1][1]) + timedelta(days=1):
+            runs[-1] = (runs[-1][0], day.isoformat())
+            continue
+        runs.append((day.isoformat(), day.isoformat()))
+    return runs
+
+
 def _build_params(latitude: float, longitude: float, start_date: str, end_date: str) -> dict[str, object]:
     """The exact Open-Meteo query parameters :func:`fetch_daily_weather` sends.
 
@@ -369,6 +410,33 @@ async def fetch_daily_weather(
     )
 
 
+def _assemble(days: Sequence[str], entries: Sequence[Any]) -> WeatherResult:
+    """One window's :class:`WeatherResult` from its per-day cache entries.
+
+    The provenance comes from the first day and the rows from all of them, in the
+    window's own order. The day list is then checked against the rows rather than
+    trusted: an entry holding a row for some other day, or none at all, would
+    otherwise assemble into a window that is quietly short or quietly shifted,
+    and every consumer downstream — GR2L's forcing, the irrigation seed, a plot —
+    reads these rows positionally against the window it asked for.
+    """
+    results = [WeatherResult.model_validate(entry) for entry in entries]
+    rows = [row for result in results for row in result.data]
+    if [row.Date for row in rows] != list(days):
+        raise IncompleteWeatherError(
+            f"The cached days do not reconstruct {days[0]}..{days[-1]}: got "
+            f"{[row.Date for row in rows]}."
+        )
+    first = results[0]
+    return WeatherResult(
+        latitude=first.latitude,
+        longitude=first.longitude,
+        timezone=first.timezone,
+        source=first.source,
+        data=rows,
+    )
+
+
 @runtime_checkable
 class WeatherClient(Protocol):
     """Layer-2 weather source, reached through ``ctx.weather``.
@@ -397,22 +465,41 @@ class ArchiveWeatherClient:
     :mod:`agents.text_to_sql.executor`-style factories make for the database
     (`decisions.md` § The construction seam).
 
-    A hit returns straight from *cache*, issuing no request at all. A miss fetches
-    live via :func:`fetch_daily_weather` and records it,
-    keyed on exactly the query parameters sent — see
-    ``decisions.md`` § The response cache. No canary is required here: unlike GR2L,
-    Archive's cache is load-bearing only for cost and speed, and carries no
-    reproducibility claim (`agent_architecture.md` §5).
+    **The cached unit is the day, not the window** (T146). Each entry is the
+    canonical one-day Archive request and the row it answers with; a window is
+    the days between its ends, looked up together through
+    :meth:`~..cache.ResponseCache.fetch_many` and assembled back into one
+    :class:`WeatherResult`. The window was the unit until the measurement run
+    priced it: a rollout reaches a window through ``past_days`` /
+    ``forecast_days`` as readily as through dates, so the reachable *windows* are
+    a plane over two axes and a capture pass can only ever have warmed a line
+    through it — which is what left forward-facing templates losing most of their
+    rollouts to replay misses on windows one day either side of gold's. The
+    reachable *days* are the band ``as_of`` ± the forecast horizon, which is a
+    list. §5 licenses the change by naming what this cache is load-bearing for:
+    GR2L, whose determinism it carries and whose key stays the whole request;
+    for weather it is cost and speed, Archive being re-fetchable indefinitely.
+    The day is a sound unit empirically as well as by construction — re-keyed,
+    the 1677 committed window entries agreed on every one of the 439 days they
+    overlap on, with no conflict (``findings.md``).
+
+    A hit returns straight from *cache*, issuing no request at all. A miss goes
+    out **in contiguous runs**, so a cold 31-day window costs one request and
+    lands as 31 reusable entries — see ``decisions.md`` § The response cache. No
+    canary is required here: unlike GR2L, Archive carries no reproducibility
+    claim (`agent_architecture.md` §5).
 
     The three cache modes are the two arguments' four useful combinations minus
-    one. *cache* may be ``None`` — **off**: fetch live every time, record
-    nothing. That is production's binding: the running service has no case, and a
-    committed entry keyed on absolute dates would keep serving the *forecast* a
-    window once returned after the same days had become observations. With a
-    cache and ``allow_live=True`` this **records**; with ``allow_live=False`` it
-    **replays**, and a miss is a hard :class:`~..cache.CacheMissError` rather
-    than a quiet call out. The fourth combination — replay with no cache — has
-    nothing to replay from and raises at construction.
+    one. *cache* may be ``None`` — **off**: fetch the whole window live every
+    time, record nothing, and never split it into days, there being nothing to
+    file them under. That is production's binding: the running service has no
+    case, and a committed entry keyed on an absolute day would keep serving the
+    *forecast* a day once returned after that day had become an observation.
+    With a cache and ``allow_live=True`` this **records**; with
+    ``allow_live=False`` it **replays**, and a day it does not hold is a hard
+    :class:`~..cache.CacheMissError` rather than a quiet call out. The fourth
+    combination — replay with no cache — has nothing to replay from and raises at
+    construction.
     """
 
     def __init__(
@@ -431,28 +518,65 @@ class ArchiveWeatherClient:
         self._longitude = longitude
         self._http_client = httpx.AsyncClient(timeout=_TIMEOUT_SECONDS)
 
-    async def fetch(self, *, start_date: str, end_date: str) -> WeatherResult:
-        async def live_fetch() -> dict[str, object]:
-            result = await fetch_daily_weather(
-                self._latitude,
-                self._longitude,
-                start_date=start_date,
-                end_date=end_date,
-                client=self._http_client,
-            )
-            return result.model_dump()
+    def day_request(self, day: str) -> dict[str, Any]:
+        """The canonical request one cached *day* is keyed on.
 
-        if self._cache is None:
-            return WeatherResult.model_validate(await live_fetch())
-
-        canonical_request = {
+        Exactly the request that would fetch that day alone, so the key stays a
+        function of what the client sends rather than of a schema invented beside
+        it — the property ``cache.py`` refuses to give up when it batches. It is
+        public because the capture pass and the migration that re-keyed the
+        committed windows both have to name a day the same way this does.
+        """
+        return {
             "url": ARCHIVE_URL,
-            "params": _build_params(self._latitude, self._longitude, start_date, end_date),
+            "params": _build_params(self._latitude, self._longitude, day, day),
         }
-        cached = await self._cache.fetch(
-            canonical_request, live_fetch, allow_live=self._allow_live
+
+    async def fetch(self, *, start_date: str, end_date: str) -> WeatherResult:
+        if self._cache is None:
+            return await self._fetch_window(start_date, end_date)
+
+        days = days_in_window(start_date, end_date)
+        entries = await self._cache.fetch_many(
+            [self.day_request(day) for day in days],
+            self._fill,
+            allow_live=self._allow_live,
         )
-        return WeatherResult.model_validate(cached)
+        return _assemble(days, entries)
+
+    async def _fetch_window(self, start_date: str, end_date: str) -> WeatherResult:
+        """One live Archive request over an absolute window, through this client's socket."""
+        return await fetch_daily_weather(
+            self._latitude,
+            self._longitude,
+            start_date=start_date,
+            end_date=end_date,
+            client=self._http_client,
+        )
+
+    async def _fill(self, missing: Sequence[Any]) -> list[dict[str, Any]]:
+        """Fetch every missing day, one request per contiguous run, in the order asked.
+
+        Each returned entry is a one-day :class:`WeatherResult`: the window
+        response's own provenance — the grid cell Archive answered from, its
+        timezone, the source stamp — carried onto the single row, so a day
+        assembled back into any other window is indistinguishable from one
+        fetched on its own.
+        """
+        wanted = [str(request["params"]["start_date"]) for request in missing]
+        filled: dict[str, dict[str, Any]] = {}
+        for first, last in _contiguous_runs(wanted):
+            result = await self._fetch_window(first, last)
+            for row in result.data:
+                filled[row.Date] = result.model_copy(update={"data": [row]}).model_dump()
+
+        absent = [day for day in wanted if day not in filled]
+        if absent:
+            raise IncompleteWeatherError(
+                f"Open-Meteo returned no row for {', '.join(sorted(set(absent)))}. "
+                "Narrow the date window."
+            )
+        return [filled[day] for day in wanted]
 
 
 class CompositeWeatherClient:

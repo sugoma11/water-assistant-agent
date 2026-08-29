@@ -5,11 +5,19 @@ Covers exactly what the packet's exit criterion names: cache round-trip, canary
 divergence, and an unfillable miss. Key order never matters for either the
 main request or the canary — canonicalization is `ResponseCache`'s own job — so
 one test builds a request with reordered keys on purpose to pin that.
+
+`fetch_many` was added by T146 for a caller that misses in runs rather than one
+at a time. What its own tests are for is that batching the *fill* changes nothing
+about the *policy*: the same allow_live gate, the same hard failure, the same one
+committed entry per request. The two ways it could go wrong are both alignment —
+a response landing against the wrong request, or a fill answering fewer requests
+than it was handed — and both are here.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -151,6 +159,107 @@ async def test_canary_divergence_blocks_the_new_entry(cache: ResponseCache) -> N
     assert exc_info.value.committed_response == {"v": 1}
     assert exc_info.value.live_response == {"v": 2}
     assert cache.get(real_request) is None, "no entry may record from an unverified service"
+
+
+# ── fetch_many: one policy, a caller that may batch its fills (T146) ──────────
+
+
+@pytest.mark.asyncio
+async def test_fetch_many_returns_in_the_order_asked(cache: ResponseCache) -> None:
+    """Hits and newly recorded misses come back interleaved in the caller's order.
+
+    The weather client assembles a window by position, so a response landing
+    against the wrong request would shift a day rather than fail.
+    """
+    requests = [{"day": day} for day in ("d1", "d2", "d3")]
+    await cache.fetch({"day": "d2"}, _returning({"v": "held"}))
+
+    async def live_fill(missing: list[dict]) -> list[dict]:
+        return [{"v": request["day"]} for request in missing]
+
+    assert await cache.fetch_many(requests, live_fill) == [
+        {"v": "d1"},
+        {"v": "held"},
+        {"v": "d3"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_fetch_many_asks_for_every_miss_at_once(cache: ResponseCache) -> None:
+    """One call, however many misses — which is the whole reason the method exists."""
+    calls: list[list[dict]] = []
+
+    async def live_fill(missing: list[dict]) -> list[dict]:
+        calls.append(missing)
+        return [{"v": request["day"]} for request in missing]
+
+    await cache.fetch_many([{"day": f"d{i}"} for i in range(5)], live_fill)
+
+    assert len(calls) == 1
+    assert [request["day"] for request in calls[0]] == ["d0", "d1", "d2", "d3", "d4"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_many_commits_each_filled_request_under_its_own_key(
+    cache: ResponseCache,
+) -> None:
+    """A batched fill still lands as individual entries, reusable one at a time."""
+
+    async def live_fill(missing: list[dict]) -> list[dict]:
+        return [{"v": request["day"]} for request in missing]
+
+    await cache.fetch_many([{"day": "d1"}, {"day": "d2"}], live_fill)
+
+    assert cache.get({"day": "d1"}) == {"v": "d1"}
+    assert cache.get({"day": "d2"}) == {"v": "d2"}
+
+
+@pytest.mark.asyncio
+async def test_fetch_many_hits_never_reach_the_fill(cache: ResponseCache) -> None:
+    await cache.fetch({"day": "d1"}, _returning({"v": "held"}))
+
+    async def live_fill(missing: list[dict]) -> list[dict]:
+        raise AssertionError("a fully held batch must not be filled")
+
+    assert await cache.fetch_many([{"day": "d1"}], live_fill) == [{"v": "held"}]
+
+
+@pytest.mark.asyncio
+async def test_fetch_many_refuses_a_miss_when_live_is_disabled(
+    cache: ResponseCache,
+) -> None:
+    async def live_fill(missing: list[dict]) -> list[dict]:
+        raise AssertionError("must not be called when allow_live=False")
+
+    with pytest.raises(CacheMissError) as raised:
+        await cache.fetch_many([{"day": "d1"}, {"day": "d2"}], live_fill, allow_live=False)
+
+    assert raised.value.canonical_request == {"day": "d1"}
+
+
+@pytest.mark.asyncio
+async def test_fetch_many_refuses_a_mis_sized_fill(cache: ResponseCache) -> None:
+    """A fill answering fewer requests than it was given would mis-align the rest.
+
+    Silently zipping the two would pair the second request with the third
+    request's response, which is a wrong answer rather than a missing one — the
+    failure this cache exists to make impossible.
+    """
+
+    async def short_fill(missing: list[dict]) -> list[dict]:
+        return [{"v": "only one"}]
+
+    with pytest.raises(CacheMissError, match="answered 1 of 2"):
+        await cache.fetch_many([{"day": "d1"}, {"day": "d2"}], short_fill)
+
+    assert cache.get({"day": "d1"}) is None, "a refused fill commits nothing"
+
+
+def _returning(response: dict) -> Any:
+    async def live_fetch() -> dict:
+        return response
+
+    return live_fetch
 
 
 @pytest.mark.asyncio

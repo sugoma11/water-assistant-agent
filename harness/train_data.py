@@ -55,7 +55,7 @@ from typing import Any
 import httpx
 import structlog
 
-from harness.assertions import assert_no_live_call
+from harness.assertions import assert_model_replays
 from harness.predict import PredictFn
 from harness.run_case import (
     EVAL_CACHE_DIR,
@@ -380,7 +380,7 @@ async def _fully_captured(
                     cache_dir=cache_dir,
                     allow_live=False,
                 )
-                assert_no_live_call(ctx)
+                assert_model_replays(ctx)
                 contexts[as_of] = ctx
             try:
                 await ORACLES[str(inputs["template_id"])](inputs, contexts[as_of])

@@ -530,7 +530,7 @@ def build_toolset(ctx, docstrings=None) -> list[Tool]: ...   # make_* factories
 | root instruction + tool docstrings | **optimized** | live | — |
 | `text_to_sql_agent` | frozen (tuned) | live | DB via as-of views |
 | `lookup_reference` | n/a | pure, exact, **fully offline** | card store, hashed |
-| `get_weather_forecast_tool` | n/a | station: pure, offline · Archive: live once, then **cached** | ctx.db as-of views (station) · Open-Meteo Archive, cache keyed by request |
+| `get_weather_forecast_tool` | n/a | station: pure, offline · Archive: live once, then **cached** | ctx.db as-of views (station) · Open-Meteo Archive, cache keyed **per day** |
 | `predict_green_roof_water_balance_tool` | n/a | live, **remote HTTP**, cached | ctx.weather / ctx.db; pinned presets |
 | `calc_irrigation` | n/a | pure, **fully offline** | `rules_constants.py` · `roofs.py` · ctx.db as-of views · ctx.weather |
 | `plot_timeseries` | n/a | live, deterministic | ctx.db as-of views · ctx.weather · run_gr2l, all cached |
@@ -557,11 +557,14 @@ lockfile (adk, litellm, mlflow, gepa, pyyaml, duckdb); and the **station derivat
 the sentinel filter, and the station record's first and last complete day), which
 the DB hash does not cover.
 
-**Response cache — one mechanism, two callers.** Keyed by the sha256 of the exact
-request: URL plus sorted query parameters for Open-Meteo, `data[]` plus parameters
-for GR2L. Entries are committed JSON stored beside the cases, keyed by request
-rather than by case. Every input to a key derives from `ctx.as_of` — window
-resolution and source choice both — so a key never depends on when the rollout runs.
+**Response cache — one mechanism, two callers, two granularities.** Keyed by the
+sha256 of a canonical request: `data[]` plus parameters for GR2L, and for
+Open-Meteo the **one-day** Archive request — URL plus sorted query parameters
+over a single calendar day, a window being assembled from its days rather than
+cached as itself. Entries are committed JSON stored beside the cases, keyed by
+request rather than by case. Every input to a key derives from `ctx.as_of` —
+window resolution and source choice both — so a key never depends on when the
+rollout runs.
 **A miss is filled live and recorded, gated on the service's canary matching**; a
 diverging canary or an unreachable service is a hard failure (`decisions.md` § The
 response cache). The strict-replay alternative was rejected because a cache
@@ -569,6 +572,20 @@ captured over the oracle's windows cannot cover the windows a *candidate* choose
 and would teach the search to reproduce the baseline's arguments. What the cache is
 load-bearing *for* is GR2L; for weather it is cost and speed, the station needing no
 entry at all and Archive being re-fetchable indefinitely.
+
+**That asymmetry is what the two granularities implement.** A window has two
+degrees of freedom and is reachable through `past_days` / `forecast_days` as
+readily as through dates, so the windows one `as_of` can produce are a plane —
+289 of them inside the horizon — while the days they are drawn from are a list
+of 33. Keying weather on the window meant a capture pass could warm only a line
+through that plane and a candidate one day off gold's window was excluded; keyed
+per day, every window it can resolve is assembled from entries a bounded sweep
+has already committed. GR2L keeps the request key, having no day to decompose
+into and being the component whose determinism this carries. **The two therefore
+differ in replay as well**: on the measurement path GR2L replays strictly and a
+miss is an `upstream` exclusion, while Archive fills and records a day the
+capture pass did not reach, and the count of what it recorded is published per
+arm beside the exclusion count (§7).
 
 **Time-travel leakage** is closed on four fronts, all reading the same `as_of`:
 
@@ -779,7 +796,11 @@ records rather than fails (§5), and only an unreachable service or a diverging
 canary still scores 0 — with the per-arm counts of both residual failures and newly
 recorded entries published beside the results. Diverging failure counts between arms
 mean the run is repeated; diverging record counts mean the arms explored different
-argument space, which is reported, not repaired.
+argument space, which is reported, not repaired. **Both counts are now published
+on the measurement path too**: since weather records there rather than excluding
+(§5), a condition that reached windows the other did not shows it as recorded
+entries instead of as exclusions, and reading one without the other would read
+the repair as a difference between the arms.
 
 **Diagnostics**, reported and never scored: fixer iterations, steps, tokens,
 latency, **mean extra calls per arm**, and **`parse_failure`** — a final message

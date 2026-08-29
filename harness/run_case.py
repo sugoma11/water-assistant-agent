@@ -40,7 +40,7 @@ from google.adk.runners import Runner
 from google.adk.sessions.in_memory_session_service import InMemorySessionService
 from google.genai import types
 
-from harness.assertions import assert_inputs, assert_no_live_call
+from harness.assertions import assert_inputs, assert_model_replays
 from harness.contract import EVALUATION_ROOT_INSTRUCTION, AnswerContract, parse_contract
 from water_assistant_agent.assistant.agents.root_agent.agent import (
     build_root_agent,
@@ -59,7 +59,12 @@ PINNED_DB = REPO_ROOT / "data" / "water.duckdb"
 """The pinned database every rollout reads, bounded per case by ``connect_asof``."""
 
 EVAL_CACHE_DIR = REPO_ROOT / "eval" / "cache"
-"""The committed response cache both live dependencies replay from (§5)."""
+"""The committed response cache both live dependencies read through (§5).
+
+One directory, two rules since T146: GR2L replays from it and a miss excludes the
+case; weather is keyed per day, replays from it wherever it can and records the
+days it cannot, in every pass mode.
+"""
 
 APP_NAME = "water-assistant-harness"
 
@@ -72,22 +77,28 @@ ExclusionSource = Literal["upstream", "text_to_sql_agent", "rollout"]
 class ReplayCache(ResponseCache):
     """A response cache that refuses to call out, whatever its caller asks for.
 
-    Replay is a property of the *pass*, not of each call site, and the two live
-    dependencies do not agree on how to say so: ``ArchiveWeatherClient`` threads
-    an ``allow_live`` flag through to :meth:`ResponseCache.fetch`, while
+    Replay is a property of the *pass*, not of each call site, and its clients do
+    not agree on how to say so: ``ArchiveWeatherClient`` threads an ``allow_live``
+    flag through to :meth:`ResponseCache.fetch_many`, while
     :func:`~..tools.gr2l_client.run_gr2l` passes only the cache and takes the
-    default. Overriding the argument here binds both halves at one seam, so
-    "**no live call in replay**" (T104) is structural rather than a rule each
-    client has to remember.
+    default. Overriding the argument here makes "**this cache will not fill a
+    miss live**" (T104) structural rather than a rule each client has to
+    remember, in both entry points — a strictness that a method added later
+    silently escaped would be no strictness at all.
 
     A miss is then a :class:`~..cache.CacheMissError`, which the tool wrappers
     convert to an ``upstream`` error — which is exactly what ``decisions.md``
     § Tool errors and harness exclusion says a replay cache miss should be: a
     harness error, excluded, not a wrong answer.
+
+    **Since T146 this is GR2L's cache and not the pass's.** The weather half is
+    bound to a recording :class:`ResponseCache` even on the measurement path
+    (:func:`make_case_context`), so what this class now carries is the strict
+    rule for the one component whose determinism the cache is load-bearing for.
     """
 
     refuses_live = True
-    """Declared so :func:`~harness.assertions.assert_no_live_call` can check it.
+    """Declared so :func:`~harness.assertions.assert_model_replays` can check it.
 
     A flag rather than an ``isinstance`` because the assertion is about the
     behaviour — this cache will not fill a miss live — and not about this class.
@@ -104,6 +115,15 @@ class ReplayCache(ResponseCache):
         return await super().fetch(
             canonical_request, live_fetch, canary=canary, allow_live=False
         )
+
+    async def fetch_many(
+        self,
+        canonical_requests: Any,
+        live_fill: Any,
+        *,
+        allow_live: bool = True,
+    ) -> list[Any]:
+        return await super().fetch_many(canonical_requests, live_fill, allow_live=False)
 
 
 @dataclass(frozen=True)
@@ -179,20 +199,32 @@ def make_case_context(
     never captured — the same property production's advancing clock has, through
     the same code path.
 
-    *allow_live* is the pass mode and it binds both live dependencies at once.
-    ``False`` is replay and is the default, because that is what a measurement
-    pass runs under: the cache is a :class:`ReplayCache`, the Archive half is
-    built with ``allow_live=False``, and nothing can reach the network. ``True``
-    is the capture pass (T116), which records what it misses.
+    *allow_live* is the pass mode, and **it no longer binds both live
+    dependencies alike** (T146). ``False`` is replay and is the default, because
+    that is what a measurement pass runs under; what it binds is ``ctx.cache``,
+    which is GR2L's — a :class:`ReplayCache`, so a window the pass did not
+    capture is an ``upstream`` error and §7's exclusion channel still exists.
+    ``True`` is the capture pass (T116), which records what it misses.
+
+    **The weather half records in either mode**, and holds its own
+    :class:`ResponseCache` over the same directory to say so. Its cache is keyed
+    per day and carries no reproducibility claim (``agent_architecture.md`` §5),
+    so a day the capture pass did not reach is worth one Archive request rather
+    than a lost case: measured on the run this repaired, a weather miss cost the
+    *case* and not the call — the agent retried with different arguments, missed
+    again, and spent its step budget, so 160 of 336 holdout rollouts were
+    excluded on windows nothing but the key's granularity made unreachable.
     """
-    cache_class = ResponseCache if allow_live else ReplayCache
     return ScenarioContext(
         clock=lambda: as_of,
         db_path=str(db_path),
-        weather_client_factory=lambda db, http_cache: make_weather_client(
-            db, http_cache, allow_live=allow_live
+        # The two dependencies are bound separately because their rules now
+        # differ. `_model_cache` is the context's own — GR2L's, and deliberately
+        # not the one handed to the weather client here.
+        weather_client_factory=lambda db, _model_cache: make_weather_client(
+            db, ResponseCache(cache_dir), allow_live=True
         ),
-        http_cache=cache_class(cache_dir),
+        http_cache=(ResponseCache if allow_live else ReplayCache)(cache_dir),
     )
 
 
@@ -251,7 +283,7 @@ async def run_case_async(
         as_of, db_path=db_path, cache_dir=cache_dir, allow_live=allow_live
     )
     if not allow_live:
-        assert_no_live_call(ctx)
+        assert_model_replays(ctx)
     agent = build_root_agent(
         ctx,
         instruction=EVALUATION_ROOT_INSTRUCTION if instruction is None else instruction,

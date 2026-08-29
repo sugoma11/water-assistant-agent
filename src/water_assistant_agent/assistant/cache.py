@@ -13,6 +13,19 @@ parameter mapping for Open-Meteo, ``data[]`` plus the model parameters for GR2L.
 Key order never matters — ``key_for`` canonicalizes via ``sort_keys=True`` — so
 callers pass whatever mapping they already have.
 
+**The two callers no longer key at the same granularity, and :meth:`fetch_many`
+is why this module knows about it** (T146). GR2L is keyed on the request it
+sends, the whole fetched row array included, because that request *is* the thing
+whose determinism the cache carries. Weather is keyed one **calendar day** at a
+time — the canonical one-day Archive request — and a window is assembled from
+days, so the set of keys a rollout can reach is the days around its ``as_of``
+rather than the plane of windows over them. A day-keyed caller misses in runs
+rather than one at a time and would issue one request per missing day if it went
+through :meth:`fetch` in a loop, so it hands the whole missing list to
+:meth:`fetch_many` and fills it in as few requests as it likes; the hit/miss
+policy — the ``allow_live`` gate, the hard failure, the recording — stays here
+either way.
+
 A cache miss is filled live and recorded, **gated on a canary matching**: before
 any new entry is written, the caller's canary request is re-fetched and compared
 byte-for-byte against the canary response already committed, so no entry ever
@@ -26,7 +39,9 @@ import dataclasses
 import difflib
 import hashlib
 import json
-from collections.abc import Awaitable, Callable
+import os
+import threading
+from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -128,13 +143,26 @@ class ResponseCache:
         return json.loads(path.read_text(encoding="utf-8"))["response"]
 
     def put(self, canonical_request: Any, response: Any) -> None:
-        """Commit *response* for *canonical_request*, overwriting any existing entry."""
+        """Commit *response* for *canonical_request*, overwriting any existing entry.
+
+        Written to a sibling temporary file and moved into place, because since
+        T146 the measurement path records too and runs its rollouts in threads.
+        Two of them filling the same weather day write the same bytes, so the
+        race is not over *what* lands — it is that a truncate-then-write leaves a
+        window in which a third thread reads half a file, and a half-read entry
+        surfaces as a decode error on a case that had a perfectly good hit.
+        ``os.replace`` is atomic within a directory, so a reader sees either the
+        old entry or the new one.
+        """
         key = self.key_for(canonical_request)
         entry = {"request": canonical_request, "response": response}
-        self._path(key).write_text(
+        path = self._path(key)
+        pending = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+        pending.write_text(
             json.dumps(entry, indent=2, sort_keys=True, default=str) + "\n",
             encoding="utf-8",
         )
+        os.replace(pending, path)
 
     def nearest(self, canonical_request: Any) -> tuple[Any, str] | None:
         """The committed request closest to *canonical_request* by text similarity.
@@ -214,3 +242,74 @@ class ResponseCache:
 
         self.put(canonical_request, response)
         return response
+
+    async def fetch_many(
+        self,
+        canonical_requests: Sequence[Any],
+        live_fill: Callable[[list[Any]], Awaitable[Sequence[Any]]],
+        *,
+        allow_live: bool = True,
+    ) -> list[Any]:
+        """:meth:`fetch` over a list of requests, filling every miss in **one** call.
+
+        The responses come back in *canonical_requests*' own order, hits and
+        newly recorded misses alike. *live_fill* is handed the missing requests —
+        in that same order, duplicates included — and returns one response per
+        request it was given; how many network hops it takes to produce them is
+        its business, which is the whole point of the method existing. A weather
+        window of 31 uncaptured days is one Archive request rather than 31, while
+        each day still lands as its own committed entry and is reusable by every
+        other window that contains it.
+
+        The policy is :meth:`fetch`'s, unchanged: a miss with ``allow_live=False``
+        or a *live_fill* that raises is a hard :class:`CacheMissError` naming the
+        first missing request, never a partial answer and never a silent gap.
+        Nothing here takes a canary — the caller that batches is the weather one,
+        which has no canary because no reproducibility claim rests on its cache
+        (``agent_architecture.md`` §5).
+
+        Raises:
+            CacheMissError: a miss could not be filled, or *live_fill* answered
+                with a different number of responses than it was asked for —
+                which would silently mis-align a day with another day's row.
+        """
+        responses = [self.get(request) for request in canonical_requests]
+        missing = [
+            request
+            for request, response in zip(canonical_requests, responses, strict=True)
+            if response is None
+        ]
+        if not missing:
+            return responses
+
+        if not allow_live:
+            raise CacheMissError(
+                missing[0], self.nearest(missing[0]), reason="live fetch disabled"
+            )
+
+        try:
+            filled = list(await live_fill(missing))
+        except CanaryMismatchError:
+            raise
+        except Exception as exc:
+            raise CacheMissError(
+                missing[0], self.nearest(missing[0]), reason=str(exc)
+            ) from exc
+
+        if len(filled) != len(missing):
+            raise CacheMissError(
+                missing[0],
+                self.nearest(missing[0]),
+                reason=(
+                    f"the live fill answered {len(filled)} of {len(missing)} "
+                    "requested entries"
+                ),
+            )
+
+        recorded = dict(zip(map(self.key_for, missing), filled, strict=True))
+        for request, response in zip(missing, filled, strict=True):
+            self.put(request, response)
+        return [
+            recorded[self.key_for(request)] if response is None else response
+            for request, response in zip(canonical_requests, responses, strict=True)
+        ]

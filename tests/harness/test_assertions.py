@@ -20,7 +20,7 @@ from harness.assertions import (
     CaseAssertionError,
     Violation,
     assert_case,
-    assert_no_live_call,
+    assert_model_replays,
     check_calls,
     check_case,
     check_inputs,
@@ -251,14 +251,14 @@ def test_a_violation_carries_what_it_found() -> None:
     assert "2025-08-14" in violation.detail
 
 
-# ── No live call in replay ────────────────────────────────────────────────────
+# ── The model replays ─────────────────────────────────────────────────────────
 
 
-def test_a_replay_context_cannot_call_out(tmp_path: Path) -> None:
-    """Checked at the cache, because that is the seam both live halves go through."""
+def test_a_replay_context_cannot_call_gr2l_out(tmp_path: Path) -> None:
+    """Checked at ``ctx.cache``, because that is the seam every model hop goes through."""
     ctx = make_case_context(datetime.fromisoformat(AS_OF), cache_dir=tmp_path)
     assert isinstance(ctx.cache, ReplayCache)
-    assert_no_live_call(ctx)
+    assert_model_replays(ctx)
 
 
 def test_a_recording_context_is_refused_as_a_replay_one(tmp_path: Path) -> None:
@@ -266,22 +266,52 @@ def test_a_recording_context_is_refused_as_a_replay_one(tmp_path: Path) -> None:
     ctx = make_case_context(
         datetime.fromisoformat(AS_OF), cache_dir=tmp_path, allow_live=True
     )
-    with pytest.raises(CaseAssertionError, match="fill a miss live"):
-        assert_no_live_call(ctx)
+    with pytest.raises(CaseAssertionError, match="fill a GR2L miss live"):
+        assert_model_replays(ctx)
 
 
-def test_a_replayed_rollout_turns_a_miss_into_an_upstream_error(tmp_path: Path) -> None:
+def test_a_replay_context_still_lets_weather_record(tmp_path: Path) -> None:
+    """T146's split, asserted where it is made rather than where it is felt.
+
+    The two live dependencies are bound to two different caches by
+    :func:`make_case_context`, and the whole change is that they are no longer
+    the same object: ``ctx.cache`` refuses a live fill and the weather half's
+    does not. Asserted structurally because the alternative — witnessing it on a
+    rollout — is a test that reaches Open-Meteo to prove that it can.
+    """
+    ctx = make_case_context(datetime.fromisoformat(AS_OF), cache_dir=tmp_path)
+    archive = ctx.weather._archive  # noqa: SLF001 - the binding is what is asserted
+
+    assert isinstance(ctx.cache, ReplayCache)
+    assert archive._allow_live is True  # noqa: SLF001
+    assert archive._cache is not ctx.cache  # noqa: SLF001
+    assert getattr(archive._cache, "refuses_live", False) is False  # noqa: SLF001
+
+
+def test_a_replayed_rollout_turns_a_model_miss_into_an_upstream_error(
+    tmp_path: Path,
+) -> None:
     """The invariant witnessed on a rollout: the miss fails loudly, nothing fetches.
 
-    ``run_gr2l`` passes no ``allow_live`` of its own and ``ArchiveWeatherClient``
-    passes one, so a rule each client had to remember would already have a hole
-    in it. Bound at the cache instead, a window nothing captured comes back as an
-    ``upstream`` error — a harness exclusion — rather than as a live call.
+    ``run_gr2l`` passes no ``allow_live`` of its own, so a rule the client had to
+    remember would already have a hole in it. Bound at ``ctx.cache`` instead, a
+    model run nothing captured comes back as an ``upstream`` error — a harness
+    exclusion — rather than as a live call.
+
+    The window is inside the station record on purpose. GR2L fetches its own
+    forcing, and since T146 the weather half of a replay context *would* fill a
+    day it does not hold; a window the station serves is a pure function of the
+    pinned database, so the only thing left that can reach for a socket here is
+    the model hop this test is about.
     """
     model = scripted(
         Call(
-            "get_weather_forecast_tool",
-            {"start_date": "2024-05-01", "end_date": "2024-05-07"},
+            "predict_green_roof_water_balance_tool",
+            {
+                "roof_type": "non_irrigated_extensive",
+                "start_date": "2025-08-01",
+                "end_date": "2025-08-07",
+            },
         ),
         Say(CONTRACT),
     )
@@ -289,7 +319,7 @@ def test_a_replayed_rollout_turns_a_miss_into_an_upstream_error(tmp_path: Path) 
 
     assert result.harness_error is True
     assert result.exclusions[0].source == "upstream"
-    assert "2024-05-01..2024-05-07" in result.exclusions[0].details
+    assert result.exclusions[0].tool == "predict_green_roof_water_balance_tool"
 
 
 def test_a_rollout_preflights_its_own_case(tmp_path: Path) -> None:

@@ -10,11 +10,16 @@ two things neither of which is a measurement.
 **Every switch points the other way from the search** (``decisions.md`` § The
 search records where the measurement run replays):
 
-* ``allow_live=False``. The response cache **replays**, and a miss is a
-  ``CacheMissError`` that the tool wrappers turn into an ``upstream`` error —
-  which excludes the case as a ``harness_error``. That is the exclusion channel
-  §7 says is a property of the measurement path, and it is why this module reads
-  the **whole** split rather than :mod:`harness.train_data`'s pre-filtered one.
+* ``allow_live=False``. **GR2L** replays, and a miss is a ``CacheMissError`` that
+  the tool wrappers turn into an ``upstream`` error — which excludes the case as
+  a ``harness_error``. That is the exclusion channel §7 says is a property of the
+  measurement path, and it is why this module reads the **whole** split rather
+  than :mod:`harness.train_data`'s pre-filtered one. Since T146 it binds GR2L
+  alone: weather is keyed per day and fills what it does not hold, so a forward
+  window the capture pass never resolved costs one Archive request instead of the
+  case. Whatever lands is counted per condition and reported
+  (``recorded_entries``), which is the accounting §7 already required of the
+  search — the measurement path simply had nothing to count until now.
 * **The LLM response cache is off.** The three repeats per condition *are* the
   replication, and the cache key is the full request — so a prompt-keyed hit
   would hand the first repeat's bytes to the other two and the three would
@@ -61,7 +66,7 @@ from harness.preregistration import enforce as enforce_prereg
 from harness.preregistration import run_params as prereg_params
 from harness.run_case import EVAL_CACHE_DIR, PINNED_DB
 from harness.scoring import METRICS, ArmReport, CaseScore, aggregate, score_case
-from harness.train_data import CASES_DIR, load_split
+from harness.train_data import CASES_DIR, cache_entries, load_split
 from water_assistant_agent.assistant.llm import configure_llm_cache
 from water_assistant_agent.assistant.settings import AssistantSettings, get_settings
 
@@ -75,6 +80,17 @@ OPTIMIZED_ARM = "optimized"
 SPLITS: tuple[str, ...] = ("train", "test_seen", "test_unseen")
 """The three committed splits. Which ones a run measures, and in what order, is
 the **registration's** to say — see :func:`registered_protocol`."""
+
+RESPONSE_CACHE_MODE = "gr2l:replay,weather:record"
+"""What this path does to ``eval/cache/`` — a **registered** parameter (T129).
+
+It was ``replay`` until T146 split the two dependencies apart, and the string
+moves with the behaviour rather than describing the half of it that did not
+change: GR2L replays and a miss excludes, weather is keyed per day and records
+what it does not hold. Changing it is a deviation the pre-registration refuses
+until it is amended, which is the point — the value a run logs is the value
+somebody had to write down first (``eval/preregistration.json``, amendment 2).
+"""
 
 REPEATS = 3
 """Repeats per condition at one pinned seed, as ``decisions.md`` argues for them.
@@ -192,6 +208,17 @@ class ConditionResult:
     report: ArmReport
     outcomes: tuple[CaseOutcome, ...]
     ledger: RunLedger
+    recorded_entries: int = 0
+    """Weather days this condition committed that the capture pass had not (T146).
+
+    §7 reads the per-arm exclusion count to decide whether a comparison happened
+    under equal conditions, and this is the count that has to be read beside it
+    now that a weather miss records instead of excluding: what was an exclusion is
+    a recorded entry, so a condition that reached windows the other did not shows
+    it here rather than in ``excluded``. Diverging counts are reported and never
+    repaired — they mean the arms explored different argument space, which is what
+    different candidates do (``decisions.md`` § The response cache).
+    """
 
     def summary(self) -> str:
         report = self.report
@@ -199,6 +226,7 @@ class ConditionResult:
             f"{self.arm}/{self.split}#{self.repeat}: "
             f"{report.included}/{report.cases} included, "
             f"{report.excluded} excluded {report.exclusions_by_source or ''}, "
+            f"{self.recorded_entries} entries recorded, "
             f"selection score {_fmt(report.selection_score)}, "
             f"answer {_fmt(report.answer.mean)} "
             f"(coverage {_fmt(report.answer.coverage)}), "
@@ -240,6 +268,7 @@ class Measurement:
                     "included": condition.report.included,
                     "excluded": condition.report.excluded,
                     "exclusions_by_source": dict(condition.report.exclusions_by_source),
+                    "recorded_entries": condition.recorded_entries,
                     "selection_score": condition.report.selection_score,
                     "diagnostics": dict(condition.report.diagnostics),
                 }
@@ -344,7 +373,9 @@ def measure_condition(
         versions: The registered prompt versions this arm reads.
         cases_dir: Where the emitted case files live.
         db_path: The pinned database.
-        cache_dir: The committed response cache, replayed and never added to.
+        cache_dir: The committed response cache. GR2L replays from it; the
+            weather half may add days to it (T146), and how many it added is
+            in the returned :class:`ConditionResult`.
         settings: Where the model and the cache switch come from.
         workers: Rollouts in flight. Threads are safe here because replay never
             reaches the GR2L client's loop-bound singleton — T115's hazard is a
@@ -362,6 +393,7 @@ def measure_condition(
     """
     settings = settings or get_settings()
     records = load_split(split, cases_dir=cases_dir)
+    entries_before = cache_entries(cache_dir)
     ledger = RunLedger(arm=arm, split=split, repeat=repeat, settings=settings)
     rollout = ledgered(
         ledger,
@@ -416,7 +448,9 @@ def measure_condition(
         else:
             scored = [one(record) for record in records]
         report = aggregate(scored, arm=arm)
+        recorded = len(cache_entries(cache_dir) - entries_before)
         _log_report(report)
+        mlflow.log_metric("recorded_entries", recorded)
         ledger.log()
 
     result = ConditionResult(
@@ -429,6 +463,7 @@ def measure_condition(
             for score in scored
         ),
         ledger=ledger,
+        recorded_entries=recorded,
     )
     logger.info("Condition complete", summary=result.summary())
     return result
@@ -487,7 +522,7 @@ def measure(
             "temperature": settings.llm_temperature,
             "seed": settings.llm_seed,
             "llm_cache": "on" if settings.llm_cache_enabled else "off",
-            "response_cache_mode": "replay",
+            "response_cache_mode": RESPONSE_CACHE_MODE,
         },
         exploratory=exploratory,
     )
@@ -522,7 +557,7 @@ def measure(
                     "temperature": settings.llm_temperature,
                     "seed": settings.llm_seed,
                     "llm_cache": "on" if settings.llm_cache_enabled else "off",
-                    "response_cache_mode": "replay",
+                    "response_cache_mode": RESPONSE_CACHE_MODE,
                 },
                 exploratory=exploratory,
             )

@@ -84,10 +84,21 @@ states in so many words, fixed on the search path and left standing on this one.
 
 :func:`warm_rollout_windows` is the answer, and it warms the **window** rather
 than a parameter: every forward span a rollout could resolve for the case
-(:func:`forward_windows`), the weather over each of them whether or not the oracle
-fetched any, and — for a case whose answer came from GR2L — both the un-overridden
-baseline run and the case's own override over each. It is best-effort and outside
-what ``--verify`` checks, exactly as :func:`neighbours` already is.
+(:func:`forward_windows`), and — for a case whose answer came from GR2L — both
+the un-overridden baseline run and the case's own override over each. It is
+best-effort and outside what ``--verify`` checks, exactly as :func:`neighbours`
+already is.
+
+**Weather stopped being warmed by the window at all** (T146). It is cached per
+calendar day now, so what a rollout can reach is the band around ``as_of``
+(:data:`WARM_BAND_DAYS`) rather than the windows over it, and one fetch across
+that band warms every window any candidate can assemble from it — backward ones
+included, which no sweep here reached before. Two things follow. The forward
+span list above is GR2L's alone, since GR2L is still keyed on the whole fetched
+row array and has no day to decompose into. And a weather day this pass misses
+is no longer fatal downstream: the measurement path fills and records one
+(``harness/run_case.py``), so this warm is now about keeping the measurement
+offline rather than about keeping cases from being excluded.
 
 Run::
 
@@ -117,7 +128,7 @@ from eval.oracles.counterfactual import rain_forcing  # noqa: E402
 from eval.oracles.model_chain import modellable_roof  # noqa: E402
 from eval.oracles.presentation import MODEL_OVERLAY, _series_for  # noqa: E402
 from eval.oracles.sql import month_window  # noqa: E402
-from harness.assertions import assert_no_live_call  # noqa: E402
+from harness.assertions import assert_model_replays  # noqa: E402
 from harness.run_case import EVAL_CACHE_DIR, _as_instant, make_case_context  # noqa: E402
 from water_assistant_agent.assistant.context import ScenarioContext  # noqa: E402
 from water_assistant_agent.assistant.tools.gr2l import run_roof_model  # noqa: E402
@@ -169,6 +180,29 @@ It is still not a claim that no candidate asks for anything else. A miss remains
 possible and still excludes, which is why §7 publishes the exclusion count per
 arm rather than assuming this pass drove it to zero — and why the count is read
 against the *other* arm's rather than against zero.
+"""
+
+WARM_BAND_DAYS: int = 16
+"""How far either side of a case's ``as_of`` the **weather** warm reaches, in days.
+
+T146's half of the sweep, and the reason it is a band of days rather than a list
+of windows. Weather is cached per calendar day and a window is assembled from
+days (``weather_client.ArchiveWeatherClient``), so what a rollout can reach is no
+longer a plane of ``(start, end)`` pairs — 17 forward spans crossed with every
+backward one — but the days those pairs are drawn from, which is a list of
+``2 × 16 + 1``. One ``ctx.weather.fetch`` over the whole band warms all of them,
+in one Archive request per contiguous gap.
+
+Sixteen forward because that is :data:`FORECAST_HORIZON_DAYS`, the tool's own
+scope limit: a window ending later is typed ``not_available`` before it fetches,
+so there is no request past it to warm. Sixteen backward for symmetry rather than
+from a rule — nothing bounds how far back a window may reach — and it covers the
+catalog's longest horizon (10 days) with room. The backward side is what
+:func:`warm_rollout_windows` could not reach at all before this: its sweep ran
+forward only, and T25's own gold route is ``past_days=1, forecast_days=2``, whose
+neighbours missed on three of five cases (``findings.md``). Closing that axis
+used to mean roughly doubling the committed cache, because it doubled a plane;
+per day it costs 16 entries.
 """
 
 FORWARD_SPAN_CEILING: int = 8
@@ -384,20 +418,24 @@ async def warm_rollout_windows(
 ) -> tuple[int, int]:
     """Warm the requests a rollout issues that no run of this case's oracle does.
 
-    Two warms over one window list (:func:`forward_windows`), and the module
-    header measures what each is for.
+    Two warms, and the module header measures what each is for. They no longer
+    share a surface: weather is warmed as a **band of days** and GR2L over the
+    forward window list (:func:`forward_windows`), because since T146 only one of
+    the two is still keyed on the window.
 
-    *The weather over every forward window*, whether or not this case's oracle
-    fetched any. T18b's oracle fetches nothing at all — its gold trajectory is
-    empty — so before this the eight T18b cases had no entry behind them and every
-    rollout that consulted the tool before abstaining was excluded, which selected
-    against the very behaviour the template measures. It runs for **every** case
-    and not only the forward-facing families, which is deliberate rather than
-    sloppy: a retrospective question answered by a candidate that fetched the
-    forecast anyway is a fumble ``decisions.md`` § Tool errors and harness
-    exclusion wants *scored*, and leaving those windows cold converts it into an
-    exclusion instead — the same pathology one family up, arrived at from the
-    other side. The cost is one Open-Meteo GET per span.
+    *The weather over the whole band* (:data:`WARM_BAND_DAYS`), whether or not
+    this case's oracle fetched any of it. T18b's oracle fetches nothing at all —
+    its gold trajectory is empty — so before this the eight T18b cases had no
+    entry behind them and every rollout that consulted the tool before abstaining
+    was excluded, which selected against the very behaviour the template
+    measures. It runs for **every** case and not only the forward-facing
+    families, which is deliberate rather than sloppy: a retrospective question
+    answered by a candidate that fetched the forecast anyway is a fumble
+    ``decisions.md`` § Tool errors and harness exclusion wants *scored*, and
+    leaving those days cold used to convert it into an exclusion instead — the
+    same pathology one family up, arrived at from the other side. The cost is one
+    Open-Meteo GET per contiguous gap in the band, which is one on a cold case
+    and none on a case whose neighbours have already been warmed.
 
     *Both GR2L runs over every forward window*, for a case stamped
     :data:`MODEL_PIN`: the un-overridden baseline, which is the fetch-then-
@@ -421,26 +459,36 @@ async def warm_rollout_windows(
     same way, which is to say not at all. The second return value is what lets a
     re-run be judged rather than guessed at.
 
-    **The sweep reaches forward and not back**, which is a stated gap rather than
-    an oversight. ``resolve_window`` also takes ``past_days``, and T25's own gold
-    route is ``past_days=1, forecast_days=2`` — a window opening the day *before*
-    ``as_of``, which nothing here warms; measured, its ``p1f1`` and ``p1f3``
-    neighbours miss on three of five cases (``findings.md``). Closing it is a
-    second axis and roughly a second doubling of the committed cache, so it is
-    recorded there rather than taken here.
+    **The weather sweep now reaches backward too**, which it did not until T146
+    and which was a stated gap while it did not. ``resolve_window`` also takes
+    ``past_days``, and T25's own gold route is ``past_days=1, forecast_days=2`` —
+    a window opening the day *before* ``as_of``, which nothing here warmed;
+    measured, its ``p1f1`` and ``p1f3`` neighbours missed on three of five cases
+    (``findings.md``). It stayed open because closing it was a second axis of a
+    plane. It is closed here because the axis is now a day.
+
+    **The GR2L sweep still reaches forward only**, and there the old reason
+    stands unchanged: GR2L is keyed on ``data[]`` plus its parameters — the whole
+    fetched row array — so a window one day out is an unrelated key rather than a
+    nearby one, and no decomposition into days exists to exploit.
     """
-    windows = forward_windows(inputs, ctx)
+    day = ctx.as_of.date()
     warmed = dropped = 0
-    for start, end in windows:
-        try:
-            await ctx.weather.fetch(start_date=start, end_date=end)
-            warmed += 1
-        except Exception:  # noqa: BLE001 - best effort by design
-            dropped += 1
+    try:
+        # One call, and the client turns it into one Archive request per gap:
+        # every day any window this case can resolve is assembled from.
+        await ctx.weather.fetch(
+            start_date=(day - timedelta(days=WARM_BAND_DAYS)).isoformat(),
+            end_date=(day + timedelta(days=WARM_BAND_DAYS)).isoformat(),
+        )
+        warmed += 1
+    except Exception:  # noqa: BLE001 - best effort by design
+        dropped += 1
 
     if MODEL_PIN not in (expectations.get("pins") or {}):
         return warmed, dropped
 
+    windows = forward_windows(inputs, ctx)
     overrides = model_overrides(inputs)
     # The baseline first and always: family D names no override, and family G's
     # rollout reaches the override through it whenever it fetches before forcing.
@@ -567,7 +615,7 @@ async def verify(cases: list[dict[str, Any]]) -> int:
 
     Two independent guarantees, because one of them is a claim about a flag and
     the other is a claim about a socket. The context is bound to a
-    ``ReplayCache``, which :func:`assert_no_live_call` checks and which converts a
+    ``ReplayCache``, which :func:`assert_model_replays` checks and which converts a
     miss into a hard failure; and ``httpx.AsyncClient.send`` is replaced for the
     duration, so a call that found some other way out would raise here rather than
     quietly succeeding. Replay passing under the second is what "zero live calls"
@@ -592,7 +640,7 @@ async def verify(cases: list[dict[str, Any]]) -> int:
             as_of = inputs["as_of"]
             if as_of not in contexts:
                 ctx = make_case_context(_as_instant(as_of), allow_live=False)
-                assert_no_live_call(ctx)
+                assert_model_replays(ctx)
                 contexts[as_of] = ctx
             try:
                 await ORACLES[str(inputs["template_id"])](inputs, contexts[as_of])

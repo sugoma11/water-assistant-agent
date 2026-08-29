@@ -137,16 +137,28 @@ def test_the_candidate_instruction_is_what_the_model_is_sent(tmp_path: Path) -> 
 def test_an_upstream_error_marks_the_case_a_harness_error(tmp_path: Path) -> None:
     """A replay cache miss on a real fetch — the injected ``upstream`` of the exit.
 
-    The window predates the station record, so the composite falls to Archive
-    whole; Archive is bound to an empty replay cache, so the miss is unfillable
-    and the wrapper types it ``upstream``. That is exactly what `decisions.md`
-    § Tool errors and harness exclusion calls a harness error: something the
-    candidate could not have avoided and the harness cannot reproduce.
+    The model hop is the one that still misses. GR2L is bound to an empty replay
+    cache, so a run nothing captured is unfillable and the wrapper types it
+    ``upstream``. That is exactly what `decisions.md` § Tool errors and harness
+    exclusion calls a harness error: something the candidate could not have
+    avoided and the harness cannot reproduce.
+
+    **Weather is deliberately not the witness any more** (T146). Its cache is
+    keyed per day and records in either pass mode, so an uncaptured window is one
+    Archive request rather than an exclusion — which is the whole repair, and
+    which would make this test reach the network to demonstrate a failure that no
+    longer happens. The window here is inside the station record, so the forcing
+    GR2L fetches is a pure function of the pinned database and the model hop is
+    the only thing left that can fail.
     """
     model = scripted(
         Call(
-            "get_weather_forecast_tool",
-            {"start_date": "2024-05-01", "end_date": "2024-05-07"},
+            "predict_green_roof_water_balance_tool",
+            {
+                "roof_type": "non_irrigated_extensive",
+                "start_date": "2025-08-01",
+                "end_date": "2025-08-07",
+            },
         ),
         Say(CONTRACT),
     )
@@ -154,10 +166,10 @@ def test_an_upstream_error_marks_the_case_a_harness_error(tmp_path: Path) -> Non
 
     assert result.harness_error is True
     assert [item.source for item in result.exclusions] == ["upstream"]
-    assert result.exclusions[0].tool == "get_weather_forecast_tool"
+    assert result.exclusions[0].tool == "predict_green_roof_water_balance_tool"
     # Excluded, and still fully reported: the run is not thrown away.
     assert result.status == "answered"
-    assert result.tool_names == ("get_weather_forecast_tool",)
+    assert result.tool_names == ("predict_green_roof_water_balance_tool",)
 
 
 def test_an_invalid_argument_leaves_the_case_scored(tmp_path: Path) -> None:

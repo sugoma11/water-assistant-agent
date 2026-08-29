@@ -7,10 +7,17 @@ a template whose oracle fetches nothing is warmed anyway, and a case's own
 override is warmed at every window a rollout could resolve rather than at gold's
 alone.
 
+T146 split the surface in two and the tests follow it: :func:`forward_windows` is
+now GR2L's alone, and weather is warmed over the ``as_of ± WARM_BAND_DAYS`` band
+of days. Two properties are asserted of the band rather than of a request — that
+it **contains** every window the sweep still enumerates, and that it reaches the
+backward axis no forward sweep can produce.
+
 **Nothing here calls out.** :func:`forward_windows`, :func:`model_overrides` and
-:func:`named_roofs` are pure functions of a case and its clock; the two fetching
-halves of ``warm_rollout_windows`` are exercised by the capture pass itself,
-which is a live pass by definition and cannot be a test.
+:func:`named_roofs` are pure functions of a case and its clock, and the band is
+arithmetic over ``as_of``; the fetching halves of ``warm_rollout_windows`` are
+exercised by the capture pass itself, which is a live pass by definition and
+cannot be a test.
 
 ``scripts/`` is loaded by path because an installed distribution of that name
 shadows the repository's directory on ``sys.path`` — ``import
@@ -31,6 +38,7 @@ from typing import Any
 import pytest
 
 from harness.run_case import _as_instant, make_case_context
+from water_assistant_agent.assistant.tools.weather_client import days_in_window
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -94,14 +102,19 @@ def test_a_template_naming_no_day_count_is_warmed_all_the_same() -> None:
         assert len({window[1] for window in windows}) == len(windows)
 
 
-def test_a_case_whose_oracle_fetches_nothing_still_gets_its_weather_warmed() -> None:
+def test_a_case_whose_oracle_fetches_nothing_still_gets_its_horizon_warmed() -> None:
     """T18b's gold trajectory is empty, and that is what left it uncovered.
 
     The oracle grounds the abstention in ``DailyWeatherRow`` and makes no call, so
     warming *through* the oracle recorded nothing for any of its eight cases —
     while the rollout that consults the tool before abstaining issues an Archive
-    request. The window list is what closes it, and it must span the case's own
+    request. The window list is what closed it, and it must span the case's own
     horizon on both sides.
+
+    Since T146 the weather half of that is the day band's job rather than this
+    list's, and T18b carries no model pin — so what this asserts of the list now
+    is that it still *reaches* the family's horizon, which is what makes the band
+    below wide enough to contain it.
     """
     for case in _by_template("T18b"):
         inputs = case["inputs"]
@@ -110,6 +123,48 @@ def test_a_case_whose_oracle_fetches_nothing_still_gets_its_weather_warmed() -> 
 
         assert len(ends) >= horizon + max(capture.NEIGHBOURHOOD)
         assert capture.MODEL_PIN not in case["expectations"]["pins"]
+
+
+# ── The band the weather warm reaches, which the window list does not ────────
+
+
+def test_the_day_band_contains_every_window_the_forward_sweep_warms() -> None:
+    """The band has to subsume the list, or T146 traded coverage for a smaller key.
+
+    Weather is warmed once over ``as_of ± WARM_BAND_DAYS`` and assembled per day,
+    so every window the GR2L sweep still enumerates must be assemblable from days
+    the band holds. Checked over the whole committed suite rather than one case,
+    because the sweep's ceiling depends on the case's own day count.
+    """
+    for case in _cases():
+        inputs = case["inputs"]
+        as_of = _as_instant(inputs["as_of"]).date()
+        band = {
+            (as_of + timedelta(days=offset)).isoformat()
+            for offset in range(-capture.WARM_BAND_DAYS, capture.WARM_BAND_DAYS + 1)
+        }
+        for start, end in _windows(inputs):
+            assert set(days_in_window(start, end)) <= band, (
+                f"{inputs['case_id']}: {start}..{end} reaches outside the warmed band"
+            )
+
+
+def test_the_band_reaches_the_backward_axis_the_sweep_never_did() -> None:
+    """T25's own gold route opens the day *before* ``as_of`` — the gap T146 closed.
+
+    ``resolve_window(past_days=1, forecast_days=2)`` is a window no forward sweep
+    can produce, and its neighbours missed on three of five cases while the cache
+    was keyed on windows. It is inside the band by construction now, and that is
+    the assertion: not that a request was warmed, but that the day it needs is one
+    the band holds.
+    """
+    for case in _by_template("T25"):
+        as_of = _as_instant(case["inputs"]["as_of"]).date()
+        opened = (as_of - timedelta(days=1)).isoformat()
+
+        assert opened not in {window[0] for window in _windows(case["inputs"])}
+        assert 1 <= capture.WARM_BAND_DAYS, "the band must reach at least one day back"
+        assert opened >= (as_of - timedelta(days=capture.WARM_BAND_DAYS)).isoformat()
 
 
 def test_every_forward_window_opens_on_the_cases_own_day_and_stays_inside_the_horizon() -> None:

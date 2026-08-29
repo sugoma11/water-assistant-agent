@@ -122,6 +122,24 @@ entry. A miss is filled by a live fetch and recorded, **gated on the service's
 committed canary matching**; a diverging canary is a hard failure, and so is a
 miss the service cannot serve.
 
+**One mechanism, two granularities: GR2L is keyed by request, weather by day**
+(T146). What a rollout can ask GR2L for is one thing — `data[]` and the
+parameters — and there is no unit inside it to decompose to, so its key is the
+request. What a rollout can ask the weather tool for is a *window*, and a window
+has two degrees of freedom: `resolve_window` reaches one through `past_days` /
+`forecast_days` as readily as through dates, so one `as_of` produces 289 windows
+inside the 16-day horizon and 33 days. Keyed on the window, a capture pass could
+only ever warm a line through that plane, and it showed: registration 5's search
+lost 160 of 336 test_unseen rollouts and 116 of 750 test_seen ones to `upstream`
+misses, concentrated entirely on the forward-window templates — T22 94 %, T18b
+88 %, T26 67 %, T21 73 %, and T17b, whose windows are absolute and past,
+**zero**. Keyed per day, the window a candidate resolves is assembled out of
+entries a bounded sweep already holds. The **cost of a miss is what made it
+worth fixing rather than tolerating**: an excluded case averaged 5.45 extra tool
+calls against 0.73 for an included one, 38 % hit the step cap and 40 % ended in
+a `parse_failure` — the tool answers `upstream`, the agent retries with
+different arguments, misses again, and burns its step budget.
+
 **Rejected:**
 
 - *A separate fixture path* with its own client, file schema and generator. Two
@@ -143,6 +161,25 @@ miss the service cannot serve.
 - *Record-on-miss without the canary gate.* It cannot tell "this window was
   never captured" from "the service changed under us", which is the one failure
   the committed entries exist to catch.
+- *Widening the capture neighbourhood again, from ±3 to more.* It had already
+  been widened once, from ±1, and the holdout still lost 39 % of its cases. The
+  width was never the variable: the neighbourhood moves a *parameter* and so
+  reaches a template along one axis of a two-axis space, and a window one day
+  out is an unrelated key rather than a nearby one — there is no locality for a
+  wider neighbourhood to exploit. Re-keying changes the space rather than
+  searching more of it. The neighbourhood stays at ±3 for what it still covers:
+  GR2L, whose key nothing decomposes.
+- *Keying GR2L per day as well.* Its key hashes the whole fetched row array plus
+  the parameters, and its output is a state trajectory in which day *n* depends
+  on every day before it. There is no per-day answer to file, and inventing one
+  would be a different model.
+- *Leaving weather on strict replay for the measurement path, per day.* Per-day
+  keying alone would have removed nearly every miss, and the remaining ones
+  would still have cost a case each. Since no reproducibility claim rests on
+  this half — ERA5 is a reanalysis and a published day does not move — the
+  honest trade is one Archive request against one lost case. What it gives up is
+  in the validity conditions below and in `eval/preregistration.json` amendment
+  2: the measurement path is no longer offline by construction.
 
 **The oracle's window is the capture pass's *anchor*, not its whole surface**
 (T140). "Which window the candidate will pick" has no answer before a rollout
@@ -163,13 +200,28 @@ rather than of the candidate.
 and never from wall-clock time, so a key cannot change between capture and
 replay. The canary is checked in the same pass as any run that records, so no
 entry enters the cache from a service the run has not just verified. The count
-of entries recorded per arm is published beside the harness-error count: a large
-asymmetry means the arms explored different argument space, which is a finding
-about the candidates rather than a fault in the run. Note what the cache does
-*not* buy: GR2L is the only component whose determinism it carries, since
-station rows are a pure function of the pinned database and the reanalysis is
-re-fetchable indefinitely. For weather it is cost and speed, and no
-reproducibility claim rests on it.
+of entries recorded per arm is published beside the harness-error count — **on
+the measurement path as well now**, since what used to be an exclusion there is
+a recorded entry: a large asymmetry means the arms explored different argument
+space, which is a finding about the candidates rather than a fault in the run.
+Note what the cache does *not* buy: GR2L is the only component whose determinism
+it carries, since station rows are a pure function of the pinned database and
+the reanalysis is re-fetchable indefinitely. For weather it is cost and speed,
+and no reproducibility claim rests on it.
+
+The day is a sound unit for weather **because ERA5 is a reanalysis** — a day's
+row is not a function of the window it was requested in — and that was checked
+before it was relied on rather than after: re-keyed, the 1677 committed window
+entries agreed on every one of the 439 days they overlap on, with no conflict,
+and the 187 that were already one day long re-derived byte-identical
+(`findings.md`; `scripts/rekey_weather_cache.py`, which refuses to write a
+conflict). The condition that follows is that the **committed day band stays
+complete**: the capture pass warms `as_of ± 16` for every case, so a measured
+condition reaches Open-Meteo only for a window outside that band. What the
+change gives up is that an Open-Meteo outage during a measured condition now
+becomes an exclusion where it would have been a replay, and that a weather
+answer months apart is guaranteed by the reanalysis rather than by this
+repository.
 
 ---
 
@@ -1840,9 +1892,19 @@ restored together, including when the search raises.
   tracking candidate consistency rather than harness health — which is exactly
   what the per-arm comparison is supposed to detect.
 
+**The title is now true of GR2L and half true of weather** (T146). The response
+cache's two callers no longer share a replay policy: on the measurement path
+GR2L replays and a miss excludes, while the weather half — keyed per day, and
+carrying no reproducibility claim — fills and records like the search's. So the
+two paths still differ, and they differ on exactly the component the difference
+was ever *about*; what stopped differing is the half where a miss was buying
+nothing but an exclusion. The LLM cache is untouched by this and still points
+opposite ways.
+
 **Validity condition:** the search's record mode grows `eval/cache/`, so the
-count of newly recorded entries is published per arm. Diverging counts mean the
-arms explored different argument space; that is reported and not repaired.
+count of newly recorded entries is published per arm — and now the measurement
+run's does too, for the same reason and read the same way. Diverging counts mean
+the arms explored different argument space; that is reported and not repaired.
 
 ---
 

@@ -9,9 +9,13 @@ generator (T111) evaluates the same predicates before it ever emits the case.
   record does not exist past the cut, so a comparison that reaches beyond it is
   comparing a prediction against nothing and would report a deviation computed
   over whatever days happened to overlap.
-* **No live call in replay.** Structural rather than observed: a replay context
-  is bound to a cache that refuses live fetches, so a miss fails loudly as an
-  ``upstream`` error instead of quietly fetching whatever the service says today.
+* **The model replays.** Structural rather than observed: a replay context is
+  bound to a cache that refuses to fetch GR2L live, so a miss fails loudly as an
+  ``upstream`` error instead of quietly running whatever build the service is
+  serving today. It covers GR2L and no longer the weather half, which since T146
+  fills and records a day the capture pass did not reach — the cache is
+  load-bearing for the model's determinism and for weather's cost alone
+  (``agent_architecture.md`` §5).
 * **The roof pool is respected per family.** A template reading an outflow column
   cannot sample the semi-intensive roof, which has none; a modelling template
   cannot sample the two roofs the water balance declines. Both follow from
@@ -93,26 +97,34 @@ class CaseAssertionError(AssertionError):
         super().__init__(f"Case {case_id or '<unnamed>'} is not runnable:\n{listed}")
 
 
-def assert_no_live_call(ctx: ScenarioContext) -> None:
-    """*ctx* cannot reach the network, or raise.
+def assert_model_replays(ctx: ScenarioContext) -> None:
+    """*ctx* cannot reach GR2L live, or raise.
 
-    Checked on the cache rather than on each client because that is where the
-    property actually lives: ``ArchiveWeatherClient`` threads its ``allow_live``
-    into :meth:`ResponseCache.fetch` and ``run_gr2l`` passes no flag at all, so a
-    cache that refuses a live fetch is the one thing both halves must go through.
-    :class:`~harness.run_case.ReplayCache` declares ``refuses_live``; a plain
-    :class:`~..cache.ResponseCache` does not, and neither does ``None``.
+    Checked on ``ctx.cache`` rather than on the client because that is where the
+    property lives: ``run_gr2l`` passes the context's cache and no flag at all, so
+    a cache that refuses a live fetch is the one thing every model hop goes
+    through. :class:`~harness.run_case.ReplayCache` declares ``refuses_live``; a
+    plain :class:`~..cache.ResponseCache` does not, and neither does ``None``.
+
+    **It is the model half only, and that is the whole change of T146.** The
+    weather half no longer reads ``ctx.cache``: it holds its own recording cache,
+    keyed per day, and fills a day the capture pass did not reach rather than
+    failing the case over it. So this asserts what replay still means —
+    ``(rows, parameters)`` in, a committed response out, no service consulted —
+    for the one component whose determinism the cache carries, and asserts
+    nothing about the network as a whole. A pass that wants *that* blocks the
+    socket, which is what ``scripts/capture_cache.py --verify`` does.
     """
     if not getattr(ctx.cache, "refuses_live", False):
         raise CaseAssertionError(
             "",
             [
                 Violation(
-                    check="no_live_call_in_replay",
+                    check="model_replays",
                     detail=(
-                        "the context is bound to a cache that would fill a miss "
-                        f"live ({type(ctx.cache).__name__}); replay needs one that "
-                        "refuses"
+                        "the context is bound to a cache that would fill a GR2L "
+                        f"miss live ({type(ctx.cache).__name__}); replay needs one "
+                        "that refuses"
                     ),
                 )
             ],

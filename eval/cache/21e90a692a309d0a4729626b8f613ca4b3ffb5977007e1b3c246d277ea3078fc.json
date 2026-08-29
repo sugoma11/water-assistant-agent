@@ -1,0 +1,36 @@
+{
+  "request": {
+    "params": {
+      "daily": "temperature_2m_mean,temperature_2m_max,temperature_2m_min,relative_humidity_2m_mean,precipitation_sum,wind_speed_10m_mean,shortwave_radiation_sum",
+      "end_date": "2024-12-04",
+      "latitude": 51.353484,
+      "longitude": 12.432152,
+      "start_date": "2024-12-04",
+      "timezone": "auto",
+      "wind_speed_unit": "kmh"
+    },
+    "url": "https://archive-api.open-meteo.com/v1/archive"
+  },
+  "response": {
+    "data": [
+      {
+        "Date": "2024-12-04",
+        "gs": 176.0,
+        "precip": 2.1,
+        "rf": 92.0,
+        "tm": 2.9,
+        "tn": 1.2,
+        "tx": 4.5,
+        "w": 12.4
+      }
+    ],
+    "latitude": 51.35325,
+    "longitude": 12.509026,
+    "source": "archive",
+    "status": "success",
+    "summary": null,
+    "timezone": "Europe/Berlin",
+    "truncated": false,
+    "weekly": null
+  }
+}

@@ -10,44 +10,6 @@
   ],
   "registered_on": "2026-08-28",
   "registration": 5,
-  "supersedes": {
-    "registration": 4,
-    "registered_on": "2026-08-27",
-    "sha256": "585f2cdbc801e32ad4473875ddbb72972d9eecdee8f36e867b2cfd7ea4c20542",
-    "what_it_produced": [
-      "A complete measurement — 18 conditions, three repeats, $2.85 —",
-      "eval/measurements/20260827T104417Z.json. Exclusion counts CONVERGED between",
-      "the arms on every split (test_seen 57 vs 59 of 375, test_unseen 82 vs 78 of",
-      "168, train 9 vs 8 of 300), so §7's repeat condition did not fire and the",
-      "comparison was established rather than merely recorded.",
-      "Its primary estimand did not exclude zero: test_seen answer +0.087",
-      "[-0.046, +0.246], and every other interval crossed zero too."
-    ],
-    "why_a_fifth_one": [
-      "THREE THINGS MOVED AND EACH ONE INVALIDATES REGISTRATION 4 ON ITS OWN.",
-      "(1) THE SUITE WAS REPAIRED. T138 found `{d}` and `{thr}` striped across train",
-      "and test_seen — `train ∩ test_seen` on `{d}` was {3,4,5,6}, carried by 21 train",
-      "and 27 test_seen cases — and T139 regenerated the files onto the repaired",
-      "stripe. 36 of 100 train and 64 of 125 test_seen cases differ; test_unseen is",
-      "byte-identical. Registration 4's numbers were measured on the leaky files and",
-      "are not comparable with anything measured after, which findings.md states at",
-      "the head of its own section rather than leaving to a reader.",
-      "(2) THE METAPROMPT WAS FIXED. Both templates hand the proposer the gold answer",
-      "to every example in `<side_info>` and neither said not to copy it. Registration",
-      "4's winner duly wrote `The irrigation threshold for the extensive roofs is",
-      "10.0 %θ` into the root instruction — the gold answer of every T06 instance in",
-      "train AND test_seen, since that template asks for one documented constant.",
-      "Removing T06 alone dropped the measured difference from +0.135 [+0.012, +0.287]",
-      "to +0.087 [-0.010, +0.204]: the whole of the significance rested on it. Both",
-      "templates now forbid it explicitly, and the digest moved.",
-      "(3) THE PROPOSER WAS BUDGET-STARVED, NOT CONVERGED. 500 metric calls bought six",
-      "iterations — a full valset evaluation costs 100 rollouts — with improvements at",
-      "1, 2 and 3 and nothing at 4, 5 and 6 before the budget ended. Three barren",
-      "iterations is not a plateau, and the wide interval needs a larger effect rather",
-      "than quieter noise: the variance decomposition puts within-case repeat noise at",
-      "3.0% of the total, so more repeats cannot buy what more search might."
-    ]
-  },
   "registered_against": {
     "commit": "6050b2392f228645f1c09b451149e177b446ad4f",
     "commit_note": [
@@ -82,35 +44,6 @@
         "templates": 7
       }
     }
-  },
-  "what_moved_from_registration_4": {
-    "the_suite": "REPAIRED — see supersedes.why_a_fifth_one (1). Not a choice this registration made; a defect the previous one was measured under.",
-    "the_metaprompt": "FIXED — see (2). templates_digest moves 667be72b… → 37daf614…, and it is registered outright below so a deviation line means the template moved again rather than that the registration was incomplete.",
-    "the_teacher": "deepseek-v4-flash-0731 → z-ai/glm-5.3. THE ONE DELIBERATE CHANGE OF CONFIGURATION.",
-    "the_search_budget": "500 → 2000 metric calls, on the starvation evidence in (3).",
-    "the_provider_whitelist": "gmicloud,mistral → gmicloud,mistral,z-ai. Forced: glm-5.3's only server is z-ai.",
-    "what_did_not_move": [
-      "THE STUDENT. ministral-8b-2512 stays the model under test, so this run's",
-      "baseline arm differs from registration 4's only through the suite repair.",
-      "THE SEED. The weakened candidate surface stays at the pinned versions with the",
-      "answer contract byte-identical and T136's callable-naming sentence in all six",
-      "tool texts.",
-      "The frozen text-to-SQL chain on deepseek, the splits, the repeats, the pairing,",
-      "the bootstrap and its seed, the two gaps, the win/loss table, the exclusion",
-      "rule, the diagnostics, the capture neighbourhood and the selection weights."
-    ],
-    "attribution_cost": [
-      "STATED PLAINLY: four things differ between this run and registration 4, so a",
-      "difference between the two runs is attributable to NONE of them individually.",
-      "Two were repairs that had to happen — a leaky suite and a metaprompt that",
-      "invited memorization — and holding them back to keep one variable would have",
-      "meant knowingly measuring on a broken instrument.",
-      "What this run CAN attribute is bounded and worth stating in advance: against",
-      "its own baseline arm, measured on the same repaired suite in the same run, the",
-      "optimized arm's difference is a clean paired comparison. It is the comparison",
-      "ACROSS registrations that carries no attribution, and §7's side-by-side rule",
-      "already forbids differencing those."
-    ]
   },
   "models": {
     "task": "openrouter/mistralai/ministral-8b-2512",

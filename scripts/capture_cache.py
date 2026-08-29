@@ -45,6 +45,50 @@ something else. The width was ±1 until T134: P8c lost more than half the holdou
 to misses outside it, so the widening is registered with that run rather than
 tuned quietly (:data:`NEIGHBOURHOOD`).
 
+**The neighbourhood reaches a template only through a parameter, and T140 measured
+what that leaves out.** Moving ``params["d"]`` warms nothing for a template that
+names no day count, and running the oracle warms nothing for a template whose
+oracle fetches nothing — so the width was never the whole story. Measured against
+the committed cache over the holdout, "how many of a template's eight cases hold
+the window a rollout resolves at that span":
+
+============  ====================================  =========================
+Template      Coverage by span (1, 2, 3, 4, 5 …)    Excluded in T134's run
+============  ====================================  =========================
+T22           0, **8**, 2, 3, 2 …                   46 / 48
+T18b          1, 1, 1, 0, 0 …                       33 / 48
+T26           1, 5, 7, 7, 7 …                       39 / 48
+T20           2, 2, 5, 7, 7 …                       12 / 48
+============  ====================================  =========================
+
+Three causes, and the last row is the control that confirms all three. **T22 gets
+no neighbourhood at all**: its window is a literal ``forward_window(2, ctx)``
+inside the oracle and its params are ``{roof, a}``, so :func:`neighbours` returns
+nothing and coverage is a spike at exactly gold's window. **T18b's oracle fetches
+nothing by design** — the gold trajectory is empty and "the correct trajectory
+makes no call" (``eval/oracles/weather.py``) — so warming *through* the oracle
+records nothing either, while the natural rollout consults the weather tool before
+abstaining. **T26's GR2L key carries axes no day count moves**: ``data[]`` with the
+forcing merged in, plus ``albedo`` and the seed, so only the forced run at gold's
+exact ``(mm, offset, albedo, window)`` is committed and the unforced baseline the
+"fetch-then-substitute" route issues is present by accident. T20 loses least
+because its oracle over-fetches ``d + 2`` days *and* carries a ``d``, so the sweep
+happens to cover spans d−1…d+5.
+
+What that costs is not throughput. On T18b a rollout that abstains blind is
+scored while one that checks the tool first is excluded — and abstention is what
+T18b measures; on T22 the survivors are the rollouts that resolved gold's window,
+so the answer metric there is conditioned on trajectory agreement. This is the
+hazard ``decisions.md § The search records where the measurement run replays``
+states in so many words, fixed on the search path and left standing on this one.
+
+:func:`warm_rollout_windows` is the answer, and it warms the **window** rather
+than a parameter: every forward span a rollout could resolve for the case
+(:func:`forward_windows`), the weather over each of them whether or not the oracle
+fetched any, and — for a case whose answer came from GR2L — both the un-overridden
+baseline run and the case's own override over each. It is best-effort and outside
+what ``--verify`` checks, exactly as :func:`neighbours` already is.
+
 Run::
 
     uv run python scripts/capture_cache.py            # record into eval/cache/
@@ -58,6 +102,7 @@ import asyncio
 import json
 import sys
 from collections.abc import Mapping
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +113,8 @@ import httpx  # noqa: E402
 
 from eval.oracles import ORACLES  # noqa: E402
 from eval.oracles.base import OracleInputError  # noqa: E402
+from eval.oracles.counterfactual import rain_forcing  # noqa: E402
+from eval.oracles.model_chain import modellable_roof  # noqa: E402
 from eval.oracles.presentation import MODEL_OVERLAY, _series_for  # noqa: E402
 from eval.oracles.sql import month_window  # noqa: E402
 from harness.assertions import assert_no_live_call  # noqa: E402
@@ -76,6 +123,10 @@ from water_assistant_agent.assistant.context import ScenarioContext  # noqa: E40
 from water_assistant_agent.assistant.tools.gr2l import run_roof_model  # noqa: E402
 from water_assistant_agent.assistant.tools.gr2l_client import _get_client  # noqa: E402
 from water_assistant_agent.assistant.tools.plot import prepare_series  # noqa: E402
+from water_assistant_agent.assistant.tools.weather_client import (  # noqa: E402
+    beyond_horizon,
+    resolve_window,
+)
 
 CASES_DIR = REPO_ROOT / "eval" / "cases"
 
@@ -118,6 +169,35 @@ It is still not a claim that no candidate asks for anything else. A miss remains
 possible and still excludes, which is why §7 publishes the exclusion count per
 arm rather than assuming this pass drove it to zero — and why the count is read
 against the *other* arm's rather than against zero.
+"""
+
+FORWARD_SPAN_CEILING: int = 8
+"""How many forward spans to warm for a case whose horizon no parameter names.
+
+T22 is why this number exists. Its window is a literal ``forward_window(2, ctx)``
+written into the oracle rather than a ``{d}`` the case carries, so there is no
+parameter for :data:`NEIGHBOURHOOD` to move and the only span ever warmed was
+gold's own. Rather than write "T22 means two days" here — a second place the
+family's own horizon rule could come to mean something else, which this module's
+header refuses for the neighbours — every such case is warmed from span 1 up to
+this ceiling, which contains gold's span without naming it.
+
+Eight rather than the catalog's longest horizon (T15b's and T23's 10): the
+templates with no day count all ask about *tomorrow*, and a rollout that reads
+"tomorrow" as more than a week is not the near-miss this exists to absorb. A case
+that does carry a day count is warmed to ``d + max(NEIGHBOURHOOD)`` instead, so
+the ceiling never truncates a horizon the suite actually draws.
+"""
+
+MODEL_PIN: str = "gr2l_canary"
+"""The pin that marks a case whose answer came from GR2L, and the warm's own gate.
+
+Read off the committed ``expectations.pins`` rather than off a list of template
+ids: a case is stamped with the model's canary exactly when its oracle ran the
+model (``eval/oracles/pins.py``), which is the same condition under which a
+rollout will run it. A template list here would be a second answer to a question
+the emitted cases already answer, and it would go stale the first time a family
+gained or lost a model call.
 """
 
 
@@ -216,6 +296,166 @@ async def capture_rollout_extras(inputs: Mapping[str, Any], ctx: ScenarioContext
         )
 
 
+def forward_windows(
+    inputs: Mapping[str, Any], ctx: ScenarioContext
+) -> list[tuple[str, str]]:
+    """Every forward window a rollout could resolve for this case, shortest first.
+
+    All of them open on the case's own day, because that is what
+    ``resolve_window(forecast_days=F, today=A)`` produces and ``forecast_days`` is
+    the relative form the tool documents. The span runs from **one** rather than
+    from the case's own horizon: a candidate reading "the next three days" as
+    "tomorrow" is the same near-miss as one reading it as four, and starting at 1
+    is what lets a case with no day count be warmed at all
+    (:data:`FORWARD_SPAN_CEILING`).
+
+    Windows past the tool's 16-day horizon are dropped rather than warmed: there
+    the tool types ``not_available`` before it fetches, so no request exists to
+    record and a warmed entry would answer a call nothing makes.
+    """
+    params = inputs.get("params") or {}
+    name = next((key for key in DAY_COUNT_PARAMS if key in params), None)
+    value = params.get(name) if name is not None else None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        ceiling = FORWARD_SPAN_CEILING
+    else:
+        ceiling = value + max(NEIGHBOURHOOD)
+
+    today = ctx.as_of.date()
+    windows: list[tuple[str, str]] = []
+    for span in range(1, ceiling + 1):
+        start, end = resolve_window(forecast_days=span, today=today)
+        if beyond_horizon(end, today):
+            break
+        windows.append((start, end))
+    return windows
+
+
+def model_overrides(inputs: Mapping[str, Any]) -> dict[str, Any]:
+    """The case's own GR2L override arguments, in the tool's own vocabulary.
+
+    Three parameters name an override and each maps to one argument of
+    ``run_roof_model``: ``a`` to ``albedo``, ``x`` to
+    ``initial_soil_moisture_pct``, and ``mm`` with ``offset`` to a ``forcings``
+    overlay built by the oracles' own :func:`~eval.oracles.counterfactual.rain_forcing`
+    rather than by a second spelling of ``{"precip": {day: mm}}`` here.
+
+    Returns ``{}`` for a case that overrides nothing, which is what makes the
+    baseline the only run family D needs.
+    """
+    params = inputs.get("params") or {}
+    overrides: dict[str, Any] = {}
+    if "a" in params:
+        overrides["albedo"] = float(params["a"])
+    if "x" in params:
+        overrides["initial_soil_moisture_pct"] = float(params["x"])
+    if "mm" in params and "offset" in params:
+        forced_day = _as_instant(inputs["as_of"]).date() + timedelta(
+            days=int(params["offset"])
+        )
+        overrides["forcings"] = rain_forcing(forced_day, float(params["mm"]))
+    return overrides
+
+
+def named_roofs(inputs: Mapping[str, Any]) -> list[str]:
+    """The modellable roofs this case names, deduplicated in the order it names them.
+
+    ``roof``, ``roof_a`` and ``roof_b`` are the three keys a template uses; a
+    spelling the model does not serve is dropped through the oracles' own
+    :func:`~eval.oracles.model_chain.modellable_roof`, which is the tool's scope
+    table read the way the tool reads it.
+    """
+    params = inputs.get("params") or {}
+    roofs: list[str] = []
+    for key in ("roof", "roof_a", "roof_b"):
+        if key not in params:
+            continue
+        try:
+            roof_type = modellable_roof(params[key], str(inputs["template_id"]))
+        except OracleInputError:
+            continue
+        if roof_type not in roofs:
+            roofs.append(roof_type)
+    return roofs
+
+
+async def warm_rollout_windows(
+    inputs: Mapping[str, Any], expectations: Mapping[str, Any], ctx: ScenarioContext
+) -> tuple[int, int]:
+    """Warm the requests a rollout issues that no run of this case's oracle does.
+
+    Two warms over one window list (:func:`forward_windows`), and the module
+    header measures what each is for.
+
+    *The weather over every forward window*, whether or not this case's oracle
+    fetched any. T18b's oracle fetches nothing at all — its gold trajectory is
+    empty — so before this the eight T18b cases had no entry behind them and every
+    rollout that consulted the tool before abstaining was excluded, which selected
+    against the very behaviour the template measures. It runs for **every** case
+    and not only the forward-facing families, which is deliberate rather than
+    sloppy: a retrospective question answered by a candidate that fetched the
+    forecast anyway is a fumble ``decisions.md`` § Tool errors and harness
+    exclusion wants *scored*, and leaving those windows cold converts it into an
+    exclusion instead — the same pathology one family up, arrived at from the
+    other side. The cost is one Open-Meteo GET per span.
+
+    *Both GR2L runs over every forward window*, for a case stamped
+    :data:`MODEL_PIN`: the un-overridden baseline, which is the fetch-then-
+    substitute route family G's own notes call a valid trajectory, and the case's
+    own override, which is the call gold makes and which was warmed at exactly one
+    span for any template naming no day count.
+
+    Returns:
+        ``(warmed, dropped)`` — requests recorded or already held, and requests
+        this pass asked for and did not get.
+
+    Best effort throughout, on :func:`neighbours`' terms: a window the record
+    cannot serve, a roof the model declines or a seed that has gone stale is one a
+    candidate asking for it would be answered ``not_available`` on anyway, and a
+    warm that raises is not this pass's finding.
+
+    **The dropouts are counted, though, which the neighbours' are not.** T140's
+    own pass lost seven windows across two cases to what looks like an Open-Meteo
+    rate limit, and a silent swallow made that indistinguishable from a horizon
+    the record genuinely cannot serve — a warm gap and a scope limit reported the
+    same way, which is to say not at all. The second return value is what lets a
+    re-run be judged rather than guessed at.
+
+    **The sweep reaches forward and not back**, which is a stated gap rather than
+    an oversight. ``resolve_window`` also takes ``past_days``, and T25's own gold
+    route is ``past_days=1, forecast_days=2`` — a window opening the day *before*
+    ``as_of``, which nothing here warms; measured, its ``p1f1`` and ``p1f3``
+    neighbours miss on three of five cases (``findings.md``). Closing it is a
+    second axis and roughly a second doubling of the committed cache, so it is
+    recorded there rather than taken here.
+    """
+    windows = forward_windows(inputs, ctx)
+    warmed = dropped = 0
+    for start, end in windows:
+        try:
+            await ctx.weather.fetch(start_date=start, end_date=end)
+            warmed += 1
+        except Exception:  # noqa: BLE001 - best effort by design
+            dropped += 1
+
+    if MODEL_PIN not in (expectations.get("pins") or {}):
+        return warmed, dropped
+
+    overrides = model_overrides(inputs)
+    # The baseline first and always: family D names no override, and family G's
+    # rollout reaches the override through it whenever it fetches before forcing.
+    variants: list[dict[str, Any]] = [{}] if not overrides else [{}, overrides]
+    for roof_type in named_roofs(inputs):
+        for start, end in windows:
+            for variant in variants:
+                try:
+                    await run_roof_model(ctx, roof_type, start, end, **variant)
+                    warmed += 1
+                except Exception:  # noqa: BLE001 - best effort by design
+                    dropped += 1
+    return warmed, dropped
+
+
 def neighbours(inputs: Mapping[str, Any]) -> list[dict[str, Any]]:
     """*inputs* re-stated at each neighbouring horizon, or empty when it has none.
 
@@ -254,7 +494,7 @@ async def record(cases: list[dict[str, Any]]) -> int:
             contexts[as_of] = make_case_context(_as_instant(as_of), allow_live=True)
         return contexts[as_of]
 
-    answered = refused = failed = mismatched = warmed = 0
+    answered = refused = failed = mismatched = warmed = dropped = 0
     for case in cases:
         inputs = case["inputs"]
         case_id = inputs["case_id"]
@@ -287,8 +527,17 @@ async def record(cases: list[dict[str, Any]]) -> int:
                 # candidate asking for it would be abstained on anyway.
                 continue
 
+        # The half no run of the oracle reaches, whatever its parameter is moved
+        # to: the window itself (T140).
+        recorded, lost = await warm_rollout_windows(inputs, case["expectations"], ctx)
+        warmed += recorded
+        dropped += lost
+
     added = cache_keys() - before
-    print(f"\n{answered} answered, {refused} refused, {failed} failed, {warmed} neighbours warmed")
+    print(
+        f"\n{answered} answered, {refused} refused, {failed} failed, "
+        f"{warmed} requests warmed, {dropped} dropped"
+    )
     print(f"{len(added)} new entries ({len(before)} → {len(before) + len(added)}): {census()}")
     if mismatched:
         print(f"\n{mismatched} case(s) recomputed to a different answer than the one committed.")

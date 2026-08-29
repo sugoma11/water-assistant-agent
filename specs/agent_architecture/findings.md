@@ -2064,6 +2064,83 @@ and the suite regenerated onto it (T139).
 `test_seen.json`, and by striping each pool directly through
 `splits.pools()["train"|"test_seen"]`. *Date:* 2026-08-27.
 
+**The capture surface was the oracle's request set, and three templates fell
+outside it — measured against the committed cache rather than inferred from the
+exclusion counts.** Reading every entry of `eval/cache/` back into
+`(start_date, end_date)` pairs and asking, per holdout template, "how many of its
+eight cases hold the window a rollout resolves at that span":
+
+| template | span 1 | 2 | 3 | 4 | 5 | 6 | 7 | excluded, T134 |
+|---|---|---|---|---|---|---|---|---|
+| T22 | 0 | **8** | 2 | 3 | 2 | 2 | 1 | 46 / 48 |
+| T18b | 1 | 1 | 1 | 0 | 0 | 1 | 2 | 33 / 48 |
+| T26 | 1 | 5 | 7 | 7 | 7 | 6 | 5 | 39 / 48 |
+| T20 | 2 | 2 | 5 | 7 | 7 | 8 | 8 | 12 / 48 |
+
+Three causes and one control. **T22 was warmed at exactly one span**, gold's own:
+its window is a literal `forward_window(2, ctx)` inside the oracle and its params
+are `{roof, a}`, while `capture_cache.py`'s neighbourhood reaches a template only
+through `DAY_COUNT_PARAMS = ("d", "ahead_days")` — so `neighbours()` returns `[]`
+and T134's ±3 widening never applied to it at all. **T18b was warmed nowhere**:
+its oracle fetches nothing by design (the gold trajectory is empty and "the
+correct trajectory makes no call"), and the neighbourhood is warmed *through the
+oracle*, so moving `d` recorded nothing either — while the natural rollout
+consults the weather tool before abstaining. **T26's GR2L key carries axes no day
+count moves** — `data[]` with the forcing merged in, plus `albedo` and the seed —
+so only the forced run at gold's exact `(mm, offset, albedo, window)` was
+committed, the unforced baseline appearing by accident. **T20 is the control**:
+its oracle over-fetches `d + 2` *and* it carries a `d`, so the sweep happens to
+cover spans d−1…d+5, and it lost least of the four.
+
+What this costs is not throughput. On T18b a rollout that abstains blind is
+scored while one that checks the tool first is excluded — and abstention with no
+tool signal is the whole of what T18b measures; on T22 the survivors are the
+rollouts that resolved gold's window, so the answer metric there is conditioned
+on trajectory agreement. That is the hazard
+`decisions.md § The search records where the measurement run replays` states in so
+many words, fixed on the search path and left standing on the measurement one.
+*Verified:* every `eval/cache/` request re-keyed to its window and matched against
+each committed case's `as_of`, against the per-template exclusion counts in
+`eval/measurements/20260826T164850Z.json`. *Date:* 2026-08-29.
+
+**Warming the window instead of the parameter closes it, and the pass says so
+twice.** `warm_rollout_windows` (T140) warms every forward span a rollout could
+resolve for a case — 1 to `d + 3`, or 1 to 8 where no parameter names a horizon —
+the weather over each whether or not the oracle fetched any, and, for a case whose
+`expectations.pins` carry `gr2l_canary`, both the un-overridden baseline run and
+the case's own override over each. Re-run over the committed suite: **281 answered,
+0 refused, 0 failed, 3670 requests warmed** against T139's 594, **1425 new entries
+(1336 → 2761: 1656 archive, 1105 gr2l)**, every case's recomputed answer equal to
+its committed one, and `--verify` replaying all 281 with 0 live calls and 0 entries
+recorded. Holdout coverage afterwards is **8 of 8 at every span for T18b, T20 and
+T22 on the weather half and for T22 on both halves**, with T23 and T26 falling to
+5–7 only where the span runs past their own `d + 3`. Across the whole suite
+**279 of 281 cases hold every forward window they could resolve** — the two
+exceptions were T27 cases that lost seven windows to what looks like an Open-Meteo
+per-minute limit, topped up separately, and the reason the warm now counts its
+dropouts instead of swallowing them: a rate limit and a horizon the record cannot
+serve were reported the same way, which is to say not at all.
+*Verified:* `just capture` and `just capture-verify` against the live GR2L
+(`c8f51c82…`, unmoved) and the Archive; coverage re-measured from `eval/cache/`
+before and after. *Date:* 2026-08-29.
+
+**The sweep reaches forward only, and T25 is the template that shows what that
+leaves.** Every window it warms opens on the case's own day, because that is what
+`resolve_window(forecast_days=F, today=as_of)` produces — but the relative form
+also takes `past_days`, and T25's own single-call gold route is
+`past_days=1, forecast_days=2`, a window opening on `as_of − 1`. Measured over
+T25's five test_seen cases as a `(past_days, forecast_days)` grid: the whole
+`past_days=0` column is covered and so is gold's `p1f2`, while **`p1f1` and `p1f3`
+miss on three of the five** and `p2` misses on four. T25 lost 19 of 54 rollouts in
+the T134 run, second only to T21 on that split, and T21 is the one T140's forward
+sweep does cover. Closing this needs a second axis on the sweep — `past_days`
+∈ 1…2 against the same spans — which is ~1700 further Archive entries and roughly
+doubles the committed cache again. Recorded rather than done: the holdout was the
+question, the backward reach is test_seen's, and the size of a committed artifact
+is worth deciding rather than growing.
+*Verified:* the `(past_days, forecast_days)` grid for T25's five cases checked
+against `eval/cache/` after the T140 pass. *Date:* 2026-08-29.
+
 **What the regeneration moved, and what it did not.** Re-emitting the suite on
 the repaired stripe changes **36 of 100 train cases and 64 of 125 test_seen**,
 not all 225: `_pick` calls `rng.choice` once whatever the pool holds, so a

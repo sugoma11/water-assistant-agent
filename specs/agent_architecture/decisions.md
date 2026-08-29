@@ -144,6 +144,21 @@ miss the service cannot serve.
   never captured" from "the service changed under us", which is the one failure
   the committed entries exist to catch.
 
+**The oracle's window is the capture pass's *anchor*, not its whole surface**
+(T140). "Which window the candidate will pick" has no answer before a rollout
+runs, but the *family* it picks from does: a relative forward window resolves to
+`resolve_window(forecast_days=F, today=as_of)`, which always opens on the case's
+own day, so the reachable set is one bounded sweep of `F` per case. The capture
+pass warms that sweep — the weather over every span, and for a case whose answer
+came from GR2L both the un-overridden baseline run and the case's own override
+over each — rather than the single span gold happened to resolve. What forced
+this was measuring the alternative: warming only through the oracle left T22 with
+one span covered and T18b, whose oracle fetches nothing at all, with none, and
+those two templates lost 46 and 33 of 48 rollouts to replay misses
+(`findings.md`). This does not make replay complete and is not offered as
+completeness — it removes the misses that were a property of the *capture rule*
+rather than of the candidate.
+
 **Validity conditions:** every input to a key derives from the case's `as_of`
 and never from wall-clock time, so a key cannot change between capture and
 replay. The canary is checked in the same pass as any run that records, so no
@@ -1724,9 +1739,13 @@ computed from replay from `eval/cache/` with the network blocked. What windows
 the *candidate* will reach for is not part of the test.
 
 **Because the second question has no answer before the search runs.** A capture
-pass records over the oracle's window (**The response cache**) precisely because
-that is the only surface knowable in advance; a rollout fetches whatever the
-model picked that afternoon. So the pre-filter removes what the suite already
+pass is anchored on the oracle's window (**The response cache**) because the
+candidate's own choice is not knowable in advance; a rollout fetches whatever the
+model picked that afternoon. T140 narrows how much that concedes — the *family*
+of forward windows a rollout can resolve is knowable and is now warmed — but not
+what it concedes: an absolute window, a horizon past the sweep or a forcing the
+candidate composed differently is still its own. So the pre-filter removes what
+the suite already
 knew was missing, and §7's *second* protection — the search runs in record mode,
 so a miss on a candidate-chosen window records rather than fails — covers what
 it cannot. Asking one mechanism to do both work would mean either dropping

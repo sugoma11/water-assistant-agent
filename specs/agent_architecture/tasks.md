@@ -4737,6 +4737,75 @@ rather than replace and catches it when it does not.
   reasoning that landed T136 before the T134 repeat rather than inside it.
   → T138
 
+- [x] T140 **The capture surface was the oracle's request set, and the holdout
+  is where that showed.** T134 widened the neighbourhood from ±1 to ±3 and
+  test_unseen still lost **39 %** of its cases to replay misses. The width was
+  never the problem: the neighbourhood reaches a template only by moving
+  `params["d"]`, and it is warmed by re-running the *oracle*, so two whole
+  classes of request were outside it whatever the width.
+  **Measured against the committed cache, not inferred from the exclusion
+  counts.** Re-keying every `eval/cache/` entry to its window and asking, per
+  holdout template, how many of its eight cases hold the window a rollout
+  resolves at each span: **T22 read `0, 8, 2, 3, 2 …`** — a spike at exactly
+  gold's own — and lost **46 of 48** rollouts; **T18b read `1, 1, 1, 0, 0 …`**
+  and lost 33; **T26 `1, 5, 7, 7, 7 …`** and lost 39; **T20 `2, 2, 5, 7, 7 …`**
+  and lost only 12. Three causes and one control. T22's window is a literal
+  `forward_window(2, ctx)` inside the oracle and its params are `{roof, a}`, so
+  `neighbours()` returns `[]` and the ±3 sweep never applied to it. T18b's
+  oracle **fetches nothing by design** — its gold trajectory is empty — so
+  warming through the oracle recorded nothing either, while the natural rollout
+  consults the tool before abstaining. T26's GR2L key hashes `data[]` with the
+  forcing merged in plus `albedo` and the seed, axes no day count moves. T20
+  loses least because its oracle over-fetches `d + 2` *and* carries a `d`, so
+  the sweep happens to cover d−1…d+5 — the control that confirms the mechanism
+  rather than a fourth cause.
+  **The cost is validity and not throughput.** On T18b a rollout that abstains
+  blind is scored while one that checks the tool first is excluded, and
+  abstention with no tool signal is the whole of what T18b measures; on T22 the
+  survivors are the rollouts that resolved gold's window, so the answer metric
+  there is conditioned on trajectory agreement. `decisions.md § The search
+  records where the measurement run replays` states this hazard exactly — "the
+  residual count starts tracking candidate consistency rather than harness
+  health" — and applies it to the search path. It was left standing on the
+  measurement path, which is the one the thesis reads.
+  **Warm the window, not the parameter.** `warm_rollout_windows` warms every
+  forward span a rollout could resolve for a case — 1 to `d + 3`, or 1 to
+  `FORWARD_SPAN_CEILING` where no parameter names a horizon, always opening on
+  the case's own day and always inside the 16-day limit — the weather over each
+  whether or not the oracle fetched any, and both the un-overridden baseline run
+  and the case's own override over each for a case stamped `gr2l_canary`. The
+  model gate is that **pin** rather than a list of template ids: the emitted
+  cases already record which oracles ran the model, and a list here would go
+  stale the first time a family gained or lost a model call. The override is
+  read off params into the tool's own vocabulary through the oracles'
+  `rain_forcing`, never a second spelling of `{"precip": {day: mm}}`.
+  **The weather half runs for every case, including the retrospective
+  families**, which is deliberate: a candidate that fetches a forecast it did
+  not need on a SQL question is a fumble `decisions.md § Tool errors and harness
+  exclusion` wants *scored*, and leaving those windows cold converts it into an
+  exclusion — the same pathology from the other side, at a cost of one
+  Open-Meteo GET per span.
+  **Landed and verified.** `just capture`: 281 answered, **0 refused, 0
+  failed**, **3670 requests warmed** against T139's 594, 1425 new entries
+  (1336 → 2761: 1656 archive, 1105 gr2l), every recomputed answer equal to its
+  committed one, the GR2L canary unmoved at `c8f51c82…`. `just capture-verify`:
+  all 281 replay with **0 live calls and 0 entries recorded**. Coverage
+  afterwards is 8 of 8 at every span for T18b, T20 and T22, and **279 of 281
+  cases hold every forward window they could resolve**. The two exceptions lost
+  seven windows to what looks like an Open-Meteo per-minute limit and were
+  topped up — which is why the warm now **counts its dropouts** rather than
+  swallowing them, a rate limit and a horizon the record cannot serve having
+  been reported identically before, which is to say not at all. Regression
+  tests in `tests/eval/test_capture.py`.
+  **What this does not do.** It cannot enumerate a candidate's argument space,
+  so a miss remains possible and still excludes; §7's per-arm exclusion count
+  stays the alarm and is still read against the other arm's rather than against
+  zero. The sweep also reaches **forward only**, so T25's `past_days=1` gold
+  route keeps a measured gap of its own (`findings.md`). The measurement path's
+  record-on-miss question is untouched and remains open. Nothing here moves a
+  committed case, so the suite and both measured runs stand exactly as T139 left
+  them. → T139
+
 ---
 
 ## Final

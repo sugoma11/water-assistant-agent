@@ -1145,9 +1145,62 @@ T140 added it for — the dropouts are legible instead of silent.
 *Verified:* the warm replayed per attempt with the exception recorded.
 *Date:* 2026-08-29.
 
+### GR2L inherited the problem weather shed, and the gate was the cause
+
+With weather keyed per day, GR2L is the only cache-miss source left on the
+measurement path — it kept the request key, having no day to decompose into.
+Measured the way T140 measured weather's, by replaying every window a rollout
+could resolve against the committed cache and counting hits:
+
+| split | gold ran the model | committed | names a modellable roof, gold did not | committed |
+|---|---|---|---|---|
+| test_unseen | 24 cases | **405 / 405 — 100 %** | 8 cases | **0 / 128 — 0 %** |
+| test_seen | 20 cases | **208 / 208 — 100 %** | 26 cases | 17 / 248 — 6.9 % |
+| train | 16 cases | **144 / 144 — 100 %** | 20 cases | 26 / 192 — 13.5 % |
+
+**The split is the gate, not the sweep.** `warm_rollout_windows` warmed GR2L
+only where `expectations.pins` carried `gr2l_canary` — the pin an oracle stamps
+when *it* ran the model. "The oracle ran the model" is not "a rollout will run
+the model", which is T140's finding on a third surface: a weak router reaching
+for the water balance on a soil-moisture question SQL could have answered missed
+every time and was excluded for it, which selects against the very routing the
+trajectory metric measures.
+*Verified:* the reachable sweep replayed per case against `eval/cache/` under a
+replay context, `CacheMissError` counted. *Date:* 2026-08-30.
+
+**Widened, the gate is `named_roofs` — the tool's own scope table.** A re-run of
+`capture_cache.py` in record mode added **514 GR2L entries** (1166 → 1680;
+archive unchanged at 450, and again **zero Open-Meteo requests**), reported 281
+answered / 0 refused / 0 failed, and every case still reproduced its committed
+answer against the live services. The 36 dropped warms are the same
+`ForcingError` population as before. Re-measured after it, the reachable sweep
+is **fully committed on every split**:
+
+| split | gold ran the model | names a modellable roof, gold did not |
+|---|---|---|
+| test_unseen | 405 / 405 | **128 / 128** (was 0 / 128) |
+| test_seen | 208 / 208 | **248 / 248** (was 17 / 248) |
+| train | 144 / 144 | **192 / 192** (was 26 / 192) |
+
+*Verified:* `uv run python scripts/capture_cache.py`, then the reachable sweep
+replayed again. *Date:* 2026-08-30.
+
+**The miss path is expensive, which is a diagnostic cost and not an error.**
+`ResponseCache.fetch` computes `nearest()` eagerly on every miss, and it reads
+and `SequenceMatcher`-diffs *every* committed entry: **1.47 s per GR2L miss**
+against 1616 files. At the ~99 `upstream` exclusions a `test_unseen` condition
+carried, that is minutes per condition of pure annotation, and it lands in the
+reported `mean_latency_s`. Not repaired here — recorded so the diagnostic is
+read as one.
+*Verified:* timed against the committed cache. *Date:* 2026-08-30.
+
 **What is not measured yet.** Whether the exclusion rate actually falls is a
 fact about the next measurement run and is reported there, not predicted here.
-The mechanism is removed; the number is owed.
+And it will not fall to zero: of the last run's 820 exclusion events, **800 were
+`upstream`** — the family these two repairs address — and **20 were
+`text_to_sql_agent` (17) or `rollout` (3)**, model-driven failures no capture
+pass touches. §7's per-arm counts stay the alarm, read against the other arm
+rather than against zero.
 
 ## External endpoints and what they can carry
 

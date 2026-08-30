@@ -84,10 +84,17 @@ states in so many words, fixed on the search path and left standing on this one.
 
 :func:`warm_rollout_windows` is the answer, and it warms the **window** rather
 than a parameter: every forward span a rollout could resolve for the case
-(:func:`forward_windows`), and — for a case whose answer came from GR2L — both
-the un-overridden baseline run and the case's own override over each. It is
+(:func:`forward_windows`), and — for a case **naming a roof the model serves** —
+both the un-overridden baseline run and the case's own override over each. It is
 best-effort and outside what ``--verify`` checks, exactly as :func:`neighbours`
 already is.
+
+**That last gate was `expectations.pins` and is now the roof table**, because the
+difference was measured rather than argued: warming only where the *oracle* ran
+the model covered 405/405 of test_unseen's reachable model calls on those cases
+and **0 of 128** on the cases that merely name a modellable roof. Gold's route is
+not the candidate's — the same sentence this header has already had to write
+twice, about the neighbourhood and about the window.
 
 **Weather stopped being warmed by the window at all** (T146). It is cached per
 calendar day now, so what a rollout can reach is the band around ``as_of``
@@ -224,14 +231,22 @@ the ceiling never truncates a horizon the suite actually draws.
 """
 
 MODEL_PIN: str = "gr2l_canary"
-"""The pin that marks a case whose answer came from GR2L, and the warm's own gate.
+"""The pin that marks a case whose answer came from GR2L. **No longer the gate.**
 
-Read off the committed ``expectations.pins`` rather than off a list of template
-ids: a case is stamped with the model's canary exactly when its oracle ran the
-model (``eval/oracles/pins.py``), which is the same condition under which a
-rollout will run it. A template list here would be a second answer to a question
-the emitted cases already answer, and it would go stale the first time a family
-gained or lost a model call.
+Read off the committed ``expectations.pins``, a case is stamped with the model's
+canary exactly when its *oracle* ran the model (``eval/oracles/pins.py``) — and
+that was the warm's gate until it was measured. "The oracle ran the model" is not
+"a rollout will run the model", and the difference is the whole of T140's finding
+arriving one layer up: gated on this pin, the GR2L sweep covered **405/405 of
+test_unseen's model-pinned reachable calls and 0/128 of the rest**, the rest
+being cases that *name a roof the model serves* while their gold answer came from
+somewhere else. A weak student that routes a soil-moisture question to the water
+balance lands there and is excluded for it, which is exactly the pathology T146
+removed for the weather tool.
+
+So the gate is :func:`named_roofs` now — the tool's own scope table, read the way
+the tool reads it. This constant stays because it still names a real key and the
+suite is still asserted against it; nothing here reads it as a condition.
 """
 
 
@@ -414,7 +429,7 @@ def named_roofs(inputs: Mapping[str, Any]) -> list[str]:
 
 
 async def warm_rollout_windows(
-    inputs: Mapping[str, Any], expectations: Mapping[str, Any], ctx: ScenarioContext
+    inputs: Mapping[str, Any], ctx: ScenarioContext
 ) -> tuple[int, int]:
     """Warm the requests a rollout issues that no run of this case's oracle does.
 
@@ -437,11 +452,21 @@ async def warm_rollout_windows(
     Open-Meteo GET per contiguous gap in the band, which is one on a cold case
     and none on a case whose neighbours have already been warmed.
 
-    *Both GR2L runs over every forward window*, for a case stamped
-    :data:`MODEL_PIN`: the un-overridden baseline, which is the fetch-then-
-    substitute route family G's own notes call a valid trajectory, and the case's
-    own override, which is the call gold makes and which was warmed at exactly one
+    *Both GR2L runs over every forward window*, for a case **naming a roof the
+    model serves**: the un-overridden baseline, which is the fetch-then-substitute
+    route family G's own notes call a valid trajectory, and the case's own
+    override, which is the call gold makes and which was warmed at exactly one
     span for any template naming no day count.
+
+    That gate was :data:`MODEL_PIN` until it was measured, and the measurement is
+    why it is not any more: gated on the pin, the sweep covered **every**
+    reachable model call of a case whose oracle ran the model — 405/405 on
+    test_unseen — and **0 of 128** on the cases that merely name a modellable
+    roof. Gold's route is not the candidate's, and a rollout that reaches for the
+    water balance on a question SQL answered was excluded for doing so. A case
+    naming no modellable roof is still warmed for nothing: the model declines it,
+    so a candidate asking gets ``not_available``, which is an answer and not an
+    error.
 
     Returns:
         ``(warmed, dropped)`` — requests recorded or already held, and requests
@@ -485,7 +510,8 @@ async def warm_rollout_windows(
     except Exception:  # noqa: BLE001 - best effort by design
         dropped += 1
 
-    if MODEL_PIN not in (expectations.get("pins") or {}):
+    roofs = named_roofs(inputs)
+    if not roofs:
         return warmed, dropped
 
     windows = forward_windows(inputs, ctx)
@@ -493,7 +519,7 @@ async def warm_rollout_windows(
     # The baseline first and always: family D names no override, and family G's
     # rollout reaches the override through it whenever it fetches before forcing.
     variants: list[dict[str, Any]] = [{}] if not overrides else [{}, overrides]
-    for roof_type in named_roofs(inputs):
+    for roof_type in roofs:
         for start, end in windows:
             for variant in variants:
                 try:
@@ -577,7 +603,7 @@ async def record(cases: list[dict[str, Any]]) -> int:
 
         # The half no run of the oracle reaches, whatever its parameter is moved
         # to: the window itself (T140).
-        recorded, lost = await warm_rollout_windows(inputs, case["expectations"], ctx)
+        recorded, lost = await warm_rollout_windows(inputs, ctx)
         warmed += recorded
         dropped += lost
 

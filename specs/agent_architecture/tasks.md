@@ -4920,7 +4920,23 @@ rather than replace and catches it when it does not.
   parameter, so the change is `eval/preregistration.json` **amendment 2**,
   before any test rollout, with its cost written down — the measurement path is
   no longer offline by construction, and an Open-Meteo outage during a condition
-  now excludes where it would have replayed. → T145
+  now excludes where it would have replayed.
+  **GR2L inherited the problem weather shed, and closing it was the same
+  mistake one layer up.** With weather keyed per day, GR2L is the only
+  cache-miss source left, and measuring its coverage the way T140 measured
+  weather's found the sweep gated on `expectations.pins`: **405/405 of
+  test_unseen's reachable model calls where the *oracle* ran the model, 0/128
+  where the case merely names a modellable roof**. A weak router reaching for
+  the water balance on a question SQL could have answered was excluded for it.
+  The gate is `named_roofs` now — the tool's own scope table — and a re-capture
+  added **514 GR2L entries**
+  (1166 → 1680, archive unchanged, again zero Open-Meteo requests), taking the
+  reachable sweep to **128/128, 248/248 and 192/192** on the three splits.
+  Recorded as `eval/preregistration.json` **amendment 3**, which changes no
+  registered value: the neighbourhood is still ±3 and is still not widened, this
+  being a different axis. It does **not** drive exclusions to zero and is not
+  offered as doing so — 20 of the last run's 820 exclusion events were
+  `text_to_sql_agent` or `rollout`, which no capture pass touches. → T145
 
 - [x] T140 **The capture surface was the oracle's request set, and the holdout
   is where that showed.** T134 widened the neighbourhood from ±1 to ±3 and

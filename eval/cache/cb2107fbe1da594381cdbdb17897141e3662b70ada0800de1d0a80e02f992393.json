@@ -1,0 +1,43 @@
+{
+  "request": {
+    "SH": 15.0,
+    "Sret": 0.0,
+    "Sretmax": 0.0,
+    "Ssubmax": 45.6,
+    "Ssubmin": 6.3,
+    "albedo": 0.2,
+    "data": [
+      {
+        "Date": "2026-04-18",
+        "gs": 1680.0,
+        "precip": 1.0,
+        "rf": 64.0,
+        "tm": 14.3,
+        "tn": 8.7,
+        "tx": 20.6,
+        "w": 6.5
+      }
+    ],
+    "hoehe_nn": 142.0,
+    "kg": 1.0,
+    "lat": 51.353484,
+    "long": 12.432152,
+    "open_water": false,
+    "theta_01": 39.401,
+    "theta_02": 0.0
+  },
+  "response": {
+    "data": [
+      {
+        "Date": "2026-04-18",
+        "ET": 3.5597,
+        "ET_PM": 4.1197,
+        "OUT": null,
+        "Qdown": null,
+        "Qup": null,
+        "Sret": 0.0,
+        "Ssub": 39.401
+      }
+    ]
+  }
+}

@@ -541,6 +541,59 @@
         "budget and its result, the budget limit, the suite, the seed candidate, the",
         "metaprompt digest, the models, and the whole analysis and protocol sections."
       ]
+    },
+    {
+      "id": 3,
+      "on": "2026-08-30",
+      "before_any_test_rollout": true,
+      "what": [
+        "The capture pass's GR2L warm is gated on the case NAMING A ROOF THE MODEL",
+        "SERVES rather than on `expectations.pins` carrying `gr2l_canary`.",
+        "NO REGISTERED VALUE CHANGES. `capture.neighbourhood` is still [-3..3] and is",
+        "still not widened, for the reason registered under it — this is a different",
+        "axis: which CASES get their model calls warmed, not which day counts.",
+        "Recorded here anyway, because a reader comparing exclusion counts across",
+        "registrations has to know the warm surface moved, and because the section",
+        "above argues at length about a neighbourhood that is NOT what changed."
+      ],
+      "why": [
+        "MEASURED, not argued. Replaying every window a rollout could resolve against",
+        "the committed cache, gated on the pin, the GR2L sweep covered:",
+        "  test_unseen  405/405 (100%) where gold ran the model,   0/128  (0%) where",
+        "               the case only names a modellable roof;",
+        "  test_seen    208/208 (100%),                            17/248 (6.9%);",
+        "  train        144/144 (100%),                            26/192 (13.5%).",
+        "So GR2L was perfectly warm exactly where the ORACLE used it and cold exactly",
+        "where a CANDIDATE might. 'The oracle ran the model' is not 'a rollout will run",
+        "the model' — the same gap T140 found for the window and T146 for the weather",
+        "key, arriving a third time on a third surface.",
+        "The population is real for this student: a weak 8B router that reaches for the",
+        "water balance on a soil-moisture question SQL could have answered was excluded",
+        "for doing so, which selects against the routing behaviour the trajectory metric",
+        "is supposed to be measuring.",
+        "It is bounded: the same forward sweep, one wider gate, ~525 additional GR2L",
+        "requests against the local service. A case naming no modellable roof is still",
+        "warmed for nothing — the model declines it and the candidate gets",
+        "`not_available`, which is an answer and not an error."
+      ],
+      "cost": [
+        "The committed cache grows by the newly recorded GR2L entries, counted and",
+        "reported in findings.md. Nothing else moves: no case, no oracle, no answer, no",
+        "model, no prompt, no budget.",
+        "The exclusion counts of this run are NOT comparable with registrations 1-4's on",
+        "the water-balance families, for the same reason amendment 2 states about the",
+        "weather ones: what used to exclude is now captured.",
+        "This does NOT drive residual exclusions to zero and is not offered as doing so.",
+        "Of the last run's 820 exclusion events, 800 were `upstream` and 20 were",
+        "`text_to_sql_agent` (17) or `rollout` (3) — model-driven failures no capture",
+        "pass touches. Section 7's per-arm counts remain the alarm, read against the",
+        "other arm rather than against zero."
+      ],
+      "not_amended": [
+        "Everything. This amendment changes no registered value; it records a change to",
+        "the capture pass, whose only registered parameter is the neighbourhood, and the",
+        "neighbourhood is unchanged."
+      ]
     }
   ]
 }

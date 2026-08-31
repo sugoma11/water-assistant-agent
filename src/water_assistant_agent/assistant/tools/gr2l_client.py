@@ -14,7 +14,11 @@ Site geometry is not hard-coded here either; the caller passes ``lat``/``long``/
 reusable for another facility.
 """
 
+import asyncio
+import threading
+from collections.abc import MutableMapping
 from typing import Any
+from weakref import WeakKeyDictionary
 
 import httpx
 import structlog
@@ -154,16 +158,87 @@ class Gr2lConfigError(RuntimeError):
 
 
 class _ClientHolder:
-    """Module-level singleton holder for the shared httpx client."""
+    """Holder for the shared httpx client — **one per event loop**, not per process.
 
-    instance: httpx.AsyncClient | None = None
+    ``httpx`` binds a connection pool to the loop that first drives it, so a
+    process-global client is only correct while the process has one loop. A
+    driver that runs ``asyncio.run`` per unit of work — which is what
+    ``harness.run_case.run_case`` does per rollout — hands the second loop the
+    first loop's pool, and the first *live* call on it raises
+    ``RuntimeError: Event loop is closed``.
+
+    That exception does not surface as itself. ``ResponseCache.fetch`` wraps any
+    failing ``live_fetch`` into a ``CacheMissError`` and :mod:`gr2l`'s wrapper
+    types it ``upstream``, so a loop-binding defect arrives shaped exactly like
+    an unreachable service. On the measurement path that is an exclusion; on the
+    **search** path, which records (``allow_live=True``) and has no exclusion
+    channel, it is a declared 0 counted among the residual failures
+    ``agent_architecture.md`` §7 publishes per arm — a count whose whole meaning
+    is "the service was unreachable or its canary moved". Case ``T21-0001`` was
+    this and not that.
+
+    Guarded by a lock, because a thread pool runs several of these loops at once
+    and each enters here on its own thread. Kept small by
+    :func:`_drop_closed_loops`, because one pool per rollout retained for the
+    length of a search would be a leak traded for a bug.
+    """
+
+    clients: MutableMapping[asyncio.AbstractEventLoop, httpx.AsyncClient] = (
+        WeakKeyDictionary()
+    )
+    lock = threading.Lock()
+
+
+def _drop_closed_loops() -> None:
+    """Forget the clients of loops that have closed. The caller holds the lock.
+
+    The weak key does not do this on its own, and the reason is worth stating:
+    once a client has actually issued a request its pool holds an asyncio
+    transport, which holds the loop — so the mapping's *value* strongly
+    references its own weak *key* and the entry becomes immortal. Measured
+    before this existed: twenty ``asyncio.run``s of one live call each left
+    twenty loops and twenty entries alive.
+
+    ``asyncio.run`` closes a rollout's loop before the next one starts, so
+    ``is_closed()`` is the signal, and nothing is awaited here — the loop that
+    could have awaited ``aclose()`` is the one that is gone. Dropping the last
+    reference is what lets the pool and its sockets go.
+    """
+    for loop in [loop for loop in _ClientHolder.clients if loop.is_closed()]:
+        del _ClientHolder.clients[loop]
 
 
 def _get_client() -> httpx.AsyncClient:
-    """Lazily create and cache a module-level ``httpx.AsyncClient``."""
-    if _ClientHolder.instance is None:
-        _ClientHolder.instance = httpx.AsyncClient(timeout=_TIMEOUT_SECONDS)
-    return _ClientHolder.instance
+    """The running loop's ``httpx.AsyncClient``, created on that loop's first use.
+
+    Requires a running loop, which every caller has: the only route here is
+    :func:`_post_gr2l`. A client left closed by :func:`aclose_client` — or by a
+    caller closing one itself — is replaced rather than handed out again.
+    """
+    loop = asyncio.get_running_loop()
+    with _ClientHolder.lock:
+        _drop_closed_loops()
+        client = _ClientHolder.clients.get(loop)
+        if client is None or client.is_closed:
+            client = httpx.AsyncClient(timeout=_TIMEOUT_SECONDS)
+            _ClientHolder.clients[loop] = client
+        return client
+
+
+async def aclose_client() -> None:
+    """Close the running loop's client and drop it, if that loop has one.
+
+    Not required for correctness: :func:`_drop_closed_loops` reclaims a loop's
+    entry once the loop closes, whether or not anyone asked. This is for a
+    driver that owns its loop and wants the pool *awaited* shut while there is
+    still a loop to await it on, rather than dropped and left to the collector.
+    A no-op on a loop that never called out.
+    """
+    loop = asyncio.get_running_loop()
+    with _ClientHolder.lock:
+        client = _ClientHolder.clients.pop(loop, None)
+    if client is not None:
+        await client.aclose()
 
 
 def resolve_roof_parameters(
@@ -249,16 +324,14 @@ async def fetch_canary() -> Any:
     the same POST as any other request, so a pin captured here and a canary
     verified during a capture pass cannot diverge by construction.
 
-    Closes the module client afterwards: the one caller is a script, and leaving
+    Closes this loop's client afterwards: the one caller is a script, and leaving
     a live connection behind an ``asyncio.run`` boundary is a warning at exit.
     """
     url, headers = _endpoint()
     try:
         return await _post_gr2l(url, headers, CANARY_REQUEST)
     finally:
-        if _ClientHolder.instance is not None:
-            await _ClientHolder.instance.aclose()
-            _ClientHolder.instance = None
+        await aclose_client()
 
 
 async def run_gr2l(

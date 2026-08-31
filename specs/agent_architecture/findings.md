@@ -500,6 +500,13 @@ entries) plus its LLM responses, so the same ground is re-covered without a live
 call.
 *Verified:* the killed search's log, its socket table and CPU while stalled.
 *Date:* 2026-08-25.
+*Superseded 2026-08-30 (T148):* repaired in the client, which now holds one pool
+per event loop. What this entry got wrong is the cost — it is not only
+reliability. The four `Event loop is closed` lines were four rollouts scored 0
+and counted as *residual failures*, the count §7 publishes to mean the service
+was unreachable, so the search's own error accounting was reading a transport
+defect as an upstream one. See **The loop-bound GR2L client was scoring
+candidates**, below.
 
 **GEPA's proposer calls every component "instructions for an assistant", and the
 metaprompt is a supported per-component parameter.** The default template is two
@@ -2514,3 +2521,53 @@ anything measured after it.
 *Verified:* `just cases`, `just cases-check` ("byte-identical to a fresh
 generation pass"), `just capture`, `just capture-verify` (0 live calls, 0
 entries recorded). *Date:* 2026-08-28.
+
+**The loop-bound GR2L client was scoring candidates, and the mechanism is a
+keep-alive connection rather than the client object.** `gr2l_client` held one
+`httpx.AsyncClient` for the whole process while `run_case` runs one
+`asyncio.run` per rollout, so a live GR2L call from any rollout after the first
+was offered a pool bound to a loop that had closed. `ResponseCache.fetch` wraps
+every failing `live_fetch` into a `CacheMissError` (`cache.py:238`) and
+`gr2l.py:773` types it `upstream`, so `RuntimeError: Event loop is closed`
+reached the scorers wearing an unreachable service's clothes. On the
+measurement path that is an exclusion; on the **search** path, which records
+(`optimize.py:372`, `allow_live=True`) and has no exclusion channel, it is a
+declared 0 counted among §7's residual failures. **`T21-0001` was this.**
+
+Reproduced at the transport against a local keep-alive server: call one
+succeeds, **call two raises `Event loop is closed`, call three succeeds**. The
+third is the finding. httpx evicts the connection that failed, so the defect
+fires only where the previous loop left a *pooled* connection behind — which is
+why a search logged it four times rather than on every rollout, why a server
+answering `Connection: close` hides it entirely, and why it read for months as
+intermittent upstream flakiness. A two-call test would pass half the time for
+the wrong reason.
+
+Fixed in `gr2l_client` rather than in a fourth driver. `capture_cache.py` and
+`train_data.py` each carry a one-loop-per-pass workaround written around this,
+and the search can carry none — three call sites bending to a module's defect is
+the argument that the defect is the module's. The holder is now a
+`WeakKeyDictionary` keyed on the running loop under a lock: one pool per loop,
+safe for the several loops MLflow's `ThreadPoolExecutor` runs at once.
+
+**A weak key is not enough on its own, and the first version of this fix leaked
+every loop it was supposed to release.** Once a client has issued a request its
+pool holds an asyncio transport, which holds the loop — so the mapping's *value*
+strongly references its own weak *key* and the entry is immortal. Measured on
+the fix as first written: **20 rollouts of one live call each left 20 loops and
+20 entries alive**, a leak traded for a bug. Closing it needs an explicit sweep
+of closed loops (`_drop_closed_loops`, run under the lock on every
+`_get_client`), after which the same 20 rollouts leave **1** — the last loop's
+entry, dropped by whichever call comes next. The test that missed this only
+touched the holder; a test that does not call out passes against the leak.
+
+**Nothing pinned moves**: not a request body, not a response, not a cache key,
+and no `eval/pins.json` slot hashes this module — so no committed number is
+invalidated and no capture is stale. What does change is that a search's
+residual-failure count now means what §7 says it means.
+*Verified:* the failure reproduced and the fix required at
+`tests/assistant/test_gr2l_tool.py` (five tests, two of them over a real
+socket); the same tests re-run against a restored process-global `_get_client`,
+where the transport and identity claims both fail as intended, and the retention
+test re-run against a no-op `_drop_closed_loops`, where it fails as intended.
+*Date:* 2026-08-30.

@@ -13,13 +13,16 @@ buys a second thing for free: the recomputed answer is compared against the
 committed one, so this pass reports whether the suite's ground truth still
 reproduces against the live services rather than assuming it.
 
-**One event loop for the whole pass**, which is the hazard T115 found and left
-here. ``gr2l_client`` keeps its ``httpx.AsyncClient`` in a module-level singleton
-and httpx binds a connection pool to the loop that created it, so a driver
-calling ``asyncio.run`` per case dies on its second live GR2L call with
+**One event loop for the whole pass.** This began as T115's workaround:
+``gr2l_client`` kept its ``httpx.AsyncClient`` in a *process*-global singleton,
+httpx binds a connection pool to the loop that created it, and a driver calling
+``asyncio.run`` per case therefore died on its second live GR2L call with
 ``RuntimeError: Event loop is closed`` — surfacing as an ``upstream`` error
-through ``CacheMissError``. :func:`main` is therefore entered once and every case
-runs inside it. The fix is here rather than in ``gr2l_client``, which is frozen.
+through ``CacheMissError``. T148 fixed that in the client, which now holds one
+pool per loop, so the single loop is no longer load-bearing for correctness.
+It stays because it is still what this pass wants: contexts are built per
+distinct ``as_of`` and reused across the cases that share one, and the pool is
+warm for all 200-odd live calls instead of being rebuilt per case.
 
 **Two things the oracles do not cover on their own.**
 
@@ -139,7 +142,7 @@ from harness.assertions import assert_model_replays  # noqa: E402
 from harness.run_case import EVAL_CACHE_DIR, _as_instant, make_case_context  # noqa: E402
 from water_assistant_agent.assistant.context import ScenarioContext  # noqa: E402
 from water_assistant_agent.assistant.tools.gr2l import run_roof_model  # noqa: E402
-from water_assistant_agent.assistant.tools.gr2l_client import _get_client  # noqa: E402
+from water_assistant_agent.assistant.tools.gr2l_client import aclose_client  # noqa: E402
 from water_assistant_agent.assistant.tools.plot import prepare_series  # noqa: E402
 from water_assistant_agent.assistant.tools.weather_client import (  # noqa: E402
     beyond_horizon,
@@ -711,9 +714,9 @@ async def main(argv: list[str] | None = None) -> int:
     try:
         return await record(cases)
     finally:
-        # The module-level client belongs to this loop; closing it here keeps the
-        # loop's shutdown from reporting an un-awaited connection pool.
-        await _get_client().aclose()
+        # The client belongs to this loop; closing it here keeps the loop's
+        # shutdown from reporting an un-awaited connection pool.
+        await aclose_client()
 
 
 if __name__ == "__main__":

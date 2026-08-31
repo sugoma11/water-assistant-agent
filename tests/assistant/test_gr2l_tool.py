@@ -15,15 +15,23 @@ Expected values are hand-computed in Python from the raw rows (``statistics``,
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import gc
 import statistics
+import threading
 import typing
+import weakref
 from collections import defaultdict
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import duckdb
+import httpx
 import pytest
 from google.adk.tools.function_tool import FunctionTool
 
@@ -921,6 +929,154 @@ def test_the_weather_tool_tags_a_failed_fetch_upstream() -> None:
     result = asyncio.run(tool(start_date="2025-06-10", end_date="2025-06-11"))
 
     assert result["error_type"] == "upstream"
+
+
+# --- The client's connection pool is per event loop, not per process (T148) ---
+
+
+class _KeepAliveHandler(BaseHTTPRequestHandler):
+    """A GR2L-shaped endpoint that keeps its connection open.
+
+    Keep-alive is the whole point: it is what leaves a pooled connection behind
+    for the *next* loop to pick up, and a server answering `Connection: close`
+    hides the defect under test by forcing every call to dial afresh.
+    """
+
+    protocol_version = "HTTP/1.1"
+    _BODY = b'{"data": []}'
+
+    def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler's own name
+        self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(self._BODY)))
+        self.end_headers()
+        self.wfile.write(self._BODY)
+
+    def log_message(self, *args: Any) -> None:
+        """Silence the per-request line this would otherwise write to stderr."""
+
+
+@contextlib.contextmanager
+def _local_gr2l_service() -> Iterator[str]:
+    """A real socket serving `_post_gr2l`'s shape, yielding its URL.
+
+    A real server rather than a patched `httpx.AsyncClient.send`, because the
+    binding under test is the *transport's*: a fake that never opens a socket
+    passes on the loop-bound client too, and would have asserted nothing.
+    """
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _KeepAliveHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}/predict_gr2l"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_a_loop_per_call_does_not_close_the_pool_out_from_under_the_next_one() -> None:
+    """T115's failure, reproduced at the transport and then required not to happen.
+
+    `run_case` runs one `asyncio.run` per rollout, so this is the harness's own
+    shape. Against a process-global client the second call raises `RuntimeError:
+    Event loop is closed` — the first loop's keep-alive connection, offered to a
+    loop that no longer exists. Three calls rather than two because the failure
+    is not every-time: the dead connection is evicted when it fails, so call
+    three succeeds on its own fresh socket and a two-call test would pass half
+    the time for the wrong reason.
+    """
+    with _local_gr2l_service() as url:
+        replies = [
+            asyncio.run(gr2l_client_module._post_gr2l(url, {}, {"day": index}))
+            for index in range(3)
+        ]
+
+    assert replies == [{"data": []}] * 3
+
+
+def test_each_loop_gets_its_own_client_and_reuses_it_within_the_loop() -> None:
+    """One pool per loop — not one per process, and not one per call."""
+
+    async def twice() -> tuple[httpx.AsyncClient, bool]:
+        client = gr2l_client_module._get_client()
+        return client, gr2l_client_module._get_client() is client
+
+    first, first_reused = asyncio.run(twice())
+    second, second_reused = asyncio.run(twice())
+
+    assert first_reused and second_reused
+    assert first is not second
+
+
+def test_concurrent_loops_in_threads_never_share_a_pool() -> None:
+    """MLflow evaluates records in worker threads, each running its own loop.
+
+    Distinctness has to hold while those loops are *alive* at once, which is a
+    stronger claim than the sequential case: the holder is one mapping reached
+    from several threads.
+    """
+
+    async def _client() -> httpx.AsyncClient:
+        client = gr2l_client_module._get_client()
+        await asyncio.sleep(0.05)  # hold the loop open while its peers enter
+        assert gr2l_client_module._get_client() is client
+        return client
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        # The *objects*, not their ids: once a loop closes its entry is dropped,
+        # and an id compared after the client has been freed can collide with a
+        # later allocation at the same address.
+        clients = list(pool.map(lambda _: asyncio.run(_client()), range(8)))
+
+    assert len({id(client) for client in clients}) == len(clients)
+
+
+def test_a_closed_client_is_replaced_rather_than_handed_out_again() -> None:
+    """`aclose_client` drops its entry, so the next call on that loop builds one."""
+
+    async def close_then_ask() -> tuple[httpx.AsyncClient, httpx.AsyncClient]:
+        closed = gr2l_client_module._get_client()
+        await gr2l_client_module.aclose_client()
+        return closed, gr2l_client_module._get_client()
+
+    closed, fresh = asyncio.run(close_then_ask())
+
+    assert closed.is_closed
+    assert fresh is not closed
+    assert not fresh.is_closed
+
+
+def test_a_finished_loop_does_not_keep_its_pool_alive() -> None:
+    """A search's loops must not accumulate — and the weak key alone does not do it.
+
+    **The request is the test.** A client that has issued one holds an asyncio
+    transport, which holds the loop, so the mapping's *value* strongly
+    references its own weak *key* and the entry cannot be collected: twenty
+    loops and twenty entries stayed alive before `_drop_closed_loops` existed.
+    A version of this test that only touched the holder passed against that leak
+    and asserted nothing.
+
+    One survivor is the bound rather than a tolerance: the last loop's entry is
+    dropped by whichever call comes next, so what is ruled out is accumulation,
+    not a single stale entry at rest.
+    """
+
+    finished: list[weakref.ref[asyncio.AbstractEventLoop]] = []
+
+    async def call(url: str, index: int) -> None:
+        await gr2l_client_module._post_gr2l(url, {}, {"day": index})
+        finished.append(weakref.ref(asyncio.get_running_loop()))
+
+    with _local_gr2l_service() as url:
+        for index in range(8):
+            asyncio.run(call(url, index))
+    gc.collect()
+
+    # Asserted on the loops rather than on the holder's size, which every other
+    # test in this file also writes to: a live weakref here means the mapping is
+    # what is still holding a finished rollout's loop.
+    assert sum(reference() is not None for reference in finished) <= 1
 
 
 # --- Replay: a model case issues no live call (the packet's exit) -------------

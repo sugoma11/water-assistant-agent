@@ -377,10 +377,12 @@ def measure_condition(
             weather half may add days to it (T146), and how many it added is
             in the returned :class:`ConditionResult`.
         settings: Where the model and the cache switch come from.
-        workers: Rollouts in flight. Threads are safe here because replay never
-            reaches the GR2L client's loop-bound singleton — T115's hazard is a
-            capture-pass one — and because ``predict_fn`` builds everything per
-            record with nothing ambient.
+        workers: Rollouts in flight. Threads are safe here because
+            ``predict_fn`` builds everything per record with nothing ambient,
+            and because the GR2L client holds one connection pool per event loop
+            since T148 — so a rollout on its own loop, in its own thread, shares
+            no pool with any other. Replay does not reach that client at all,
+            which is why this path survived the process-global version.
 
     Returns:
         The arm's report, the per-case outcomes and the run ledger.

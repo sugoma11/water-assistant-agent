@@ -348,10 +348,11 @@ async def _fully_captured(
 ) -> CaptureAudit:
     """:func:`fully_captured`'s pass, on one event loop and with sockets blocked.
 
-    One loop for the whole pass because that is T115's hazard — ``gr2l_client``
-    binds its ``httpx.AsyncClient`` to the loop that created it — and because
-    building one context per distinct ``as_of`` is what makes the pass cheap: a
-    context opens a DuckDB connection and builds the as-of views.
+    One loop for the whole pass because building one context per distinct
+    ``as_of`` is what makes the pass cheap: a context opens a DuckDB connection
+    and builds the as-of views. It was also T115's hazard — ``gr2l_client`` bound
+    one ``httpx.AsyncClient`` to the loop that created it — until T148 gave the
+    client a pool per loop, and sockets are blocked here in any case.
     """
     from eval.oracles import ORACLES
     from eval.oracles.base import OracleInputError

@@ -4938,6 +4938,59 @@ rather than replace and catches it when it does not.
   offered as doing so — 20 of the last run's 820 exclusion events were
   `text_to_sql_agent` or `rollout`, which no capture pass touches. → T145
 
+- [x] T148 **One connection pool per event loop, because the process-global one
+  was scoring candidates.** T115 found `gr2l_client`'s module-level
+  `httpx.AsyncClient`, bound to the loop of its first live call while `run_case`
+  runs `asyncio.run` per rollout, and scoped it to the capture pass on the
+  ground that "replay never reaches the client". That scoping was right about
+  the measurement path and wrong about the **search**, which records
+  (`optimize.py:372`) and reaches the client on any window the capture pass did
+  not hold.
+  **What it cost is not reliability.** `ResponseCache.fetch` wraps a failing
+  `live_fetch` into `CacheMissError` and `gr2l.py` types it `upstream`, so
+  `RuntimeError: Event loop is closed` arrived shaped exactly like an
+  unreachable service: a declared 0 on a path with no exclusion channel,
+  counted among the residual failures §7 publishes per arm to mean the service
+  was down or its canary moved. `T21-0001` was this. A search's error accounting
+  was reading a transport defect as an upstream one, which is the one thing that
+  count exists to rule out.
+  **Reproduced before it was fixed, and the third call is the finding.**
+  Against a local keep-alive server: call one succeeds, call two raises, **call
+  three succeeds** — httpx evicts the connection that failed, so this fires only
+  where the previous loop left a pooled connection behind. Hence four log lines
+  in a search rather than one per rollout, hence months of reading as
+  intermittent flakiness, and hence a two-call test would have passed half the
+  time for the wrong reason.
+  **Fixed in the frozen client rather than in a fourth driver.**
+  `capture_cache.py` and `train_data.py` each carry a one-loop-per-pass
+  workaround and the search can carry none — three workarounds are the argument
+  that the defect is in the client. `_ClientHolder` is now a `WeakKeyDictionary`
+  keyed on the running loop under a lock: one pool per loop, correct for the
+  several loops MLflow's `ThreadPoolExecutor` runs at once, with
+  `aclose_client()` for a driver that wants the sockets gone before its loop
+  shuts down. The two workarounds stay, no longer load-bearing — reusing a
+  context per `as_of` is still what makes those passes cheap.
+  **The weak key leaked, and the first version of the fix shipped that leak
+  until it was measured.** A client that has issued a request holds an asyncio
+  transport, which holds the loop, so the mapping's value strongly references
+  its own weak key: 20 rollouts of one live call each left **20 loops and 20
+  entries alive**. `_drop_closed_loops`, run under the lock on every
+  `_get_client`, takes that to **1** — the last loop's entry, dropped by the
+  next call. The test that missed it only touched the holder without calling
+  out, which passes against the leak; the test now makes the request.
+  **No pin moves and no committed number is invalidated**: not a request body,
+  not a response, not a cache key, and nothing in `eval/pins.json` hashes this
+  module. The freeze protects comparability, and this changes nothing an arm can
+  observe.
+  Five tests in `tests/assistant/test_gr2l_tool.py` — the transport over a real
+  socket, per-loop identity, eight concurrent loops in threads, replacement of a
+  closed client, and the weak key not pinning a finished rollout's loop — each
+  re-run against a restored process-global `_get_client` to confirm it fails
+  there. Docstrings asserting the hazard as current are corrected in
+  `run_case.py`, `measure.py`, `train_data.py` and `capture_cache.py`;
+  `findings.md`'s T115 entry is marked superseded rather than rewritten.
+  → T115, T116
+
 - [x] T140 **The capture surface was the oracle's request set, and the holdout
   is where that showed.** T134 widened the neighbourhood from ±1 to ±3 and
   test_unseen still lost **39 %** of its cases to replay misses. The width was

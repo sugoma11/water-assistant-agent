@@ -373,14 +373,19 @@ async def run_case_async(
 def run_case(inputs: Mapping[str, Any], **kwargs: Any) -> CaseResult:
     """:func:`run_case_async` on its own event loop — one case, one call.
 
-    A pass over **many** cases should drive :func:`run_case_async` inside one
-    loop instead. ``gr2l_client`` keeps its ``httpx.AsyncClient`` in a
-    module-level singleton and httpx binds a connection pool to the loop it was
-    created on, so a process that runs a loop per case fails on its second live
-    GR2L call with ``Event loop is closed`` — surfacing as an ``upstream`` error
-    through :class:`~..cache.CacheMissError`. Recorded under T115 and owned by
-    T116; replay never reaches the client at all, so it is a capture-pass
-    hazard, not a measurement-pass one.
+    A loop per rollout is what MLflow's threaded evaluation makes of this
+    function, and until T148 it was a defect rather than a shape:
+    ``gr2l_client`` kept its ``httpx.AsyncClient`` in a *process*-global
+    singleton while httpx binds a connection pool to the loop that created it,
+    so the second live GR2L call in a process failed with ``Event loop is
+    closed`` — arriving as an ``upstream`` error through
+    :class:`~..cache.CacheMissError` and so indistinguishable from an
+    unreachable service. Recorded under T115 as a capture-pass hazard on the
+    ground that "replay never reaches the client"; that scoping was right about
+    the measurement path and wrong about the **search**, which records
+    (``allow_live=True``) and reaches the client on any window the capture pass
+    did not hold. The client now keys its pool per loop, so a loop per rollout
+    is merely a loop per rollout.
     """
     return asyncio.run(run_case_async(inputs, **kwargs))
 
